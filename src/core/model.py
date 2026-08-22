@@ -218,6 +218,41 @@ class Tool:
         return ToolSpec(self.name, self.description, self.input_schema)
 
 
+def validate_tool_arguments(tool: Tool, arguments: Mapping[str, object]) -> None:
+    """按工具声明检查常见参数错误，不执行工具也不修改参数。"""
+    schema = tool.input_schema
+    if not schema:
+        return
+    if schema.get("type", "object") != "object":
+        raise ValueError(f"tool schema must describe an object: {tool.name}")
+    required = schema.get("required", ())
+    if not isinstance(required, (list, tuple)):
+        raise ValueError(f"tool required fields must be an array: {tool.name}")
+    missing = [name for name in required if isinstance(name, str) and name not in arguments]
+    if missing:
+        raise ValueError(f"tool {tool.name} is missing required arguments: {', '.join(missing)}")
+    properties = schema.get("properties", {})
+    if not isinstance(properties, Mapping):
+        raise ValueError(f"tool properties must be an object: {tool.name}")
+    for name, value in arguments.items():
+        rule = properties.get(name)
+        if isinstance(rule, Mapping):
+            _validate_tool_argument_type(tool.name, name, value, rule.get("type"))
+
+
+def _validate_tool_argument_type(tool_name: str, name: str, value: object, expected: object) -> None:
+    checks = {
+        "string": isinstance(value, str),
+        "integer": isinstance(value, int) and not isinstance(value, bool),
+        "number": isinstance(value, (int, float)) and not isinstance(value, bool),
+        "boolean": isinstance(value, bool),
+        "object": isinstance(value, Mapping),
+        "array": isinstance(value, list),
+    }
+    if isinstance(expected, str) and expected in checks and not checks[expected]:
+        raise ValueError(f"tool {tool_name} argument {name} must be {expected}")
+
+
 @dataclass(frozen=True)
 class ModelRequest:
     messages: tuple[Message, ...]

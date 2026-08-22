@@ -14,10 +14,12 @@ from core.model import Message, Model, Tool, next_model_profile_name
 from core.provider import ModelPricing, ModelProfile, ModelRouter, RouterSettings
 from core.records import AuditPolicy, Conversations, EventStore, RecordBackend, SessionRecord
 from core.run import (
+    CancelCheck,
     EventListener,
     RunRequest,
     RunSession,
     RunSetup,
+    ToolDecision,
     ToolContext,
     add_optional_tools,
     add_unique_tool,
@@ -76,6 +78,9 @@ class AgentContext:
     listeners: tuple[EventListener, ...] = ()
     session: SessionRecord | None = None
     working_directory: str | Path | WorkingDirectory | None = None
+    tool_decider: ToolDecision | None = None
+    tool_timeout_seconds: float | None = None
+    cancel_check: CancelCheck | None = None
 
 
 class Agent:
@@ -540,6 +545,9 @@ class Agent:
                 ),
                 prepare=prepare,
                 session_record=selected_session,
+                tool_decider=effective_context.tool_decider,
+                tool_timeout_seconds=effective_context.tool_timeout_seconds,
+                cancel_check=effective_context.cancel_check,
             ),
         )
         if conversation_id and selected_context.save_conversation:

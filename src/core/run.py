@@ -3,21 +3,76 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass, field, replace
 from typing import Callable, Generator, Iterable, Mapping
 
 from core.disclosure import MAX_PAGE_CHARACTERS, DisclosureStore
 from core.event import ContextLedger, RunEvent, RunIdentity, RunLimits, RunResult
-from core.model import Message, Model, ModelEvent, ModelRequest, Tool, ToolCall, normalize_messages
+from core.model import (
+    Message,
+    Model,
+    ModelEvent,
+    ModelRequest,
+    Tool,
+    ToolCall,
+    normalize_messages,
+    validate_tool_arguments,
+)
 from core.records import SessionRecord
 
 
 EventListener = Callable[[RunEvent], object]
 RunPreparation = Callable[["RunContext", "ToolContext"], object]
+ToolDecision = Callable[[Tool, Mapping[str, object]], str]
+CancelCheck = Callable[[], bool]
 
 
 class FatalToolError(RuntimeError):
     """表示不应返回模型继续尝试的工具失败。"""
+
+
+class ToolExecutionCenter:
+    """统一执行工具的参数、决策、取消和超时检查。"""
+
+    def __init__(
+        self,
+        decide: ToolDecision | None = None,
+        *,
+        timeout_seconds: float | None = None,
+        is_cancelled: CancelCheck | None = None,
+    ) -> None:
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            raise ValueError("tool timeout must be positive or None")
+        self.decide = decide
+        self.timeout_seconds = timeout_seconds
+        self.is_cancelled = is_cancelled
+
+    def check(self, tool: Tool, arguments: Mapping[str, object]) -> str:
+        if self.is_cancelled is not None and self.is_cancelled():
+            raise FatalToolError("tool execution was cancelled")
+        validate_tool_arguments(tool, arguments)
+        decision = "allow" if self.decide is None else self.decide(tool, arguments)
+        if decision not in {"allow", "ask", "deny"}:
+            raise ValueError("tool decision must be allow, ask, or deny")
+        return decision
+
+    def execute(self, tool: Tool, arguments: dict[str, object], context: ToolContext) -> object:
+        if self.check(tool, arguments) != "allow":
+            raise FatalToolError(f"tool execution is not allowed: {tool.name}")
+        return self.execute_checked(tool, arguments, context)
+
+    def execute_checked(self, tool: Tool, arguments: dict[str, object], context: ToolContext) -> object:
+        """执行已完成决策的工具；只供运行循环调用，避免重复询问。"""
+        if self.timeout_seconds is None:
+            return tool.handler(arguments, context)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(tool.handler, arguments, context)
+            try:
+                return future.result(timeout=self.timeout_seconds)
+            except FutureTimeoutError as error:
+                future.cancel()
+                raise TimeoutError(f"tool timed out: {tool.name}") from error
 
 
 @dataclass
@@ -122,6 +177,9 @@ class RunSetup:
     values: Mapping[str, object] = field(default_factory=dict)
     prepare: RunPreparation | None = None
     session_record: SessionRecord | None = None
+    tool_decider: ToolDecision | None = None
+    tool_timeout_seconds: float | None = None
+    cancel_check: CancelCheck | None = None
 
 
 @dataclass(frozen=True)
@@ -217,6 +275,11 @@ def stream_run(
         selected.listeners,
         selected.prepare,
         selected.session_record,
+        ToolExecutionCenter(
+            selected.tool_decider,
+            timeout_seconds=selected.tool_timeout_seconds,
+            is_cancelled=selected.cancel_check,
+        ),
     )
     return (yield from engine.stream())
 
@@ -273,6 +336,7 @@ class _RunEngine:
     listeners: tuple[EventListener, ...]
     prepare: RunPreparation | None
     session_record: SessionRecord | None = None
+    tool_center: ToolExecutionCenter = field(default_factory=ToolExecutionCenter)
     events: list[RunEvent] = field(default_factory=list)
     listener_failures: list[dict[str, str]] = field(default_factory=list)
     usage: dict[str, int | float | None] = field(default_factory=dict)
@@ -462,17 +526,42 @@ class _RunEngine:
                 {"call_id": call.call_id, "name": call.name, **output},
             )
         else:
-            yield self.emit(
-                "tool.started",
-                {
-                    "call_id": call.call_id,
-                    "name": call.name,
-                    "effects": list(tool.effects),
-                },
-            )
             try:
+                decision = self.tool_center.check(tool, call.arguments)
+                yield self.emit(
+                    "action.checked",
+                    {
+                        "call_id": call.call_id,
+                        "tool": tool.name,
+                        "effects": list(tool.effects),
+                        "decision": decision,
+                    },
+                )
+                if decision != "allow":
+                    yield self.emit(
+                        "action.blocked",
+                        {
+                            "call_id": call.call_id,
+                            "tool": tool.name,
+                            "effects": list(tool.effects),
+                            "decision": decision,
+                        },
+                    )
+                    raise FatalToolError(
+                        f"tool execution decision is {decision}: {tool.name}"
+                    )
+                yield self.emit(
+                    "tool.started",
+                    {
+                        "call_id": call.call_id,
+                        "name": call.name,
+                        "effects": list(tool.effects),
+                    },
+                )
                 self.captured_events.clear()
-                output = tool.handler(dict(call.arguments), self.context)
+                output = self.tool_center.execute_checked(
+                    tool, dict(call.arguments), self.context
+                )
                 content, recorded_output = _prepare_tool_output(
                     output,
                     self.request.limits,
