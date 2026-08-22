@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable, Generator, Iterable, Mapping
 
 from core.disclosure import MAX_PAGE_CHARACTERS, DisclosureStore
@@ -202,8 +202,13 @@ def _create_session(
     disclosure_value = run_values.pop("disclosure_store", None)
     if disclosure_value is not None and not isinstance(disclosure_value, DisclosureStore):
         raise TypeError("run disclosure_store must be a DisclosureStore")
+    identity = setup.identity or RunIdentity()
+    if setup.session_record is not None:
+        if identity.session_id not in {None, setup.session_record.session_id}:
+            raise ValueError("run identity session_id does not match session record")
+        identity = replace(identity, session_id=setup.session_record.session_id)
     session = RunContext(
-        identity=setup.identity or RunIdentity(),
+        identity=identity,
         messages=history,
         instructions=[item.strip() for item in request.instructions if item.strip()],
         tools=registered,
@@ -257,9 +262,7 @@ class _RunEngine:
         )
         self.events.append(event)
         if self.session_record is not None:
-            self.session_record.append_record(
-                event.event_type, event.data, created_at=event.created_at
-            )
+            self.session_record.append_event(event)
         for listener in self.listeners:
             try:
                 listener(event)
@@ -308,18 +311,7 @@ class _RunEngine:
                     {"error_type": type(error).__name__, "message": str(error)},
                 )
             finally:
-                self._finish_session_record(
-                    "failed",
-                    {"error_type": type(error).__name__, "message": str(error)},
-                )
                 raise
-
-    def _finish_session_record(
-        self, status: str, data: Mapping[str, object] | None = None
-    ) -> None:
-        if self.session_record is None or self.session_record.status != "running":
-            return
-        self.session_record.finish(status, data)
 
     def _start(self) -> Generator[RunEvent, None, None]:
         identity = self.session.identity
@@ -503,7 +495,6 @@ class _RunEngine:
                 "usage": dict(self.usage),
             },
         )
-        self._finish_session_record("completed")
         return RunResult(
             text=text,
             run_id=identity.run_id,
@@ -516,6 +507,7 @@ class _RunEngine:
             subscriber_failures=tuple(self.listener_failures),
             parent_run_id=identity.parent_run_id,
             conversation_id=identity.conversation_id,
+            session_id=identity.session_id,
         )
 
 

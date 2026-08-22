@@ -34,7 +34,7 @@ class LightweightSessionTests(unittest.TestCase):
         result = agent.run("hello")
 
         self.assertEqual("answer", result.text)
-        self.assertEqual("completed", session.status)
+        self.assertEqual("running", session.status)
         self.assertTrue(any(item.event_type == "run.completed" for item in session.read_records()))
 
     def test_storage_does_not_create_a_conversation_without_an_id(self):
@@ -52,7 +52,7 @@ class LightweightSessionTests(unittest.TestCase):
         agent.run("hello", context=AgentContext(session=selected))
 
         self.assertEqual("running", default.status)
-        self.assertEqual("completed", selected.status)
+        self.assertEqual("running", selected.status)
 
 
 if __name__ == "__main__":

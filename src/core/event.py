@@ -18,6 +18,7 @@ class RunIdentity:
     agent_name: str = "super-agent"
     run_id: str = field(default_factory=lambda: f"run-{uuid4().hex}")
     conversation_id: str | None = None
+    session_id: str | None = None
     parent_run_id: str | None = None
     depth: int = 1
 
@@ -26,6 +27,10 @@ class RunIdentity:
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{name} cannot be empty")
+        if self.session_id is not None and (
+            not isinstance(self.session_id, str) or not self.session_id.strip()
+        ):
+            raise ValueError("session_id must be non-empty text or None")
         if isinstance(self.depth, bool) or not isinstance(self.depth, int) or self.depth < 1:
             raise ValueError("run depth must be a positive integer")
 
@@ -35,6 +40,7 @@ class RunIdentity:
             user_id=self.user_id,
             agent_name=agent_name,
             conversation_id=conversation_id or self.conversation_id,
+            session_id=self.session_id,
             parent_run_id=self.run_id,
             depth=self.depth + 1,
         )
@@ -115,6 +121,7 @@ class RunResult:
     subscriber_failures: tuple[Mapping[str, str], ...] = ()
     parent_run_id: str | None = None
     conversation_id: str | None = None
+    session_id: str | None = None
 
     @property
     def model_turns(self) -> int:
@@ -137,5 +144,6 @@ class RunResult:
             "subscriber_failures": [dict(item) for item in self.subscriber_failures],
             "parent_run_id": self.parent_run_id,
             "conversation_id": self.conversation_id,
+            "session_id": self.session_id,
             "events": [event.to_dict() for event in self.events],
         }

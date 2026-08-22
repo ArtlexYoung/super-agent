@@ -377,6 +377,7 @@ class Agent:
         selected_context = context or AgentContext(
             user_id=user_id, conversation_id=conversation_id, skill=skill
         )
+        selected_session = selected_context.session or self._session_record
         model = self._require_model()
         selected_prompt = _text(prompt, "Agent prompt")
         conversation_id = selected_context.conversation_id
@@ -384,6 +385,7 @@ class Agent:
             user_id=selected_context.user_id,
             agent_name=self.name,
             conversation_id=conversation_id,
+            session_id=(None if selected_session is None else selected_session.session_id),
         )
         store = self._event_store(identity)
         selected_model_scope = model_scope(identity)
@@ -494,7 +496,7 @@ class Agent:
                     else None if library is None else library.disclosures,
                 ),
                 prepare=prepare,
-                session_record=effective_context.session or self._session_record,
+                session_record=selected_session,
             ),
         )
         if conversation_id and selected_context.save_conversation:

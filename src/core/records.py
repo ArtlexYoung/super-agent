@@ -44,18 +44,24 @@ SENSITIVE_NAMES = frozenset(
 CONTENT_FIELDS = frozenset(
     {"content", "prompt", "text", "arguments", "result", "message", "messages", "body", "reason", "error"}
 )
+SESSION_OMITTED_EVENTS = frozenset({"model.text.delta"})
 
 
 @dataclass(frozen=True)
 class SessionRecordEntry:
     """一条只存在内存中的轻量运行记录。"""
 
+    session_id: str
+    run_id: str | None
     sequence: int
     event_type: str
     data: Mapping[str, object]
     created_at: str
 
     def __post_init__(self) -> None:
+        _text(self.session_id, "session_id")
+        if self.run_id is not None:
+            _text(self.run_id, "run_id")
         _text(self.event_type, "session event_type")
         _integer(self.sequence, "session sequence", 1)
         _parse_time(self.created_at)
@@ -63,6 +69,8 @@ class SessionRecordEntry:
 
     def to_dict(self) -> dict[str, object]:
         return {
+            "session_id": self.session_id,
+            "run_id": self.run_id,
             "sequence": self.sequence,
             "event_type": self.event_type,
             "data": dict(self.data),
@@ -91,12 +99,15 @@ class SessionRecord:
         data: Mapping[str, object] | None = None,
         *,
         created_at: str | None = None,
+        run_id: str | None = None,
     ) -> SessionRecordEntry:
         """追加一条记录；结束后拒绝继续写入。"""
         with self._lock:
             if self._status != "running":
                 raise RuntimeError("session record is already finished")
             entry = SessionRecordEntry(
+                self.session_id,
+                run_id or _run_id(data),
                 len(self._entries) + 1,
                 _text(event_type, "session event_type"),
                 data or {},
@@ -104,6 +115,17 @@ class SessionRecord:
             )
             self._entries.append(entry)
             return entry
+
+    def append_event(self, event: RunEvent) -> SessionRecordEntry | None:
+        """追加统一格式的运行事件，并省略高频文本增量。"""
+        if event.event_type in SESSION_OMITTED_EVENTS:
+            return None
+        return self.append_record(
+            event.event_type,
+            compact_session_data(event.data),
+            created_at=event.created_at,
+            run_id=event.run_id,
+        )
 
     def read_records(self) -> tuple[SessionRecordEntry, ...]:
         with self._lock:
@@ -120,9 +142,11 @@ class SessionRecord:
             if self._status != "running":
                 raise RuntimeError("session record is already finished")
             entry = SessionRecordEntry(
+                self.session_id,
+                _run_id(data),
                 len(self._entries) + 1,
                 "session.finished",
-                {"status": selected, **dict(data or {})},
+                {"status": selected, **compact_session_data(data or {})},
                 utc_now(),
             )
             self._entries.append(entry)
@@ -524,6 +548,21 @@ def _redact(value: object, key: str = "") -> object:
     if isinstance(value, (list, tuple)):
         return [_redact(item) for item in value]
     return value
+
+
+def compact_session_data(data: Mapping[str, object]) -> dict[str, object]:
+    """生成不含模型正文和敏感值的统一 Session 数据。"""
+    compacted = _redact(data)
+    if not isinstance(compacted, Mapping):
+        raise TypeError("session data must remain a mapping")
+    return {str(key): value for key, value in compacted.items()}
+
+
+def _run_id(data: Mapping[str, object] | None) -> str | None:
+    if data is None:
+        return None
+    value = data.get("run_id")
+    return value if isinstance(value, str) and value.strip() else None
 
 
 def _json_copy(value: object):
