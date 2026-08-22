@@ -175,6 +175,13 @@ class Agent:
     def set_instructions(self, *instructions: str) -> None:
         self.instructions = [_text(item, "Agent instruction") for item in instructions]
 
+    def add_instructions(self, *instructions: str) -> None:
+        """追加不重复的运行说明，不写入配置或工作目录。"""
+        for instruction in instructions:
+            text = _text(instruction, "Agent instruction")
+            if text not in self.instructions:
+                self.instructions.append(text)
+
     def for_user(self, user_id: str) -> AgentUser:
         """返回固定用户作用域的轻量视图。"""
         return AgentUser(self, user_id)

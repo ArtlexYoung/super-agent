@@ -27,6 +27,34 @@ from skill.document import (
 RecordEvent = Callable[[str, Mapping[str, object]], object]
 
 
+class CodeSkill:
+    """可选编码场景：加载工作区说明并组合代码工具。"""
+
+    def __init__(self, workspace: object, process: object | None = None) -> None:
+        self.workspace = workspace
+        self.process = process
+
+    def load_instructions(self) -> tuple[str, ...]:
+        root = Path(getattr(self.workspace, "root", self.workspace)).expanduser().resolve()
+        values: list[str] = []
+        for directory in (*reversed(root.parents), root):
+            path = directory / "AGENTS.md"
+            if path.is_file():
+                content = path.read_text(encoding="utf-8")
+                if content.strip():
+                    values.append(f"Coding instructions from {path.name} in {directory}:\n{content.strip()}")
+        return tuple(values)
+
+    def tools(self) -> tuple[Tool, ...]:
+        from adapter.process import ProcessTools
+        from adapter.tools import CodeWorkspace
+
+        values = list(CodeWorkspace(self.workspace).tools())
+        if self.process is not None:
+            values.extend(ProcessTools(self.process).tools())
+        return tuple(values)
+
+
 class SkillLibrary:
     """所有 Skill 使用的中央渐进披露入口。"""
 

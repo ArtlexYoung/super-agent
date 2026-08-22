@@ -11,12 +11,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from adapter.process import ProcessSettings, ProcessTools
+from adapter.process import ProcessSettings
 from adapter.storage import create_storage, verify_storage
-from adapter.tools import CodeWorkspace, ToolPolicy, WorkspaceSettings, general_tools
+from adapter.tools import ToolPolicy, WorkspaceSettings, general_tools
 from core.config import Config, config_from_environment
 from core.records import AuditPolicy, Conversations, EventStore
-from skill.library import SkillLibrary
+from skill.library import CodeSkill, SkillLibrary
 from super_agent import Agent, AgentContext
 
 
@@ -341,13 +341,11 @@ def _build_agent(
 def _attach_code_tools(agent: Agent, code_path: str | None) -> None:
     settings = _load_code(code_path)
     policy = ToolPolicy(settings.allowed_effects, _confirm_action)
+    code_skill = CodeSkill(settings.workspace, settings.process)
+    agent.add_instructions(*code_skill.load_instructions())
     agent.add_tools_for_skills(
-        policy.protect_all(CodeWorkspace(settings.workspace).tools())
+        policy.protect_all(code_skill.tools())
     )
-    if settings.process is not None:
-        agent.add_tools_for_skills(
-            policy.protect_all(ProcessTools(settings.process).tools())
-        )
 
 
 @dataclass(frozen=True)
