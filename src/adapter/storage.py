@@ -12,6 +12,7 @@ from pathlib import Path
 from threading import RLock
 from time import monotonic
 
+from core.event import CheckpointStore, RunCheckpoint
 from core.records import AuditPolicy, EventStore, MemoryStore, Record, RecordBackend, RecordQuery
 
 
@@ -45,6 +46,26 @@ class MemoryStorage:
             return before - len(self._records)
 
 
+class MemoryCheckpointStore:
+    """显式选择时使用的进程内检查点存储。"""
+
+    def __init__(self) -> None:
+        self._checkpoints: dict[str, RunCheckpoint] = {}
+
+    def save(self, checkpoint: RunCheckpoint) -> RunCheckpoint:
+        self._checkpoints[checkpoint.checkpoint_id] = checkpoint
+        return checkpoint
+
+    def read(self, checkpoint_id: str) -> RunCheckpoint:
+        try:
+            return self._checkpoints[checkpoint_id]
+        except KeyError as error:
+            raise KeyError(f"checkpoint not found: {checkpoint_id}") from error
+
+    def delete(self, checkpoint_id: str) -> bool:
+        return self._checkpoints.pop(checkpoint_id, None) is not None
+
+
 class EventMemoryStore:
     """把任意记录后端收敛为 Memory Skill 所需的最小接口。"""
 
@@ -58,6 +79,31 @@ class EventMemoryStore:
         self, memory_id: str, event_type: str, data: dict[str, object]
     ) -> object:
         return self.store.append("memory", memory_id, event_type, data)
+
+
+class EventCheckpointStore:
+    """将检查点适配到现有 JSONL、SQLite 或远程记录后端。"""
+
+    def __init__(self, store: EventStore) -> None:
+        self.store = store
+
+    def save(self, checkpoint: RunCheckpoint) -> RunCheckpoint:
+        self.store.replace_state(
+            "checkpoint",
+            checkpoint.checkpoint_id,
+            "checkpoint.saved",
+            checkpoint.to_dict(),
+        )
+        return checkpoint
+
+    def read(self, checkpoint_id: str) -> RunCheckpoint:
+        records = self.store.read("checkpoint", checkpoint_id)
+        if not records:
+            raise KeyError(f"checkpoint not found: {checkpoint_id}")
+        return RunCheckpoint.from_dict(records[-1].data)
+
+    def delete(self, checkpoint_id: str) -> bool:
+        return bool(self.store.delete("checkpoint", checkpoint_id))
 
 
 class JsonlMemoryStore(EventMemoryStore):

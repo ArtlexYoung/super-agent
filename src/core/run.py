@@ -8,7 +8,15 @@ from dataclasses import dataclass, field, replace
 from typing import Callable, Generator, Iterable, Mapping
 
 from core.disclosure import MAX_PAGE_CHARACTERS, DisclosureStore
-from core.event import ContextLedger, RunEvent, RunIdentity, RunLimits, RunResult
+from core.event import (
+    CheckpointStore,
+    ContextLedger,
+    RunCheckpoint,
+    RunEvent,
+    RunIdentity,
+    RunLimits,
+    RunResult,
+)
 from core.model import (
     Message,
     Model,
@@ -30,6 +38,10 @@ CancelCheck = Callable[[], bool]
 
 class FatalToolError(RuntimeError):
     """表示不应返回模型继续尝试的工具失败。"""
+
+
+class RunInterrupted(RuntimeError):
+    """表示调用方显式要求暂停当前运行。"""
 
 
 class ToolExecutionCenter:
@@ -180,6 +192,9 @@ class RunSetup:
     tool_decider: ToolDecision | None = None
     tool_timeout_seconds: float | None = None
     cancel_check: CancelCheck | None = None
+    checkpoint_store: CheckpointStore | None = None
+    resume_checkpoint: RunCheckpoint | None = None
+    interrupt_check: CancelCheck | None = None
 
 
 @dataclass(frozen=True)
@@ -280,6 +295,9 @@ def stream_run(
             timeout_seconds=selected.tool_timeout_seconds,
             is_cancelled=selected.cancel_check,
         ),
+        selected.checkpoint_store,
+        selected.resume_checkpoint,
+        selected.interrupt_check,
     )
     return (yield from engine.stream())
 
@@ -305,6 +323,11 @@ def _create_session(
         if identity.session_id not in {None, setup.session_record.session_id}:
             raise ValueError("run identity session_id does not match session record")
         identity = replace(identity, session_id=setup.session_record.session_id)
+    if setup.resume_checkpoint is not None:
+        if setup.resume_checkpoint.run_id != identity.run_id:
+            raise ValueError("resume checkpoint run_id does not match run identity")
+        if setup.resume_checkpoint.status not in {"failed", "interrupted", "waiting"}:
+            raise ValueError("only failed, interrupted, or waiting runs can be resumed")
     session = RunContext(
         identity=identity,
         messages=history,
@@ -337,6 +360,9 @@ class _RunEngine:
     prepare: RunPreparation | None
     session_record: SessionRecord | None = None
     tool_center: ToolExecutionCenter = field(default_factory=ToolExecutionCenter)
+    checkpoint_store: CheckpointStore | None = None
+    resume_checkpoint: RunCheckpoint | None = None
+    interrupt_check: CancelCheck | None = None
     events: list[RunEvent] = field(default_factory=list)
     listener_failures: list[dict[str, str]] = field(default_factory=list)
     usage: dict[str, int | float | None] = field(default_factory=dict)
@@ -362,6 +388,8 @@ class _RunEngine:
         self.events.append(event)
         if self.session_record is not None:
             self.session_record.append_event(event)
+        if self.checkpoint_store is not None:
+            self.checkpoint_store.save(self._checkpoint_for(event))
         for listener in self.listeners:
             try:
                 listener(event)
@@ -403,6 +431,12 @@ class _RunEngine:
                 return (yield from self._complete(turn.text, turn.stop_reason))
         except GeneratorExit:
             raise
+        except RunInterrupted as error:
+            yield self.emit(
+                "run.interrupted",
+                {"message": str(error)},
+            )
+            raise
         except Exception as error:
             try:
                 yield self.emit(
@@ -414,6 +448,14 @@ class _RunEngine:
 
     def _start(self) -> Generator[RunEvent, None, None]:
         identity = self.session.identity
+        if self.resume_checkpoint is not None:
+            yield self.emit(
+                "run.resumed",
+                {
+                    "checkpoint_id": self.resume_checkpoint.checkpoint_id,
+                    "checkpoint_sequence": self.resume_checkpoint.event_sequence,
+                },
+            )
         yield self.emit(
             "run.started",
             {
@@ -436,6 +478,7 @@ class _RunEngine:
             yield from self._take_captured_events()
 
     def _call_model(self) -> Generator[RunEvent, None, _ModelTurn]:
+        self._check_interrupted()
         self.turns += 1
         maximum = self.request.limits.max_model_turns
         if maximum is not None and self.turns > maximum:
@@ -512,6 +555,7 @@ class _RunEngine:
         return _ModelTurn(text, tuple(calls), stop_reason)
 
     def _run_tool(self, call: ToolCall) -> Generator[RunEvent, None, None]:
+        self._check_interrupted()
         tool = self.session.tools.get(call.name)
         if tool is None:
             output = {"error": f"unknown tool: {call.name}"}
@@ -603,6 +647,38 @@ class _RunEngine:
         )
         self.session.messages.append(
             Message("tool", content, tool_call_id=call.call_id)
+        )
+
+    def _check_interrupted(self) -> None:
+        if self.interrupt_check is not None and self.interrupt_check():
+            raise RunInterrupted("run interruption was requested")
+
+    def _checkpoint_for(self, event: RunEvent) -> RunCheckpoint:
+        status = {
+            "run.completed": "completed",
+            "run.failed": "failed",
+            "run.interrupted": "interrupted",
+            "run.waiting": "waiting",
+        }.get(event.event_type, "running")
+        identity = self.session.identity
+        return RunCheckpoint(
+            checkpoint_id=identity.run_id,
+            run_id=identity.run_id,
+            session_id=identity.session_id,
+            status=status,
+            event_sequence=len(self.events),
+            turn=self.turns,
+            state={
+                "last_event_type": event.event_type,
+                "agent_name": identity.agent_name,
+                "depth": identity.depth,
+                "message_count": len(self.session.messages),
+                "tool_count": len(self.session.tools),
+                "skills": list(self.session.active_skills),
+                "workflow": self.session.workflow,
+                "context_ledger": self.session.context_snapshot(),
+            },
+            created_at=event.created_at,
         )
 
     def _take_captured_events(self) -> tuple[RunEvent, ...]:

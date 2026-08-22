@@ -17,7 +17,7 @@ from core.model import Message
 
 
 STATE_STREAMS = frozenset(
-    {"conversation", "memory", "model_profile", "skill_change"}
+    {"conversation", "memory", "model_profile", "skill_change", "checkpoint"}
 )
 CRITICAL_EVENTS = frozenset(
     {

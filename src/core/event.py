@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Iterable, Mapping
+from typing import Iterable, Mapping, Protocol
 from uuid import uuid4
 
 
@@ -97,6 +97,72 @@ def _check_context_limit(value: int | None, name: str) -> None:
 def _check_context_characters(value: int) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ValueError("context characters must be a non-negative integer")
+
+
+@dataclass(frozen=True)
+class RunCheckpoint:
+    """一次运行的可恢复元数据；默认不包含模型正文。"""
+
+    checkpoint_id: str
+    run_id: str
+    session_id: str | None
+    status: str
+    event_sequence: int
+    turn: int
+    state: Mapping[str, object]
+    created_at: str = field(default_factory=utc_now)
+
+    def __post_init__(self) -> None:
+        for name in ("checkpoint_id", "run_id", "status", "created_at"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"checkpoint {name} cannot be empty")
+        if self.session_id is not None and not isinstance(self.session_id, str):
+            raise TypeError("checkpoint session_id must be text or None")
+        for name in ("event_sequence", "turn"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"checkpoint {name} must be non-negative")
+        if not isinstance(self.state, Mapping):
+            raise TypeError("checkpoint state must be a mapping")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "checkpoint_id": self.checkpoint_id,
+            "run_id": self.run_id,
+            "session_id": self.session_id,
+            "status": self.status,
+            "event_sequence": self.event_sequence,
+            "turn": self.turn,
+            "state": dict(self.state),
+            "created_at": self.created_at,
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, object]) -> RunCheckpoint:
+        state = value.get("state", {})
+        if not isinstance(state, Mapping):
+            raise TypeError("checkpoint state must be an object")
+        return cls(
+            checkpoint_id=str(value.get("checkpoint_id", "")),
+            run_id=str(value.get("run_id", "")),
+            session_id=(None if value.get("session_id") is None else str(value["session_id"])),
+            status=str(value.get("status", "")),
+            event_sequence=int(value.get("event_sequence", 0)),
+            turn=int(value.get("turn", 0)),
+            state=dict(state),
+            created_at=str(value.get("created_at", utc_now())),
+        )
+
+
+class CheckpointStore(Protocol):
+    """显式检查点适配器契约。"""
+
+    def save(self, checkpoint: RunCheckpoint) -> RunCheckpoint: ...
+
+    def read(self, checkpoint_id: str) -> RunCheckpoint: ...
+
+    def delete(self, checkpoint_id: str) -> bool: ...
 
 
 @dataclass(frozen=True)
