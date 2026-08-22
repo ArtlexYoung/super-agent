@@ -37,6 +37,10 @@ Synchronous and streaming APIs do not maintain separate model-call logic. Tool o
 
 `RuntimeLifecycle` lives in the core execution loop and records parent-child runs, task states, depth, and active counts. Multi-Agent Skills attach tasks to the current `RunContext` lifecycle; child Agents keep using that object, so run events, task waits, and recovery metadata stay aligned without storing model text.
 
+自适应记录模式会先按任务位置给出计划，再检查实际子结果的字符数和事件数。超过 `max_full_result_characters` 或 `max_full_result_events` 时才压缩，并在结果中标明原因；`full` 和 `summary` 配置仍是明确的强制选择。
+
+Adaptive recording first plans a mode from task position, then checks the actual child result's character and event counts. It compresses only after `max_full_result_characters` or `max_full_result_events` is exceeded, and records the reason; explicit `full` and `summary` modes remain authoritative.
+
 ## 身份与嵌套 / Identity and Nesting
 
 `RunIdentity` 固定 `user_id`、`agent_name`、`run_id`、父运行和调用深度。`Agent.add_group` 和 `Agent.add_subagent` 在代码中组合树；根组是第 1 层，省略 Agent 名称时自动使用 `subagent01`、`subagent02` 等名称。

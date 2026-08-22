@@ -25,6 +25,8 @@ class AgentTreeSettings:
     compress_after_tasks: int = 8
     summary_characters: int = 2_000
     nested_results: int = 8
+    max_full_result_characters: int = 32_000
+    max_full_result_events: int = 64
     selection: str = "weighted"
     circuit_failures: int = 1
     circuit_wait_seconds: float = 30.0
@@ -49,6 +51,8 @@ class AgentTreeSettings:
             self.compress_after_tasks < 1
             or self.summary_characters < 1
             or self.nested_results < 0
+            or self.max_full_result_characters < 1
+            or self.max_full_result_events < 1
         ):
             raise ValueError("invalid Agent tree record limits")
         if self.record_mode not in {"full", "summary", "adaptive"}:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
 from threading import Condition, RLock, Thread
@@ -269,20 +270,22 @@ class AgentTaskRuntime:
                     status="running",
                     attempts=task.attempts + 1,
                 )
-            mode = self._record_mode(task_id)
-            shared = dict(task.shared_context or {})
-            shared["record_mode"] = mode
+            planned_mode = self._record_mode(task_id)
+            shared = {**(task.shared_context or {}), "record_mode": planned_mode}
             try:
                 result = self._run_worker(worker, task, shared)
             except Exception as error:  # noqa: BLE001 - 子 Agent 错误需进入任务状态。
                 self._handle_failure(task_id, worker, error)
                 return
+            raw = result.to_dict()
+            mode, reason = self._select_record_mode(raw, planned_mode)
             compacted = compact_child_result(
-                result.to_dict(),
+                raw,
                 mode=mode,
                 summary_characters=self.settings.summary_characters,
                 nested_results=self.settings.nested_results,
             )
+            compacted.update(record_mode=mode, compression_reason=reason)
             with self._condition:
                 self._workers.mark_success(worker)
                 self._change(
@@ -485,6 +488,17 @@ class AgentTaskRuntime:
             return self.settings.record_mode
         position = list(self._tasks).index(task_id) + 1
         return "full" if position <= self.settings.compress_after_tasks else "summary"
+
+    def _select_record_mode(self, result: Mapping[str, object], planned_mode: str) -> tuple[str, str]:
+        if self.settings.record_mode != "adaptive": return planned_mode, "configured"
+        if planned_mode == "summary": return "summary", "adaptive_task_position"
+        size = len(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+        events = result.get("events")
+        count = len(events) if isinstance(events, list) else 0
+        if size > self.settings.max_full_result_characters or count > self.settings.max_full_result_events:
+            reason = "adaptive_result_size" if size > self.settings.max_full_result_characters else "adaptive_event_count"
+            return "summary", reason
+        return "full", "adaptive_within_limits"
 
     def _target_group(
         self, source: AgentGroupNode, target_group_id: str | None
