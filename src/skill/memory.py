@@ -275,15 +275,21 @@ class Memory:
         return updated
 
     def _load(self) -> dict[str, MemoryItem]:
+        projected = {
+            key: item for key, item in self._items.items() if item.lifetime == "temporary"
+        }
         if self.store is None:
-            return dict(self._items)
-        projected: dict[str, MemoryItem] = {}
+            return projected | {
+                key: item for key, item in self._items.items() if item.lifetime == "long_term"
+            }
         for record in self.store.read("memory"):
-            projected[record.stream_id] = MemoryItem.from_dict(record.data)
+            item = MemoryItem.from_dict(record.data)
+            if item.lifetime == "long_term":
+                projected[record.stream_id] = item
         return projected
 
     def _save(self, item: MemoryItem, event_type: str) -> None:
-        if self.store is None:
+        if item.lifetime == "temporary" or self.store is None:
             self._items[item.memory_id] = item
         else:
             self.store.append("memory", item.memory_id, event_type, item.to_dict())

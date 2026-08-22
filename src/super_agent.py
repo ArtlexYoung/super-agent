@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from adapter.storage import JsonlStorage
 from core.config import Config, WorkingDirectory, config_from_environment
 from core.event import RunEvent, RunIdentity, RunLimits, RunResult
 from core.model import Message, Model, Tool, next_model_profile_name
@@ -120,7 +122,7 @@ class Agent:
             self._model_profiles = [ModelProfile("default", model)]
         self._listeners: list[EventListener] = []
         self._libraries: dict[tuple[str, str], SkillLibrary] = {}
-        self._memories: dict[tuple[str, str], Memory] = {}
+        self._memories: dict[tuple[str, str, str], Memory] = {}
         self._evolutions: dict[tuple[str, str], SkillEvolution] = {}
         self._agent_tree_runtimes: dict[str, AgentTreeRuntime] = {}
         self._loaded_model_scopes: set[str] = set()
@@ -467,7 +469,7 @@ class Agent:
             store,
         )
         active_tools, available_tools = self._run_tools(
-            identity, library, store, agent_tree, group_id
+            identity, library, store, agent_tree, group_id, selected_working_directory
         )
         skill_index = (
             None
@@ -579,6 +581,7 @@ class Agent:
         store: EventStore | None,
         agent_tree: AgentTreeRuntime | None,
         group_id: str,
+        working_directory: WorkingDirectory | None,
     ) -> tuple[dict[str, Tool], dict[str, Tool]]:
         active = dict(self._active_tools)
         available = dict(self._skill_tools)
@@ -586,7 +589,7 @@ class Agent:
             for tool in library.tools():
                 add_unique_tool(active, tool)
         if self.memory_enabled:
-            memory = self._memory(identity, store)
+            memory = self._memory(identity, store, working_directory)
             add_optional_tools(
                 active, available, memory.tools(), progressive=library is not None
             )
@@ -638,10 +641,36 @@ class Agent:
             self._libraries[key] = library
         return self._libraries[key]
 
-    def _memory(self, identity: RunIdentity, store: EventStore | None) -> Memory:
-        key = (identity.user_id, identity.agent_name)
+    def _memory(
+        self,
+        identity: RunIdentity,
+        store: EventStore | None,
+        working_directory: WorkingDirectory | None = None,
+    ) -> Memory:
+        key = (
+            identity.user_id,
+            identity.agent_name,
+            "" if working_directory is None else working_directory.identity,
+        )
         if key not in self._memories:
-            self._memories[key] = Memory(store)
+            selected_store = store
+            if working_directory is not None:
+                scope = hashlib.sha256(
+                    f"{identity.user_id}\0{identity.agent_name}".encode("utf-8")
+                ).hexdigest()[:24]
+                path = (
+                    working_directory.path
+                    / ".super-agent"
+                    / "memory"
+                    / "users"
+                    / f"{scope}.jsonl"
+                )
+                selected_store = EventStore(
+                    JsonlStorage(path, audit_policy=self.audit_policy),
+                    identity.user_id,
+                    identity.agent_name,
+                )
+            self._memories[key] = Memory(selected_store)
         return self._memories[key]
 
     def _evolution(

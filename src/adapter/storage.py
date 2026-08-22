@@ -105,11 +105,15 @@ class JsonlStorage:
         return records
 
     def _paths(self) -> list[Path]:
+        if self.root.suffix == ".jsonl":
+            return [self.root] if self.root.is_file() else []
         if not self.root.exists():
             return []
         return sorted(self.root.glob("records-*.jsonl"))
 
     def _append_path(self, created_at: str, incoming_bytes: int) -> Path:
+        if self.root.suffix == ".jsonl":
+            return self.root
         month = created_at[:7]
         candidates = sorted(self.root.glob(f"records-{month}-*.jsonl")) if self.root.exists() else []
         if not candidates:
