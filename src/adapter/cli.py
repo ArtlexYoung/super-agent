@@ -64,11 +64,10 @@ class CliConfig:
     @classmethod
     def automatic(cls) -> CliConfig:
         explicit = os.environ.get("SUPER_AGENT_CLI_CONFIG")
-        candidates = (
-            [Path(explicit).expanduser()]
-            if explicit
-            else [Path.cwd() / "cli.toml", Path.home() / ".config/super-agent/cli.toml"]
-        )
+        candidates = [Path(explicit).expanduser()] if explicit else [
+            *_walk_up(Path.cwd(), "cli.toml"),
+            Path.home() / ".config/super-agent/cli.toml",
+        ]
         for candidate in candidates:
             if candidate.is_file():
                 return cls.load(candidate)
@@ -139,6 +138,12 @@ def _config_command(arguments: list[str]) -> int:
     parsed = parser.parse_args(arguments)
     cli = _load_cli(parsed.cli_config)
     config = _load_general(parsed.config or cli.general_config)
+    if parsed.action == "validate":
+        if cli.code_config:
+            _load_code(cli.code_config)
+        return _print_value(
+            {"cli": "ok", "general": "ok", "code": "ok"}, cli.output
+        )
     value = {"cli": cli.__dict__, "general": _config_view(config)}
     return _print_value(value, cli.output)
 
@@ -502,8 +507,8 @@ def _override_cli(cli: CliConfig, args: argparse.Namespace) -> CliConfig:
 def _load_general(path: str | None) -> Config:
     if path:
         return Config.load(path)
-    candidate = Path.cwd() / "super-agent.toml"
-    return Config.load(candidate) if candidate.is_file() else config_from_environment()
+    candidates = _walk_up(Path.cwd(), "common.toml")
+    return Config.load(candidates[0]) if candidates else config_from_environment()
 
 
 def _skill_roots(config: Config) -> tuple[Path, ...]:
@@ -511,6 +516,16 @@ def _skill_roots(config: Config) -> tuple[Path, ...]:
     roots = [builtin]
     roots.extend(config.resolve_path(path) for path in config.skill_paths)
     return tuple(path for path in roots if path is not None)
+
+
+def _walk_up(start: Path, filename: str) -> list[Path]:
+    """从当前目录向上查找一个明确命名的配置文件。"""
+    current = start.expanduser().resolve()
+    return [
+        candidate
+        for directory in (current, *current.parents)
+        if (candidate := directory / filename).is_file()
+    ]
 
 
 def _database_url(config: Config) -> str | None:

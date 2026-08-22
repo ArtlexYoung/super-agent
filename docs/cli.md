@@ -43,6 +43,10 @@ Each command stays within its declared scope. `check` and `config` do not create
 - `cli.toml`: output format, user, and saving.
 - `code.toml`: workspace path, write/delete/Git/execute policy, and declared checks.
 
+未指定 `--cli-config` 时，CLI 从当前目录向上寻找最近的 `cli.toml`，再检查用户配置目录；未指定通用配置时，从当前目录向上寻找最近的 `common.toml`。相对配置路径始终以所属配置文件目录解析。
+
+Without `--cli-config`, the CLI searches upward for the nearest `cli.toml` and then the user configuration directory; without a general config path, it searches upward for the nearest `common.toml`. Relative paths always resolve from their owning configuration file.
+
 配置文件不互相深度合并；同名或未知字段不会被静默覆盖。
 
 Configuration files are not deep-merged; duplicate or unknown fields are never silently overridden.

@@ -6,7 +6,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from adapter.cli import CliConfig, _build_agent, _load_code
+from unittest.mock import patch
+
+from adapter.cli import CliConfig, _build_agent, _load_code, _load_general
 from adapter.storage import MemoryStorage
 from core.config import Config, ModelConfig
 from core.event import RunLimits
@@ -84,6 +86,24 @@ class InterfaceTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "unknown CLI configuration fields: host"):
                 CliConfig.load(path)
 
+    def test_cli_and_common_configs_are_discovered_from_a_parent_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            nested = root / "src" / "module"
+            nested.mkdir(parents=True)
+            (root / "common.toml").write_text("models = []\n", encoding="utf-8")
+            (root / "cli.toml").write_text(
+                'general_config = "common.toml"\noutput = "json"\n',
+                encoding="utf-8",
+            )
+            with patch("adapter.cli.Path.cwd", return_value=nested):
+                cli = CliConfig.automatic()
+                config = _load_general(cli.general_config)
+
+            self.assertEqual("json", cli.output)
+            self.assertEqual((root / "common.toml").resolve(), Path(cli.general_config))
+            self.assertEqual((), config.models)
+
     def test_code_config_validates_actions_and_keeps_allow_distinct_from_ask(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "code.toml"
@@ -154,8 +174,8 @@ commands = [["python3.11", "-V"]]
         self.assertTrue(insight["snapshot"]["error"]["message"]["redacted"])
         self.assertNotIn("private failure detail", json.dumps(insight))
 
-    def test_release_shape_matches_v0213(self):
-        self.assertEqual([], verify_release(ROOT, "0.2.13"))
+    def test_release_shape_matches_v0214(self):
+        self.assertEqual([], verify_release(ROOT, "0.2.14"))
 
 
 if __name__ == "__main__":
