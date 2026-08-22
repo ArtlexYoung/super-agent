@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
@@ -307,19 +308,23 @@ class Memory:
         conversation_id = context.session.identity.conversation_id
         if conversation_id is None:
             raise RuntimeError("temporary memory requires a conversation ID")
-        return self.remember_temporary(
+        item = self.remember_temporary(
             _text(arguments.get("text"), "memory text"),
             conversation_id=conversation_id,
             labels=_strings(arguments.get("labels", []), "memory labels"),
             context=_optional_text(arguments.get("context")) or "",
-        ).to_dict()
+        )
+        context.emit("memory.changed", _memory_audit_data(item, "created"))
+        return item.to_dict()
 
-    def _long_tool(self, arguments: dict[str, object], _context: ToolContext) -> dict[str, object]:
-        return self.remember_long_term(
+    def _long_tool(self, arguments: dict[str, object], context: ToolContext) -> dict[str, object]:
+        item = self.remember_long_term(
             _text(arguments.get("text"), "memory text"),
             labels=_strings(arguments.get("labels", []), "memory labels"),
             context=_optional_text(arguments.get("context")) or "",
-        ).to_dict()
+        )
+        context.emit("memory.changed", _memory_audit_data(item, "created"))
+        return item.to_dict()
 
     def _recall_tool(self, arguments: dict[str, object], context: ToolContext) -> dict[str, object]:
         values = self.recall(
@@ -329,24 +334,46 @@ class Memory:
         )
         return {"items": [item.to_dict() for item in values]}
 
-    def _promote_tool(self, arguments: dict[str, object], _context: ToolContext) -> dict[str, object]:
-        return self.promote_temporary(
+    def _promote_tool(self, arguments: dict[str, object], context: ToolContext) -> dict[str, object]:
+        item = self.promote_temporary(
             _text(arguments.get("memory_id"), "memory ID"),
             _text(arguments.get("abstract_text"), "abstract memory text"),
             labels=_strings(arguments.get("labels", []), "memory labels"),
             reason=_text(arguments.get("reason"), "promotion reason"),
-        ).to_dict()
+        )
+        context.emit("memory.changed", _memory_audit_data(item, "promoted"))
+        return item.to_dict()
 
-    def _organize_tool(self, arguments: dict[str, object], _context: ToolContext) -> dict[str, object]:
+    def _organize_tool(self, arguments: dict[str, object], context: ToolContext) -> dict[str, object]:
+        operation = _text(arguments.get("operation"), "memory operation")
+        memory_ids = _strings(arguments.get("memory_ids", []), "memory IDs")
+        reason = _text(arguments.get("reason"), "memory organization reason")
         values = self.organize_long_term(
-            _text(arguments.get("operation"), "memory operation"),
-            _strings(arguments.get("memory_ids", []), "memory IDs"),
+            operation,
+            memory_ids,
             text=_optional_text(arguments.get("text")),
             texts=_strings(arguments.get("texts", []), "split memory texts"),
             labels=_strings(arguments.get("labels", []), "memory labels"),
-            reason=_text(arguments.get("reason"), "memory organization reason"),
+            reason=reason,
+        )
+        context.emit(
+            "memory.organized",
+            {"operation": operation, "memory_ids": list(memory_ids), "result_ids": [item.memory_id for item in values], "reason": reason},
         )
         return {"items": [item.to_dict() for item in values]}
+
+
+def _memory_audit_data(item: MemoryItem, operation: str) -> dict[str, object]:
+    return {
+        "operation": operation,
+        "memory_id": item.memory_id,
+        "lifetime": item.lifetime,
+        "status": item.status,
+        "revision": item.revision,
+        "text_sha256": hashlib.sha256(item.text.encode()).hexdigest(),
+        "text_characters": len(item.text),
+        "source_ids": list(item.source_ids),
+    }
 
 
 def _memory_score(item: MemoryItem, query_words: set[str]) -> tuple[float, str]:

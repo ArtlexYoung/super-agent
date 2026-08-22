@@ -31,6 +31,7 @@ class SkillEvidence:
     replacement_calls: int = 0
     error: bool = False
     used_at: str = ""
+    run_id: str | None = None
 
     def __post_init__(self) -> None:
         if not 0 <= self.score <= 1:
@@ -70,6 +71,7 @@ class SkillEvidence:
             replacement_calls=_integer(value.get("replacement_calls", 0), "evidence replacement calls", 0),
             error=_boolean(value.get("error", False), "evidence error"),
             used_at=_text(value.get("used_at"), "evidence used_at"),
+            run_id=_optional_text(value.get("run_id")),
         )
 
 
@@ -422,6 +424,7 @@ def evidence_from_run(result: RunResult, *, score: float, success: bool, replace
             latency_ms=latency_ms,
             replacement_calls=replacement_calls,
             used_at=utc_now(),
+            run_id=result.run_id,
         )
         for key in result.skills
     )

@@ -264,6 +264,7 @@ class UserRuns:
             "model_evaluations": [
                 item for item in flattened if item["event_type"] == "model.evaluated"
             ],
+            "skill_evidence": self._skill_evidence(run_id),
             "skill_freshness": self._skill_freshness(snapshot),
             "evolution": [
                 item
@@ -288,6 +289,17 @@ class UserRuns:
         evidence = evidence_from_run(result, score=score, success=success)
         for item in evidence:
             evolution.record_evidence(item)
+            store.append(
+                "run",
+                run_id,
+                "skill.evaluated",
+                {
+                    "skill_key": item.skill_key,
+                    "score": item.score,
+                    "success": item.success,
+                    "sample_count": 1,
+                },
+            )
         return len(evidence)
 
     def evaluate_model_run(
@@ -337,6 +349,10 @@ class UserRuns:
                 }
             )
         return values
+
+    def _skill_evidence(self, run_id: str) -> list[dict[str, object]]:
+        records = self._store().read("skill_evidence")
+        return [item.to_dict() for item in records if item.data.get("run_id") == run_id]
 
     def _store(self) -> EventStore:
         return _require_store(self.user.agent, self.user.user_id)

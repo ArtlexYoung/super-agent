@@ -55,6 +55,10 @@ The evolution loop is not “the model says it changed, so it changes”:
 
 `SkillEvolution` can be used directly; `Agent.enable_skill_evolution()` exposes the same actions progressively to the model. Enabling evolution without a Skill Library fails directly.
 
+每条 Skill 评价证据都关联原始运行 ID。记忆工具会把创建、提升和整理动作写入当前运行的紧凑审计事件，只保存哈希、大小、版本和 ID 等元数据；长期记忆正文仍由记忆状态单独管理。
+
+Every Skill evaluation evidence item links to its originating run ID. Memory tools write creation, promotion, and organization as compact events in the current run, retaining only hashes, sizes, versions, and IDs; long-term memory text remains managed by the memory state separately.
+
 ## 保鲜度 / Freshness
 
 保鲜度不依赖另一个模型。使用时间衰减、调用频率、成功分数、输入/输出 token、缓存读写和同类替代调用计算，可复现、可解释，也可以被新的评价证据更新。

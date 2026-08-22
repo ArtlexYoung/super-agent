@@ -34,7 +34,9 @@ CRITICAL_EVENTS = frozenset(
         "memory.created",
         "memory.revised",
         "memory.forgotten",
+        "memory.organized",
         "model.evaluated",
+        "skill.evaluated",
         "audit.pruned",
     }
 )
