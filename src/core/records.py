@@ -7,6 +7,7 @@ import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from threading import RLock
 from types import MappingProxyType
 from typing import Protocol
 from uuid import uuid4
@@ -43,6 +44,90 @@ SENSITIVE_NAMES = frozenset(
 CONTENT_FIELDS = frozenset(
     {"content", "prompt", "text", "arguments", "result", "message", "messages", "body", "reason", "error"}
 )
+
+
+@dataclass(frozen=True)
+class SessionRecordEntry:
+    """一条只存在内存中的轻量运行记录。"""
+
+    sequence: int
+    event_type: str
+    data: Mapping[str, object]
+    created_at: str
+
+    def __post_init__(self) -> None:
+        _text(self.event_type, "session event_type")
+        _integer(self.sequence, "session sequence", 1)
+        _parse_time(self.created_at)
+        object.__setattr__(self, "data", MappingProxyType(_json_copy(self.data)))
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "sequence": self.sequence,
+            "event_type": self.event_type,
+            "data": dict(self.data),
+            "created_at": self.created_at,
+        }
+
+
+class SessionRecord:
+    """显式创建的内存会话记录，不负责文件、数据库或记忆。"""
+
+    def __init__(self, session_id: str | None = None) -> None:
+        self.session_id = session_id or f"session-{uuid4().hex}"
+        _text(self.session_id, "session_id")
+        self._entries: list[SessionRecordEntry] = []
+        self._status = "running"
+        self._lock = RLock()
+
+    @property
+    def status(self) -> str:
+        with self._lock:
+            return self._status
+
+    def append_record(
+        self,
+        event_type: str,
+        data: Mapping[str, object] | None = None,
+        *,
+        created_at: str | None = None,
+    ) -> SessionRecordEntry:
+        """追加一条记录；结束后拒绝继续写入。"""
+        with self._lock:
+            if self._status != "running":
+                raise RuntimeError("session record is already finished")
+            entry = SessionRecordEntry(
+                len(self._entries) + 1,
+                _text(event_type, "session event_type"),
+                data or {},
+                created_at or utc_now(),
+            )
+            self._entries.append(entry)
+            return entry
+
+    def read_records(self) -> tuple[SessionRecordEntry, ...]:
+        with self._lock:
+            return tuple(self._entries)
+
+    def finish(
+        self,
+        status: str = "completed",
+        data: Mapping[str, object] | None = None,
+    ) -> SessionRecordEntry:
+        """显式结束会话，并记录最终状态。"""
+        selected = _text(status, "session status")
+        with self._lock:
+            if self._status != "running":
+                raise RuntimeError("session record is already finished")
+            entry = SessionRecordEntry(
+                len(self._entries) + 1,
+                "session.finished",
+                {"status": selected, **dict(data or {})},
+                utc_now(),
+            )
+            self._entries.append(entry)
+            self._status = selected
+            return entry
 
 
 @dataclass(frozen=True)

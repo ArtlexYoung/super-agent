@@ -9,10 +9,11 @@ from typing import Callable, Generator, Iterable, Mapping
 from core.disclosure import MAX_PAGE_CHARACTERS, DisclosureStore
 from core.event import RunEvent, RunIdentity, RunLimits, RunResult
 from core.model import Message, Model, ModelEvent, ModelRequest, Tool, ToolCall, normalize_messages
+from core.records import SessionRecord
 
 
 EventListener = Callable[[RunEvent], object]
-RunPreparation = Callable[["RunSession", "ToolContext"], object]
+RunPreparation = Callable[["RunContext", "ToolContext"], object]
 
 
 class FatalToolError(RuntimeError):
@@ -20,7 +21,7 @@ class FatalToolError(RuntimeError):
 
 
 @dataclass
-class RunSession:
+class RunContext:
     identity: RunIdentity
     messages: list[Message]
     instructions: list[str]
@@ -68,9 +69,13 @@ class RunSession:
         return tuple(([Message("system", system)] if system else []) + self.messages)
 
 
+# Existing Skill handlers can still construct the context while the public name is clearer.
+RunSession = RunContext
+
+
 @dataclass(frozen=True)
 class ToolContext:
-    session: RunSession
+    session: RunContext
     emit: Callable[[str, Mapping[str, object]], RunEvent]
 
     def value(self, name: str, default: object = None) -> object:
@@ -85,6 +90,7 @@ class RunSetup:
     listeners: tuple[EventListener, ...] = ()
     values: Mapping[str, object] = field(default_factory=dict)
     prepare: RunPreparation | None = None
+    session_record: SessionRecord | None = None
 
 
 @dataclass(frozen=True)
@@ -169,7 +175,14 @@ def stream_run(
 ) -> Generator[RunEvent, None, RunResult]:
     selected = setup or RunSetup()
     session = _create_session(request, tools, selected)
-    engine = _RunEngine(request, model, session, selected.listeners, selected.prepare)
+    engine = _RunEngine(
+        request,
+        model,
+        session,
+        selected.listeners,
+        selected.prepare,
+        selected.session_record,
+    )
     return (yield from engine.stream())
 
 
@@ -177,7 +190,7 @@ def _create_session(
     request: RunRequest,
     tools: Iterable[Tool],
     setup: RunSetup,
-) -> RunSession:
+) -> RunContext:
     registered: dict[str, Tool] = {}
     for tool in tools:
         if tool.name in registered:
@@ -189,7 +202,7 @@ def _create_session(
     disclosure_value = run_values.pop("disclosure_store", None)
     if disclosure_value is not None and not isinstance(disclosure_value, DisclosureStore):
         raise TypeError("run disclosure_store must be a DisclosureStore")
-    session = RunSession(
+    session = RunContext(
         identity=setup.identity or RunIdentity(),
         messages=history,
         instructions=[item.strip() for item in request.instructions if item.strip()],
@@ -216,9 +229,10 @@ class _ModelTurn:
 class _RunEngine:
     request: RunRequest
     model: Model
-    session: RunSession
+    session: RunContext
     listeners: tuple[EventListener, ...]
     prepare: RunPreparation | None
+    session_record: SessionRecord | None = None
     events: list[RunEvent] = field(default_factory=list)
     listener_failures: list[dict[str, str]] = field(default_factory=list)
     usage: dict[str, int | float | None] = field(default_factory=dict)
@@ -242,6 +256,10 @@ class _RunEngine:
             {"run_id": self.session.identity.run_id, **dict(data or {})},
         )
         self.events.append(event)
+        if self.session_record is not None:
+            self.session_record.append_record(
+                event.event_type, event.data, created_at=event.created_at
+            )
         for listener in self.listeners:
             try:
                 listener(event)
@@ -290,7 +308,18 @@ class _RunEngine:
                     {"error_type": type(error).__name__, "message": str(error)},
                 )
             finally:
+                self._finish_session_record(
+                    "failed",
+                    {"error_type": type(error).__name__, "message": str(error)},
+                )
                 raise
+
+    def _finish_session_record(
+        self, status: str, data: Mapping[str, object] | None = None
+    ) -> None:
+        if self.session_record is None or self.session_record.status != "running":
+            return
+        self.session_record.finish(status, data)
 
     def _start(self) -> Generator[RunEvent, None, None]:
         identity = self.session.identity
@@ -474,6 +503,7 @@ class _RunEngine:
                 "usage": dict(self.usage),
             },
         )
+        self._finish_session_record("completed")
         return RunResult(
             text=text,
             run_id=identity.run_id,

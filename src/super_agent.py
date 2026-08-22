@@ -10,7 +10,7 @@ from core.config import Config, config_from_environment
 from core.event import RunEvent, RunIdentity, RunLimits, RunResult
 from core.model import Message, Model, Tool, next_model_profile_name
 from core.provider import ModelPricing, ModelProfile, ModelRouter, RouterSettings
-from core.records import AuditPolicy, Conversations, EventStore, RecordBackend
+from core.records import AuditPolicy, Conversations, EventStore, RecordBackend, SessionRecord
 from core.run import (
     EventListener,
     RunRequest,
@@ -72,6 +72,7 @@ class AgentContext:
     agent_tree_runtime: AgentTreeRuntime | None = None
     agent_group_id: str | None = None
     listeners: tuple[EventListener, ...] = ()
+    session: SessionRecord | None = None
 
 
 class Agent:
@@ -120,6 +121,7 @@ class Agent:
         self._evolutions: dict[tuple[str, str], SkillEvolution] = {}
         self._agent_tree_runtimes: dict[str, AgentTreeRuntime] = {}
         self._loaded_model_scopes: set[str] = set()
+        self._session_record: SessionRecord | None = None
         if config is not None:
             self._apply_config(config, model_was_explicit=model is not None)
 
@@ -164,6 +166,12 @@ class Agent:
     def for_user(self, user_id: str) -> AgentUser:
         """返回固定用户作用域的轻量视图。"""
         return AgentUser(self, user_id)
+
+    def use_session(self, session: SessionRecord | None) -> None:
+        """显式挂载内存会话记录；不会创建或打开持久化存储。"""
+        if session is not None and not isinstance(session, SessionRecord):
+            raise TypeError("session must be a SessionRecord or None")
+        self._session_record = session
 
     def add_skill_path(self, path: str | Path) -> None:
         """在内存中增加一个 Skill 根目录，不写入配置文件。"""
@@ -372,18 +380,6 @@ class Agent:
         model = self._require_model()
         selected_prompt = _text(prompt, "Agent prompt")
         conversation_id = selected_context.conversation_id
-        if (
-            selected_context.save_conversation
-            and self.storage is not None
-            and conversation_id is None
-        ):
-            conversation_id = (
-                Conversations(
-                    EventStore(self.storage, selected_context.user_id, self.name)
-                )
-                .create(selected_prompt[:48])
-                .conversation_id
-            )
         identity = selected_context.identity or RunIdentity(
             user_id=selected_context.user_id,
             agent_name=self.name,
@@ -498,6 +494,7 @@ class Agent:
                     else None if library is None else library.disclosures,
                 ),
                 prepare=prepare,
+                session_record=effective_context.session or self._session_record,
             ),
         )
         if conversation_id and selected_context.save_conversation:
