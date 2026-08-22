@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from threading import RLock
 from types import MappingProxyType
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 from uuid import uuid4
 
 from core.event import RunEvent, RunIdentity, utc_now
@@ -237,6 +237,17 @@ class RecordBackend(Protocol):
     def read(self, query: RecordQuery) -> list[Record]: ...
 
     def delete(self, query: RecordQuery) -> int: ...
+
+
+@runtime_checkable
+class MemoryStore(Protocol):
+    """Memory Skill 使用的最小持久化契约。"""
+
+    def read_items(self) -> list[Mapping[str, object]]: ...
+
+    def append_item(
+        self, memory_id: str, event_type: str, data: Mapping[str, object]
+    ) -> object: ...
 
 
 class EventStore:

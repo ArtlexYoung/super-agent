@@ -12,7 +12,7 @@ from pathlib import Path
 from threading import RLock
 from time import monotonic
 
-from core.records import AuditPolicy, Record, RecordBackend, RecordQuery
+from core.records import AuditPolicy, EventStore, MemoryStore, Record, RecordBackend, RecordQuery
 
 
 MAINTENANCE_INTERVAL_SECONDS = 24 * 60 * 60
@@ -43,6 +43,39 @@ class MemoryStorage:
             before = len(self._records)
             self._records = [record for record in self._records if not query.matches(record)]
             return before - len(self._records)
+
+
+class EventMemoryStore:
+    """把任意记录后端收敛为 Memory Skill 所需的最小接口。"""
+
+    def __init__(self, store: EventStore) -> None:
+        self.store = store
+
+    def read_items(self) -> list[dict[str, object]]:
+        return [dict(record.data) for record in self.store.read("memory")]
+
+    def append_item(
+        self, memory_id: str, event_type: str, data: dict[str, object]
+    ) -> object:
+        return self.store.append("memory", memory_id, event_type, data)
+
+
+class JsonlMemoryStore(EventMemoryStore):
+    """默认的工作目录记忆适配器。"""
+
+    def __init__(
+        self,
+        path: str | Path,
+        user_id: str,
+        agent_name: str,
+        *,
+        audit_policy: AuditPolicy | None = None,
+    ) -> None:
+        super().__init__(
+            EventStore(
+                JsonlStorage(path, audit_policy=audit_policy), user_id, agent_name
+            )
+        )
 
 
 class JsonlStorage:

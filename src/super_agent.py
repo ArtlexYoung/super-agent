@@ -7,7 +7,7 @@ from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from adapter.storage import JsonlStorage
+from adapter.storage import EventMemoryStore, JsonlMemoryStore
 from core.config import Config, WorkingDirectory, config_from_environment
 from core.event import RunEvent, RunIdentity, RunLimits, RunResult
 from core.model import Message, Model, Tool, next_model_profile_name
@@ -665,11 +665,14 @@ class Agent:
                     / "users"
                     / f"{scope}.jsonl"
                 )
-                selected_store = EventStore(
-                    JsonlStorage(path, audit_policy=self.audit_policy),
+                selected_store = JsonlMemoryStore(
+                    path,
                     identity.user_id,
                     identity.agent_name,
+                    audit_policy=self.audit_policy,
                 )
+            elif store is not None:
+                selected_store = EventMemoryStore(store)
             self._memories[key] = Memory(selected_store)
         return self._memories[key]
 

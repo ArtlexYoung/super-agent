@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from core.event import utc_now
 from core.model import Tool
-from core.records import EventStore
+from core.records import MemoryStore
 from core.run import ToolContext
 
 
@@ -87,7 +87,7 @@ class MemoryItem:
 class Memory:
     """提供显式记录、回忆、提升和整理操作。"""
 
-    def __init__(self, store: EventStore | None = None) -> None:
+    def __init__(self, store: MemoryStore | None = None) -> None:
         self.store = store
         self._items: dict[str, MemoryItem] = {}
 
@@ -282,17 +282,17 @@ class Memory:
             return projected | {
                 key: item for key, item in self._items.items() if item.lifetime == "long_term"
             }
-        for record in self.store.read("memory"):
-            item = MemoryItem.from_dict(record.data)
+        for value in self.store.read_items():
+            item = MemoryItem.from_dict(value)
             if item.lifetime == "long_term":
-                projected[record.stream_id] = item
+                projected[item.memory_id] = item
         return projected
 
     def _save(self, item: MemoryItem, event_type: str) -> None:
         if item.lifetime == "temporary" or self.store is None:
             self._items[item.memory_id] = item
         else:
-            self.store.append("memory", item.memory_id, event_type, item.to_dict())
+            self.store.append_item(item.memory_id, event_type, item.to_dict())
 
     def _require(self, memory_id: str, *, lifetime: str | None = None) -> MemoryItem:
         try:
