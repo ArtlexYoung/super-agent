@@ -7,7 +7,7 @@ from dataclasses import dataclass, field, replace
 from typing import Callable, Generator, Iterable, Mapping
 
 from core.disclosure import MAX_PAGE_CHARACTERS, DisclosureStore
-from core.event import RunEvent, RunIdentity, RunLimits, RunResult
+from core.event import ContextLedger, RunEvent, RunIdentity, RunLimits, RunResult
 from core.model import Message, Model, ModelEvent, ModelRequest, Tool, ToolCall, normalize_messages
 from core.records import SessionRecord
 
@@ -32,27 +32,58 @@ class RunContext:
     workflow: str = "model-directed"
     context_limit: int | None = None
     context_characters: int = 0
+    ledger: ContextLedger | None = None
+
+    def __post_init__(self) -> None:
+        if self.ledger is None:
+            self.ledger = ContextLedger(
+                self.context_limit,
+                initial_characters=self.context_characters,
+            )
+        elif self.context_characters and self.ledger.total_characters == 0:
+            self.ledger = ContextLedger(
+                self.ledger.max_characters,
+                initial_characters=self.context_characters,
+            )
+        self.context_characters = self.ledger.total_characters
 
     def add_instruction(self, instruction: str) -> None:
         text = instruction.strip()
         if text and text not in self.instructions:
-            self.reserve_context(text)
+            self.reserve_context(text, kind="instruction", source="skill")
             self.instructions.append(text)
 
-    def reserve_context(self, value: str) -> None:
-        """为本轮新增上下文预留空间，超出预算时直接失败。"""
-        characters = len(value)
-        selected = self.context_characters + characters
-        if self.context_limit is not None and selected > self.context_limit:
-            raise RuntimeError(
-                f"run context has {selected} characters; limit is {self.context_limit}"
-            )
-        self.context_characters = selected
+    def reserve_context(
+        self,
+        value: str,
+        *,
+        kind: str = "context",
+        source: str = "runtime",
+        summary: str | None = None,
+        cache_reference: str | None = None,
+    ) -> None:
+        """通过中央账本登记新增上下文，超出预算时直接失败。"""
+        if self.ledger is None:  # pragma: no cover - protected by __post_init__
+            raise RuntimeError("run context ledger is unavailable")
+        self.ledger.add_text(
+            value,
+            kind=kind,
+            source=source,
+            summary=summary,
+            cache_reference=cache_reference,
+        )
+        self.context_characters = self.ledger.total_characters
 
     def remaining_context_characters(self) -> int | None:
-        if self.context_limit is None:
+        if self.ledger is None:  # pragma: no cover - protected by __post_init__
             return None
-        return self.context_limit - self.context_characters
+        return self.ledger.remaining_characters()
+
+    def context_snapshot(self) -> dict[str, object]:
+        """返回账本元数据，不返回上下文正文。"""
+        if self.ledger is None:  # pragma: no cover - protected by __post_init__
+            return {}
+        return self.ledger.snapshot()
 
     def add_tool(self, tool: Tool) -> None:
         existing = self.tools.get(tool.name)
@@ -221,9 +252,9 @@ def _create_session(
         context_limit=request.limits.max_context_characters,
     )
     for instruction in session.instructions:
-        session.reserve_context(instruction)
+        session.reserve_context(instruction, kind="instruction", source="request")
     for message in history:
-        session.reserve_context(message.content)
+        session.reserve_context(message.content, kind="message", source=message.role)
     return session
 
 
@@ -420,7 +451,7 @@ class _RunEngine:
         tool = self.session.tools.get(call.name)
         if tool is None:
             output = {"error": f"unknown tool: {call.name}"}
-            content, _recorded = _prepare_tool_output(
+            content, recorded_output = _prepare_tool_output(
                 output,
                 self.request.limits,
                 self.context,
@@ -465,7 +496,7 @@ class _RunEngine:
                     "error": str(error),
                     "error_type": type(error).__name__,
                 }
-                content, _recorded = _prepare_tool_output(
+                content, recorded_output = _prepare_tool_output(
                     output,
                     self.request.limits,
                     self.context,
@@ -475,7 +506,12 @@ class _RunEngine:
                     "tool.failed",
                     {"call_id": call.call_id, "name": call.name, **output},
                 )
-        self.session.reserve_context(content)
+        self.session.reserve_context(
+            content,
+            kind="tool_result",
+            source=call.name,
+            cache_reference=_context_cache_reference(recorded_output),
+        )
         self.session.messages.append(
             Message("tool", content, tool_call_id=call.call_id)
         )
@@ -499,6 +535,7 @@ class _RunEngine:
                 "skills": list(self.session.active_skills),
                 "workflow": self.session.workflow,
                 "usage": dict(self.usage),
+                "context_ledger": self.session.context_snapshot(),
             },
         )
         return RunResult(
@@ -514,6 +551,7 @@ class _RunEngine:
             parent_run_id=identity.parent_run_id,
             conversation_id=identity.conversation_id,
             session_id=identity.session_id,
+            context_ledger=self.session.context_snapshot(),
         )
 
 
@@ -566,6 +604,16 @@ def _prepare_tool_output(
         )
         return json.dumps(summary, ensure_ascii=False, sort_keys=True), summary
     return text, output
+
+
+def _context_cache_reference(value: object) -> str | None:
+    if not isinstance(value, Mapping):
+        return None
+    disclosure = value.get("progressive_disclosure")
+    if not isinstance(disclosure, Mapping):
+        return None
+    reference = disclosure.get("cache_path")
+    return reference if isinstance(reference, str) and reference else None
 
 
 def _check_model_input(messages: tuple[Message, ...], tools: Iterable[Tool], limits: RunLimits) -> None:
