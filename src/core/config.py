@@ -166,9 +166,11 @@ class Config:
     name: str = "super-agent"
     working_directory: str | None = None
     instructions: tuple[str, ...] = ()
-    plugin_paths: tuple[str, ...] = ()
-    writable_plugin_path: str | None = None
-    plugin_cache_path: str | None = None
+    library_paths: tuple[str, ...] = ()
+    writable_library_path: str | None = None
+    library_cache_path: str | None = None
+    enabled_mcp_servers: tuple[str, ...] = ()
+    disabled_mcp_servers: tuple[str, ...] = ()
     enabled_plugins: tuple[str, ...] = ()
     disabled_plugins: tuple[str, ...] = ()
     enabled_skills: tuple[str, ...] = ()
@@ -240,9 +242,11 @@ def config_from_dict(
         "name",
         "working_directory",
         "instructions",
-        "plugin_paths",
-        "writable_plugin_path",
-        "plugin_cache_path",
+        "library_paths",
+        "writable_library_path",
+        "library_cache_path",
+        "enabled_mcp_servers",
+        "disabled_mcp_servers",
         "enabled_plugins",
         "disabled_plugins",
         "enabled_skills",
@@ -272,9 +276,11 @@ def config_from_dict(
         name=_text(value.get("name", "super-agent"), "Agent name"),
         working_directory=_optional_text(value.get("working_directory")),
         instructions=_strings(value.get("instructions", []), "Agent instructions"),
-        plugin_paths=_strings(value.get("plugin_paths", []), "plugin paths"),
-        writable_plugin_path=_optional_text(value.get("writable_plugin_path")),
-        plugin_cache_path=_optional_text(value.get("plugin_cache_path")),
+        library_paths=_strings(value.get("library_paths", []), "library paths"),
+        writable_library_path=_optional_text(value.get("writable_library_path")),
+        library_cache_path=_optional_text(value.get("library_cache_path")),
+        enabled_mcp_servers=_strings(value.get("enabled_mcp_servers", []), "enabled MCP servers"),
+        disabled_mcp_servers=_strings(value.get("disabled_mcp_servers", []), "disabled MCP servers"),
         enabled_plugins=_strings(value.get("enabled_plugins", []), "enabled plugins"),
         disabled_plugins=_strings(value.get("disabled_plugins", []), "disabled plugins"),
         enabled_skills=_strings(value.get("enabled_skills", []), "enabled Skills"),

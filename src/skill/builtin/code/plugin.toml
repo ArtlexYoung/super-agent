@@ -1,4 +1,0 @@
-schema = 1
-id = "super-agent/code"
-version = "0.2.16"
-requires = ["super-agent/common"]

@@ -11,13 +11,15 @@ version = 1
 name = "my-agent"
 instructions = ["回答要简洁，并说明不确定性。"]
 
-plugin_paths = ["plugins"]
-writable_plugin_path = ".super-agent/plugins"
-plugin_cache_path = ".super-agent/cache"
+library_paths = ["library"]
+writable_library_path = ".super-agent/library"
+library_cache_path = ".super-agent/cache"
 enabled_plugins = ["plugin:super-agent/common"]
 disabled_plugins = []
 enabled_skills = ["skill:super-agent/common/review"]
 disabled_skills = []
+enabled_mcp_servers = []
+disabled_mcp_servers = []
 
 memory = false
 warn_agent_level = 8
@@ -46,17 +48,17 @@ detailed_log_days = 180
 critical_log_days = 365
 ```
 
-未知字段直接失败。读取配置不创建目录、不连接数据库、不写插件，也不启动进程；这些副作用只由后续显式动作触发。
+未知字段直接失败。读取配置不创建目录、不连接数据库、不写 Skill，也不启动进程或连接 MCP；这些副作用只由后续显式动作触发。
 
-Unknown fields fail directly. Loading configuration creates no directory, opens no database, writes no plugin, and starts no process; later explicit actions own those effects.
+Unknown fields fail directly. Loading configuration creates no directory, opens no database, writes no Skill, and starts no process or MCP connection; later explicit actions own those effects.
 
-`plugin_paths` 指向插件根的父目录。每个子目录至少包含标准 `SKILL.md`；使用 Super Agent 插件身份、依赖和版本时再添加 `plugin.toml`。标准外部 Skill 不要求修改格式，也不会被复制成另一份内容。
+`library_paths` 指向包含 `skills/`、`mcps/` 和 `plugins/` 的中央库根目录。Skill 与 MCP 只在中央目录定义；插件 TOML 只引用它们。标准外部 Skill 放入 `skills/<namespace>/<name>/` 即可，无需私有 front matter。
 
-`plugin_paths` points to parent directories of plugin roots. Every child needs at least a standard `SKILL.md`; add `plugin.toml` for Super Agent identity, dependencies, and versioning. A standard external Skill requires no format rewrite and is not copied into another content form.
+`library_paths` points to central roots containing `skills/`, `mcps/`, and `plugins/`. Skills and MCP definitions live only in central directories; plugin TOML files refer to them. Put a standard external Skill under `skills/<namespace>/<name>/` without private front matter.
 
-`enabled_plugins` 激活插件入口及依赖，`enabled_skills` 只激活指定成员。禁用项优先，且只影响之后建立的运行快照。
+`enabled_plugins` 激活插件引用，`enabled_skills` 直接激活指定 Skill。`enabled_mcp_servers` 只约束代码允许绑定的 MCP 身份，不会自动建立连接。禁用项优先，且只影响之后建立的运行快照。
 
-`enabled_plugins` activates plugin entries and dependencies, while `enabled_skills` activates only named members. Disabled entries take precedence and affect only later run snapshots.
+`enabled_plugins` activates plugin references, while `enabled_skills` directly activates named Skills. `enabled_mcp_servers` limits identities that trusted code may bind and never creates a connection. Disabled entries take precedence and affect only later run snapshots.
 
 `[evolution]` 是唯一配置授权源。`allow` 允许模型提出和测试指定插件或 Skill 的更新；`auto_apply` 必须是其子集，且只允许测试通过后的自动应用。Skill 文档中的文本和元数据不能扩大权限。
 

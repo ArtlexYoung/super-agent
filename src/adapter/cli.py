@@ -22,7 +22,7 @@ from adapter.storage import create_storage, verify_storage
 from adapter.tools import CodeWorkspace, ToolPolicy, WorkspaceSettings, general_tools
 from core.config import Config, config_from_environment
 from core.records import AuditPolicy, Conversations, EventStore
-from skill.library import PluginCatalog
+from skill.library import AgentLibrary
 from super_agent import Agent, AgentContext
 
 
@@ -83,7 +83,14 @@ class CliConfig:
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     try:
-        if arguments and arguments[0] in {"config", "plugins", "skills", "data", "check"}:
+        if arguments and arguments[0] in {
+            "config",
+            "plugins",
+            "skills",
+            "mcps",
+            "data",
+            "check",
+        }:
             return _run_command(arguments)
         parser = _build_run_parser()
         parsed = parser.parse_args(arguments)
@@ -117,6 +124,8 @@ def _run_command(arguments: list[str]) -> int:
         return _plugins_command(arguments[1:])
     if command == "skills":
         return _skills_command(arguments[1:])
+    if command == "mcps":
+        return _mcps_command(arguments[1:])
     return _data_command(arguments[1:])
 
 
@@ -130,17 +139,19 @@ def _check_command(arguments: list[str]) -> int:
     config = _load_general(parsed.config or cli.general_config)
     if config.models:
         config.create_model_profiles()
-    roots = _plugin_roots(config)
-    catalog = PluginCatalog(
+    roots = _library_roots(config)
+    library = AgentLibrary(
         roots,
         disabled_plugins=config.disabled_plugins,
         disabled_skills=config.disabled_skills,
+        disabled_mcp_servers=config.disabled_mcp_servers,
     )
     model_ready = _models_ready(config)
     result = {
         "config": "ok",
-        "plugin_count": catalog.list_plugins().total,
-        "skill_count": catalog.list_skills().total,
+        "plugin_count": library.list_plugins().total,
+        "skill_count": library.list_skills().total,
+        "mcp_server_count": library.list_mcp_servers().total,
         "model_count": len(config.models),
         "model_ready": model_ready,
     }
@@ -176,6 +187,10 @@ def _skills_command(arguments: list[str]) -> int:
     return _catalog_command("skills", arguments)
 
 
+def _mcps_command(arguments: list[str]) -> int:
+    return _catalog_command("mcps", arguments)
+
+
 def _catalog_command(kind: str, arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(prog=f"super-agent {kind}")
     parser.add_argument("action", choices=("list", "read"), nargs="?", default="list")
@@ -185,15 +200,25 @@ def _catalog_command(kind: str, arguments: list[str]) -> int:
     parser.add_argument("--page-size", type=int, default=20)
     parser.add_argument("--output", choices=("text", "json"), default="json")
     parsed = parser.parse_args(arguments)
-    catalog = _catalog_from_config(_load_general(parsed.config))
+    library = _library_from_config(_load_general(parsed.config))
     if parsed.action == "list":
-        method = catalog.list_plugins if kind == "plugins" else catalog.list_skills
+        method = (
+            library.list_plugins
+            if kind == "plugins"
+            else library.list_skills
+            if kind == "skills"
+            else library.list_mcp_servers
+        )
         value = method(page=parsed.page, page_size=parsed.page_size).to_dict()
     else:
         if not parsed.reference:
             raise ValueError(f"{kind} read requires a canonical reference")
-        method = catalog.preview_plugin if kind == "plugins" else catalog.preview_skill
-        value = method(parsed.reference, max_characters=20_000).to_dict()
+        if kind == "plugins":
+            value = library.preview_plugin(parsed.reference, max_characters=20_000).to_dict()
+        elif kind == "skills":
+            value = library.preview_skill(parsed.reference, max_characters=20_000).to_dict()
+        else:
+            value = library.find_mcp_server(parsed.reference).index_entry()
     return _print_value(value, parsed.output)
 
 
@@ -290,11 +315,14 @@ def _run_chat(
         if prompt == "/exit" or prompt == "/quit":
             return 0
         if prompt == "/help":
-            print("/help  /plugins  /skills  /clear  /exit")
+            print("/help  /plugins  /skills  /mcps  /clear  /exit")
             continue
-        if prompt in {"/plugins", "/skills"}:
+        if prompt in {"/plugins", "/skills", "/mcps"}:
             kind = prompt.removeprefix("/")
-            method = None if agent.plugin_catalog is None else getattr(agent.plugin_catalog, f"list_{kind}")
+            method_name = "list_mcp_servers" if kind == "mcps" else f"list_{kind}"
+            method = (
+                None if agent.library is None else getattr(agent.library, method_name)
+            )
             value = {"items": []} if method is None else method().to_dict()
             print(json.dumps(value, ensure_ascii=False, indent=2))
             continue
@@ -348,17 +376,22 @@ def _build_agent(
             router_settings=config.router,
         )
     agent.set_instructions(*config.instructions)
-    roots = _plugin_roots(config)
+    roots = _library_roots(config)
     writable = config.resolve_path(
-        config.writable_plugin_path
-        or (config.storage.path + "/plugins" if cli.save else None)
+        config.writable_library_path
+        or (config.storage.path + "/library" if cli.save else None)
     )
     cache = config.resolve_path(
-        config.plugin_cache_path
+        config.library_cache_path
         or (config.storage.path + "/cache" if cli.save else None)
     )
-    catalog = PluginCatalog(roots, writable_root=writable, cache_root=cache)
-    agent.use_plugin_catalog(catalog)
+    library = AgentLibrary(
+        roots,
+        writable_root=writable,
+        cache_root=cache,
+        disabled_mcp_servers=config.disabled_mcp_servers,
+    )
+    agent.use_agent_library(library)
     for reference in config.enabled_plugins:
         agent.enable_plugin(reference)
     for reference in config.enabled_skills:
@@ -559,20 +592,21 @@ def _load_general(path: str | None) -> Config:
     return Config.load(candidates[0]) if candidates else config_from_environment()
 
 
-def _plugin_roots(config: Config) -> tuple[Path, ...]:
+def _library_roots(config: Config) -> tuple[Path, ...]:
     builtin = Path(__file__).resolve().parent.parent / "skill" / "builtin"
     roots = [builtin]
-    roots.extend(config.resolve_path(path) for path in config.plugin_paths)
+    roots.extend(config.resolve_path(path) for path in config.library_paths)
     return tuple(path for path in roots if path is not None)
 
 
-def _catalog_from_config(config: Config) -> PluginCatalog:
-    return PluginCatalog(
-        _plugin_roots(config),
-        writable_root=config.resolve_path(config.writable_plugin_path),
-        cache_root=config.resolve_path(config.plugin_cache_path),
+def _library_from_config(config: Config) -> AgentLibrary:
+    return AgentLibrary(
+        _library_roots(config),
+        writable_root=config.resolve_path(config.writable_library_path),
+        cache_root=config.resolve_path(config.library_cache_path),
         disabled_plugins=config.disabled_plugins,
         disabled_skills=config.disabled_skills,
+        disabled_mcp_servers=config.disabled_mcp_servers,
     )
 
 
@@ -605,7 +639,9 @@ def _database_url(config: Config) -> str | None:
 def _config_view(config: Config) -> dict[str, object]:
     return {
         "name": config.name,
-        "plugin_paths": list(config.plugin_paths),
+        "library_paths": list(config.library_paths),
+        "enabled_mcp_servers": list(config.enabled_mcp_servers),
+        "disabled_mcp_servers": list(config.disabled_mcp_servers),
         "enabled_plugins": list(config.enabled_plugins),
         "disabled_plugins": list(config.disabled_plugins),
         "enabled_skills": list(config.enabled_skills),

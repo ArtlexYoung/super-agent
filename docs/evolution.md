@@ -51,9 +51,9 @@ The evolution loop is not “the model says it changed, so it changes”:
 4. Test the candidate with declared cases.
 5. Apply explicitly after passing, and undo explicitly when needed.
 
-`SkillEvolution` 可以独立使用；`Agent.enable_skill_evolution()` 则把同一组动作作为渐进式工具交给模型。没有 `PluginCatalog` 时，启用进化会直接失败。
+`SkillEvolution` 可以独立使用；`Agent.enable_skill_evolution()` 则把同一组动作作为渐进式工具交给模型。没有 `AgentLibrary` 时，启用进化会直接失败。
 
-`SkillEvolution` can be used directly; `Agent.enable_skill_evolution()` exposes the same actions progressively to the model. Enabling evolution without a `PluginCatalog` fails directly.
+`SkillEvolution` can be used directly; `Agent.enable_skill_evolution()` exposes the same actions progressively to the model. Enabling evolution without an `AgentLibrary` fails directly.
 
 ## 外部授权 / External Authority
 
@@ -84,9 +84,9 @@ agent.allow_skill_to_evolve(
 )
 ```
 
-共享只读插件的更新会写入当前用户和 Agent 的插件覆盖层，并记录共享版本的 `base_hash`。基线已变化、读取哈希过期或测试失败时直接拒绝更新；不存在静默合并或偷偷退化。
+插件授权会展开为其引用的中央 Skill。共享只读 Skill 的更新写入当前用户和 Agent 的 Skill 覆盖层，并记录共享版本的 `base_hash`。基线已变化、读取哈希过期或测试失败时直接拒绝更新；不存在静默合并或偷偷退化。
 
-Updating a shared read-only plugin writes a user-Agent plugin overlay and records the shared revision as `base_hash`. A changed baseline, stale read hash, or failed test rejects the update; there is no silent merge or hidden degradation.
+Plugin authority expands to the central Skills it references. Updating a shared read-only Skill writes a user-Agent Skill overlay and records the shared revision as `base_hash`. A changed baseline, stale read hash, or failed test rejects the update; there is no silent merge or hidden degradation.
 
 一次运行固定使用启动快照。即使模型在本轮应用了变更，本轮后续提示仍使用原 Skill；调用方刷新目录后，下一次顶层运行才加载新版本。
 

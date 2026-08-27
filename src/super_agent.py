@@ -44,7 +44,7 @@ from core.user import (
     model_tracking_listener,
 )
 from skill.evolution import CandidateRunner, SkillEvolution
-from skill.library import PluginCatalog
+from skill.library import AgentLibrary
 from skill.memory import Memory
 from skill.organization import (
     AgentGroup,
@@ -120,7 +120,8 @@ class Agent:
         self.instructions: list[str] = []
         self.settings = AgentSettings()
         self.agent_tree_settings = AgentTreeSettings()
-        self.plugin_catalog: PluginCatalog | None = None
+        self.library: AgentLibrary | None = None
+        self._mcp_servers: dict[str, tuple[object, Mapping[str, tuple[str, ...]]]] = {}
         self.storage: RecordBackend | None = None
         self.audit_policy = AuditPolicy()
         self.memory_enabled = False
@@ -133,6 +134,7 @@ class Agent:
         self._enabled_skills: list[str] = []
         self._disabled_plugins: list[str] = []
         self._disabled_skills: list[str] = []
+        self._enabled_mcp_servers: list[str] = []
         self._agent_group_node = agent_group_node(self)
         self._router_settings = RouterSettings()
         if isinstance(model, ModelRouter):
@@ -169,6 +171,7 @@ class Agent:
         self._enabled_skills = list(config.enabled_skills)
         self._disabled_plugins = list(config.disabled_plugins)
         self._disabled_skills = list(config.disabled_skills)
+        self._enabled_mcp_servers = list(config.enabled_mcp_servers)
         self.audit_policy = AuditPolicy(
             config.storage.detailed_log_days,
             config.storage.critical_log_days,
@@ -180,14 +183,19 @@ class Agent:
             )
         roots = tuple(
             path
-            for path in (config.resolve_path(item) for item in config.plugin_paths)
+            for path in (config.resolve_path(item) for item in config.library_paths)
             if path is not None
         )
-        writable = config.resolve_path(config.writable_plugin_path)
-        cache = config.resolve_path(config.plugin_cache_path)
+        writable = config.resolve_path(config.writable_library_path)
+        cache = config.resolve_path(config.library_cache_path)
         if roots or writable is not None or cache is not None:
-            self.use_plugin_catalog(
-                PluginCatalog(roots, writable_root=writable, cache_root=cache)
+            self.use_agent_library(
+                AgentLibrary(
+                    roots,
+                    writable_root=writable,
+                    cache_root=cache,
+                    disabled_mcp_servers=config.disabled_mcp_servers,
+                )
             )
 
     def set_instructions(self, *instructions: str) -> None:
@@ -227,25 +235,6 @@ class Agent:
         if base is None:
             raise ValueError("relative paths require an explicit working directory")
         return base.resolve(selected)
-
-    def add_plugin_path(self, path: str | Path) -> None:
-        """在内存中增加一个插件根目录，不写入配置文件。"""
-        selected = Path(path).expanduser().resolve()
-        if self.plugin_catalog is None:
-            self.use_plugin_catalog(PluginCatalog((selected,)))
-            return
-        roots = (*self.plugin_catalog.roots, selected)
-        self.use_plugin_catalog(
-            PluginCatalog(
-                roots,
-                writable_root=self.plugin_catalog.writable_root,
-                cache_root=self.plugin_catalog.cache_root,
-                record_event=self.plugin_catalog.record_event,
-                cache_entries=self.plugin_catalog.cache_entries,
-                disabled_plugins=self.plugin_catalog.disabled_plugins,
-                disabled_skills=self.plugin_catalog.disabled_skills,
-            )
-        )
 
     def add_model(
         self,
@@ -341,12 +330,48 @@ class Agent:
             purpose=purpose, agent_name=agent_name
         )
 
-    def use_plugin_catalog(self, catalog: PluginCatalog) -> None:
-        """显式替换插件目录，不读取、安装或启动其中内容。"""
-        if not isinstance(catalog, PluginCatalog):
-            raise TypeError("plugin catalog must be a PluginCatalog")
-        self.plugin_catalog = catalog
+    def use_agent_library(self, library: AgentLibrary) -> None:
+        """显式挂载中央资源库，不读取、安装或启动其中内容。"""
+        if not isinstance(library, AgentLibrary):
+            raise TypeError("agent library must be an AgentLibrary")
+        self.library = library
         clear_agent_tree_runtimes(self)
+
+    def add_library_path(self, path: str | Path) -> None:
+        """在内存中增加一个中央资源库路径。"""
+        selected = Path(path).expanduser().resolve()
+        if self.library is None:
+            self.use_agent_library(AgentLibrary((selected,)))
+            return
+        self.use_agent_library(
+            AgentLibrary(
+                (*self.library.paths, selected),
+                writable_root=self.library.writable_root,
+                cache_root=self.library.cache_root,
+                record_event=self.library.record_event,
+                cache_entries=self.library.cache_entries,
+                disabled_plugins=self.library.disabled_plugins,
+                disabled_skills=self.library.disabled_skills,
+                disabled_mcp_servers=self.library.disabled_mcp_servers,
+            )
+        )
+
+    def connect_mcp_server(
+        self,
+        reference: str,
+        server: object,
+        *,
+        effects: Mapping[str, tuple[str, ...]],
+    ) -> None:
+        """通过可信代码显式绑定 MCP；库中的 TOML 不会提供连接信息。"""
+        if self.library is None:
+            raise RuntimeError("connect an AgentLibrary before connecting an MCP server")
+        selected = self.library.find_mcp_server(reference).reference
+        if self._enabled_mcp_servers and selected not in self._enabled_mcp_servers:
+            raise PermissionError(f"MCP server is not enabled: {selected}")
+        if not hasattr(server, "list_tools") or not hasattr(server, "call_tool"):
+            raise TypeError("MCP server must provide list_tools and call_tool")
+        self._mcp_servers[selected] = (server, dict(effects))
 
     def use_storage(self, storage: RecordBackend) -> None:
         self.storage = storage
@@ -399,18 +424,18 @@ class Agent:
         self, reference: str, *, auto_apply: bool = False
     ) -> None:
         """允许 Agent 更新指定插件拥有的 Skill。"""
-        if self.plugin_catalog is None:
-            raise RuntimeError("plugin evolution requires a plugin catalog")
-        selected = self.plugin_catalog.find_plugin(reference).reference
+        if self.library is None:
+            raise RuntimeError("Skill evolution requires an AgentLibrary")
+        selected = self.library.find_plugin(reference).reference
         self._allow_evolution_target(selected, auto_apply)
 
     def allow_skill_to_evolve(
         self, reference: str, *, auto_apply: bool = False
     ) -> None:
         """只允许 Agent 更新一个规范 Skill 引用。"""
-        if self.plugin_catalog is None:
-            raise RuntimeError("Skill evolution requires a plugin catalog")
-        selected = self.plugin_catalog.find_skill(reference).reference
+        if self.library is None:
+            raise RuntimeError("Skill evolution requires an AgentLibrary")
+        selected = self.library.find_skill(reference).reference
         self._allow_evolution_target(selected, auto_apply)
 
     def _allow_evolution_target(self, reference: str, auto_apply: bool) -> None:
@@ -495,7 +520,7 @@ class Agent:
         conversation_id = identity.conversation_id
         store = self._event_store(identity)
         selected_model_scope = model_scope(identity)
-        catalog = self._catalog(identity, store)
+        library = self._library(identity, store)
         agent_tree = (
             selected_context.agent_tree_runtime
             or get_or_create_agent_tree_runtime(self, identity.user_id)
@@ -504,8 +529,8 @@ class Agent:
             identity.run_id
         )
         group_id = selected_context.agent_group_id or agent_group_node(self).group_id
-        if agent_tree is not None and catalog is not None:
-            catalog.use_disclosure_store(agent_tree.disclosures)
+        if agent_tree is not None and library is not None:
+            library.use_disclosure_store(agent_tree.disclosures)
         tree_settings = (
             self.agent_tree_settings if agent_tree is None else agent_tree.settings
         )
@@ -536,15 +561,16 @@ class Agent:
             effective_context.save_conversation,
             store,
         )
-        active_tools, available_tools = self._run_tools(
-            identity, catalog, store, agent_tree, group_id, selected_working_directory
+        active_tools, available_tools, mcp_tools_by_server = self._run_tools(
+            identity, library, store, agent_tree, group_id, selected_working_directory
         )
         plugin_index = (
             None
-            if catalog is None
+            if library is None
             else {
-                "plugins": catalog.list_plugins(page=1, page_size=20).to_dict(),
-                "skills": catalog.list_skills(page=1, page_size=20).to_dict(),
+                "plugins": library.list_plugins(page=1, page_size=20).to_dict(),
+                "skills": library.list_skills(page=1, page_size=20).to_dict(),
+                "mcp_servers": library.list_mcp_servers(page=1, page_size=20).to_dict(),
             }
         )
         instructions = build_run_instructions(
@@ -582,21 +608,21 @@ class Agent:
 
         def prepare(session: RunContext, tool_context: ToolContext) -> None:
             session.values["available_tools"] = available_tools
-            if catalog is None:
+            if library is None:
                 return
             if effective_context.plugin is not None:
-                activated = catalog.activate_plugin(effective_context.plugin, session)
-                key = catalog.find_plugin(effective_context.plugin).reference
+                activated = library.activate_plugin(effective_context.plugin, session)
+                key = library.find_plugin(effective_context.plugin).reference
                 tool_context.emit("plugin.activated", {"key": key, "skills": list(activated), "source": "explicit run plugin"})
             if effective_context.skill is not None:
-                for key in catalog.activate_skill(effective_context.skill, session):
+                for key in library.activate_skill(effective_context.skill, session):
                     tool_context.emit("skill.activated", {"key": key, "source": "explicit run skill"})
             for reference in self._enabled_plugins:
-                activated = catalog.activate_plugin(reference, session)
-                key = catalog.find_plugin(reference).reference
+                activated = library.activate_plugin(reference, session)
+                key = library.find_plugin(reference).reference
                 tool_context.emit("plugin.activated", {"key": key, "skills": list(activated), "source": "Agent.enable_plugin"})
             for reference in self._enabled_skills:
-                for key in catalog.activate_skill(reference, session):
+                for key in library.activate_skill(reference, session):
                     tool_context.emit("skill.activated", {"key": key, "source": "Agent.enable_skill"})
 
         result = yield from stream_run(
@@ -611,13 +637,16 @@ class Agent:
                     available_tools,
                     agent_tree.disclosures
                     if agent_tree is not None
-                    else None if catalog is None else catalog.disclosures,
+                    else None if library is None else library.disclosures,
                     selected_working_directory,
                     ),
                     **(
                         {}
-                        if catalog is None
-                        else {"plugin_snapshot": catalog.snapshot().to_dict()}
+                        if library is None
+                        else {
+                            "library_snapshot": library.snapshot().to_dict(),
+                            "mcp_tools_by_server": mcp_tools_by_server,
+                        }
                     ),
                 },
                 prepare=prepare,
@@ -668,66 +697,82 @@ class Agent:
     def _run_tools(
         self,
         identity: RunIdentity,
-        catalog: PluginCatalog | None,
+        library: AgentLibrary | None,
         store: EventStore | None,
         agent_tree: AgentTreeRuntime | None,
         group_id: str,
         working_directory: WorkingDirectory | None,
-    ) -> tuple[dict[str, Tool], dict[str, Tool]]:
+    ) -> tuple[dict[str, Tool], dict[str, Tool], dict[str, tuple[Tool, ...]]]:
         active = dict(self._active_tools)
         available = dict(self._skill_tools)
-        if catalog is not None:
-            for tool in catalog.tools():
+        mcp_tools_by_server: dict[str, tuple[Tool, ...]] = {}
+        if library is not None:
+            for tool in library.tools():
                 add_unique_tool(active, tool)
+            if self._mcp_servers:
+                from adapter.tools import mcp_tools
+
+                for reference, (server, effects) in self._mcp_servers.items():
+                    definition = library.find_mcp_server(reference)
+                    mcp_tools_by_server[definition.reference] = mcp_tools(
+                        definition.mcp_id,
+                        server,
+                        effects,
+                        declared_tools=definition.tools,
+                    )
         if self.memory_enabled:
             memory = self._memory(identity, store, working_directory)
             add_optional_tools(
-                active, available, memory.tools(), progressive=catalog is not None
+                active, available, memory.tools(), progressive=library is not None
             )
         if self.evolution_enabled:
-            if catalog is None:
-                raise RuntimeError("Skill evolution requires a plugin catalog")
-            evolution = self._evolution(catalog, store)
+            if library is None:
+                raise RuntimeError("Skill evolution requires an AgentLibrary")
+            evolution = self._evolution(library, store)
             add_optional_tools(active, available, evolution.tools(), progressive=True)
         if agent_tree is not None:
             add_optional_tools(
                 active,
                 available,
                 agent_tree.tools(group_id),
-                progressive=catalog is not None,
+                progressive=library is not None,
             )
-            if catalog is None:
+            if library is None:
                 add_unique_tool(active, agent_tree.disclosures.tool())
         for name in set(active) & set(available):
             raise ValueError(f"tool is both active and Skill-gated: {name}")
-        return active, available
+        return active, available, mcp_tools_by_server
 
-    def _catalog(
+    def _library(
         self, identity: RunIdentity, store: EventStore | None
-    ) -> PluginCatalog | None:
-        if self.plugin_catalog is None:
+    ) -> AgentLibrary | None:
+        if self.library is None:
             return None
-        catalog = self.plugin_catalog.for_scope(
+        library = self.library.for_scope(
             identity.user_id,
             identity.agent_name,
             disabled_plugins=self._disabled_plugins,
             disabled_skills=self._disabled_skills,
+            disabled_mcp_servers=self.library.disabled_mcp_servers,
         )
         if store is not None:
 
             def record_catalog_event(
                 event: str, data: Mapping[str, object]
             ) -> object:
-                stream = (
-                    "plugin"
-                    if event.startswith("plugin.")
-                    else "skill" if event.startswith("skill.") else "disclosure"
+                stream = next(
+                    (
+                        name
+                        for name in ("plugin", "skill", "mcp")
+                        if event.startswith(f"{name}.")
+                    ),
+                    "disclosure",
                 )
                 stream_id = str(data.get("key", data.get("reference", "content")))
                 return store.append(stream, stream_id, event, data)
 
-            catalog.record_event = record_catalog_event
-        return catalog
+            library.record_event = record_catalog_event
+        return library
 
     def _memory(
         self,
@@ -764,10 +809,10 @@ class Agent:
         return self._memories[key]
 
     def _evolution(
-        self, catalog: PluginCatalog, store: EventStore | None
+        self, library: AgentLibrary, store: EventStore | None
     ) -> SkillEvolution:
         return SkillEvolution(
-            catalog,
+            library,
             policy=self.evolution_policy,
             store=store,
             runner=self.candidate_runner,
@@ -853,7 +898,7 @@ __all__ = [
     "Model",
     "RunEvent",
     "RunResult",
-    "PluginCatalog",
+    "AgentLibrary",
     "Tool",
     "model_from_environment",
 ]

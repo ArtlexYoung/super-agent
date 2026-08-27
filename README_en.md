@@ -46,34 +46,38 @@ generated; add `common.toml`, `cli.toml`, `code.toml`, or local Skills only when
 
 Inside a conversation, use `/help`, `/clear`, or `/exit` for terminal controls.
 
-## Add a Plugin and Skill
+## Add a Skill and Plugin
 
-A plugin is the installation, version, dependency, and evolution-authority boundary for Skills.
-Create `plugins/research/plugin.toml`:
-
-```toml
-schema = 1
-id = "local/research"
-version = "0.1.0"
-requires = []
-```
-
-Plugin entries and members use the Agent Skills standard directly. Create `plugins/research/SKILL.md`:
+The central library manages Skills and MCP definitions. Plugins only reference content and never own
+or copy it. Create `library/skills/local/research/SKILL.md`:
 
 ```markdown
 ---
 name: research
-description: Research questions and organize evidence. Use for investigations or evidence-backed conclusions.
+description: Research questions and organize evidence. Use for evidence-backed conclusions.
 ---
 
 Confirm the question and evidence scope, then report conclusions with sources.
 ```
 
-Add `plugins` to `plugin_paths` and enable the bundle with `plugin:local/research`. Member Skills
-live at `plugins/research/skills/<name>/SKILL.md` and use references such as
-`skill:local/research/<name>`. There are no trigger words. Evolution authority is granted only by
-external configuration or code; Skill content cannot grant it to itself. See
-[Skills](docs/skills.md) for the complete format and deduplication rules.
+When several Skills need one preset, create `library/plugins/local/research/plugin.toml`:
+
+```toml
+schema = 1
+id = "local/research"
+version = "0.1.0"
+description = "Research methods"
+entry_skill = "skill:local/research"
+skills = []
+included_plugins = []
+required_mcp_servers = []
+optional_mcp_servers = []
+```
+
+Add `library` to `library_paths`. Enable `skill:local/research` directly or activate every referenced
+item with `plugin:local/research`. Several plugins referencing the same Skill or MCP definition share
+one logical instance; divergent content under one ID fails. There are no trigger words. Evolution
+authority comes only from external configuration or code. See [Skills](docs/skills.md).
 
 ## Use Python
 
@@ -88,7 +92,7 @@ print(result.text)
 ```
 
 The most common direct `Agent` actions are `run`, `for_user`, `add_group`, `add_subagent`,
-`add_plugin_path`, `enable_plugin`, `enable_skill`, `add_tool`, and `add_model`. Advanced contracts are imported from the
+`add_library_path`, `enable_plugin`, `enable_skill`, `add_tool`, and `add_model`. Advanced contracts are imported from the
 module that owns them.
 
 Compose specialized Agents in code. A task Skill selection belongs to one run and does
@@ -135,7 +139,7 @@ print(alice.runs.explain(result.run_id))
 
 Conversation messages are short-term context. Long-term memory stores durable facts,
 preferences, and abstractions, and can be explicitly organized or forgotten. User and
-Agent scopes isolate conversations, memory, runs, plugin overlays, and disclosure caches.
+Agent scopes isolate conversations, memory, runs, Skill overlays, and disclosure caches.
 
 JSONL is the readable default backend. SQLite also uses the standard library. MySQL and
 PostgreSQL drivers are optional extras.
@@ -243,7 +247,7 @@ Runnable examples are in `examples/minimal.py`, `examples/custom_skill.py`, and
 ## Verify the Repository
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.16 --full
+python3.11 scripts/verify_release.py --version 0.2.17 --full
 ```
 
 For the complete local release gate, including version and package-shape checks, see

@@ -42,18 +42,10 @@ super-agent check
 
 在对话中使用 `/help`、`/clear` 或 `/exit` 控制终端会话。
 
-## 添加插件和 Skill
+## 添加 Skill 和插件
 
-插件是 Skill 的安装、版本、依赖和进化权限边界。创建 `plugins/research/plugin.toml`：
-
-```toml
-schema = 1
-id = "local/research"
-version = "0.1.0"
-requires = []
-```
-
-插件入口和成员都直接使用 Agent Skills 标准格式。创建 `plugins/research/SKILL.md`：
+Skill 与 MCP 由中央资源库统一管理，插件只保存引用，不拥有或复制内容。创建
+`library/skills/local/research/SKILL.md`：
 
 ```markdown
 ---
@@ -64,10 +56,24 @@ description: 研究问题并整理证据；需要调查或形成带依据结论�
 先确认问题和证据范围，再给出带来源的结论。
 ```
 
-再将 `plugins` 加入 `plugin_paths`，用 `plugin:local/research` 启用整个插件。成员 Skill 放在
-`plugins/research/skills/<name>/SKILL.md`，规范引用为 `skill:local/research/<name>`。系统没有
-触发词表，模型根据描述自行判断披露或启用哪些内容。进化权限只在外部配置或代码中授予，
-Skill 不能自授权。完整格式与去重规则见 [Skill 文档](docs/skills.md)。
+需要组合多个 Skill 时，再创建 `library/plugins/local/research/plugin.toml`：
+
+```toml
+schema = 1
+id = "local/research"
+version = "0.1.0"
+description = "研究方法集合"
+entry_skill = "skill:local/research"
+skills = []
+included_plugins = []
+required_mcp_servers = []
+optional_mcp_servers = []
+```
+
+将 `library` 加入 `library_paths` 后，可直接启用 `skill:local/research`，也可用
+`plugin:local/research` 激活插件引用的全部内容。多个插件引用同一 Skill 或 MCP 时只保留一个逻辑
+实例；同 ID 的版本或内容不同则直接报冲突。系统没有触发词表，模型根据描述自行选择。进化权限
+只在外部配置或代码中授予，Skill 和插件不能自授权。完整格式见 [Skill 文档](docs/skills.md)。
 
 ## Python 用法
 
@@ -82,7 +88,7 @@ print(result.text)
 ```
 
 `Agent` 常用的直白操作是 `run`、`for_user`、`add_group`、`add_subagent`、
-`add_plugin_path`、`enable_plugin`、`enable_skill`、`add_tool` 和 `add_model`。高级类型从其所属模块导入。
+`add_library_path`、`enable_plugin`、`enable_skill`、`add_tool` 和 `add_model`。高级类型从其所属模块导入。
 
 专用 Agent 在代码中组合。任务 Skill 只属于本次运行，不会偷偷改变后续运行：
 
@@ -123,7 +129,7 @@ print(alice.runs.explain(result.run_id))
 ```
 
 对话消息是短期上下文。长期记忆只保存持久事实、偏好和抽象信息，并可显式整理或遗忘。
-用户与 Agent 范围会隔离对话、记忆、运行记录、插件覆盖层和披露缓存。
+用户与 Agent 范围会隔离对话、记忆、运行记录、Skill 覆盖层和披露缓存。
 
 JSONL 是可直接阅读的默认存储。SQLite 同样只用标准库；MySQL 和 PostgreSQL 驱动为可选依赖。
 
@@ -142,7 +148,7 @@ JSONL 是可直接阅读的默认存储。SQLite 同样只用标准库；MySQL �
 
 学习只记录评价、保鲜度和模型使用证据，不会修改 Skill。`SkillEvolution` 将更新拆成
 `propose`、`test`、`apply` 和 `undo` 四个显式动作。提案和测试都不能启用候选内容；只有
-`apply` 会修改用户插件覆盖层，测试失败时禁止应用。可进化插件和 Skill 通过 `[evolution]`
+`apply` 会修改用户 Skill 覆盖层，测试失败时禁止应用。可进化插件和 Skill 通过 `[evolution]`
 的 `allow`、`auto_apply` 或同名代码 API 逐项授权，完整示例见[进化文档](docs/evolution.md)。
 
 ## CLI
@@ -220,7 +226,7 @@ super-agent data conversations list --config common.toml --user alice
 ## 验证仓库
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.16 --full
+python3.11 scripts/verify_release.py --version 0.2.17 --full
 ```
 
 完整的本地发布检查（包括版本一致性和打包范围）见[本地发布流程](docs/releasing.md)。

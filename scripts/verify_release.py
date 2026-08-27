@@ -1,4 +1,4 @@
-"""运行 v0.2.16 的本地发布检查。"""
+"""运行 v0.2.17 的本地发布检查。"""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-VERSION = "0.2.16"
+VERSION = "0.2.17"
 MAX_SOURCE_FILES = 25
-MAX_SOURCE_LINES = 10_600
+MAX_SOURCE_LINES = 11_000
 SOURCE_ROOTS = {"adapter", "core", "skill", "cli.py", "super_agent.py"}
 DOMAIN_FILES = {
     "adapter": {"cli.py", "database.py", "process.py", "storage.py", "tools.py"},
@@ -51,7 +51,7 @@ EVALUATION_FILES = (
 )
 WHEEL_ROOTS = ["src/adapter", "src/core", "src/skill", "src/cli.py", "src/super_agent.py"]
 SDIST_ROOTS = ["README.md", "README_cn.md", "README_en.md", "pyproject.toml", "docs", "scripts", "src", "tests", "examples"]
-REQUIRED_BUILTIN_PLUGINS = {
+REQUIRED_BUILTIN_SKILLS = {
     "common": {
         "conversation",
         "freshness",
@@ -184,7 +184,7 @@ def _check_build_config(project: dict[str, object], root: Path) -> list[str]:
     wheel = targets.get("wheel", {})
     sdist = targets.get("sdist", {})
     if wheel.get("only-include") != WHEEL_ROOTS or wheel.get("sources") != ["src"]:
-        errors.append("wheel must contain only the v0.2.16 source roots")
+        errors.append("wheel must contain only the v0.2.17 source roots")
     if sdist.get("only-include") != SDIST_ROOTS:
         errors.append("sdist source roots changed")
     expected_force = {path: path for path in EVALUATION_FILES}
@@ -201,7 +201,7 @@ def _check_build_config(project: dict[str, object], root: Path) -> list[str]:
 
 def _check_old_imports(files: list[Path]) -> list[str]:
     errors: list[str] = []
-    forbidden = ("core.models", "core.runtime", "core.loop", "core.tools", "core.checks", "core.records.", "skill.handlers", "skill.learning", "skill.tasks", "adapter.processes", "adapter.storage_backends")
+    forbidden = ("PluginCatalog", "plugin_catalog", "plugin_paths", "writable_plugin_path", "plugin_cache_path", "plugin_snapshot", "core.models", "core.runtime", "core.loop", "core.tools", "core.checks", "core.records.", "skill.handlers", "skill.learning", "skill.tasks", "adapter.processes", "adapter.storage_backends")
     for path in files:
         text = path.read_text(encoding="utf-8")
         for name in forbidden:
@@ -213,15 +213,26 @@ def _check_old_imports(files: list[Path]) -> list[str]:
 def _check_builtin_plugins(root: Path) -> list[str]:
     errors: list[str] = []
     directories = {path.name for path in root.iterdir() if path.is_dir()}
-    if directories != set(REQUIRED_BUILTIN_PLUGINS):
-        errors.append(f"builtin plugin layout changed: {sorted(directories)}")
-    for plugin_name, expected_members in REQUIRED_BUILTIN_PLUGINS.items():
-        plugin = root / plugin_name
+    if directories != {"plugins", "skills"}:
+        errors.append(f"builtin library layout changed: {sorted(directories)}")
+    for plugin_name, expected_members in REQUIRED_BUILTIN_SKILLS.items():
+        plugin = root / "plugins" / "super-agent" / plugin_name
         manifest = _read_toml(plugin / "plugin.toml", errors)
         if manifest.get("schema") != 1 or manifest.get("version") != VERSION:
             errors.append(f"builtin plugin manifest is invalid: {plugin_name}")
+        required_fields = {
+            "description",
+            "entry_skill",
+            "skills",
+            "included_plugins",
+            "required_mcp_servers",
+            "optional_mcp_servers",
+        }
+        if not required_fields <= set(manifest):
+            errors.append(f"builtin plugin references are incomplete: {plugin_name}")
+        skill_root = root / "skills" / "super-agent" / plugin_name
         members = {
-            path.parent.name for path in (plugin / "skills").glob("*/SKILL.md")
+            path.parent.name for path in skill_root.glob("*/SKILL.md")
         }
         if members != expected_members:
             errors.append(f"builtin plugin members changed: {plugin_name}: {sorted(members)}")

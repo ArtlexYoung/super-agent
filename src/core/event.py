@@ -281,7 +281,7 @@ class RunResult:
     session_id: str | None = None
     context_ledger: Mapping[str, object] = field(default_factory=dict)
     runtime_lifecycle: Mapping[str, object] = field(default_factory=dict)
-    plugin_snapshot: Mapping[str, object] = field(default_factory=dict)
+    library_snapshot: Mapping[str, object] = field(default_factory=dict)
 
     @property
     def model_turns(self) -> int:

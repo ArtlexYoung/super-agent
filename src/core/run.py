@@ -558,7 +558,7 @@ class _RunEngine:
                 "depth": identity.depth,
                 "purpose": self.request.purpose,
                 "prompt": self.request.prompt,
-                "plugin_snapshot": self.session.values.get("plugin_snapshot", {}),
+                "library_snapshot": self.session.values.get("library_snapshot", {}),
             },
         )
         for warning in self.request.warning_messages:
@@ -773,7 +773,7 @@ class _RunEngine:
                 "workflow": self.session.workflow,
                 "context_ledger": self.session.context_snapshot(),
                 "runtime_lifecycle": self.session.runtime_lifecycle.snapshot(),
-                "plugin_snapshot": self.session.values.get("plugin_snapshot", {}),
+                "library_snapshot": self.session.values.get("library_snapshot", {}),
             },
             created_at=event.created_at,
         )
@@ -799,7 +799,7 @@ class _RunEngine:
                 "usage": dict(self.usage),
                 "context_ledger": self.session.context_snapshot(),
                 "runtime_lifecycle": self.session.runtime_lifecycle.snapshot(),
-                "plugin_snapshot": self.session.values.get("plugin_snapshot", {}),
+                "library_snapshot": self.session.values.get("library_snapshot", {}),
             },
         )
         return RunResult(
@@ -817,9 +817,9 @@ class _RunEngine:
             session_id=identity.session_id,
             context_ledger=self.session.context_snapshot(),
             runtime_lifecycle=self.session.runtime_lifecycle.snapshot(),
-            plugin_snapshot=(
-                self.session.values.get("plugin_snapshot", {})
-                if isinstance(self.session.values.get("plugin_snapshot", {}), Mapping)
+            library_snapshot=(
+                self.session.values.get("library_snapshot", {})
+                if isinstance(self.session.values.get("library_snapshot", {}), Mapping)
                 else {}
             ),
         )

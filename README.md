@@ -20,9 +20,13 @@ Super Agent gives the model compact plugin and Skill indexes, lets the model dec
 
 Prompts, tool-use methods, memory methods, workflows, and task policies share one Skill format and one central progressive-disclosure path; model connections and secrets remain explicit configuration.
 
-插件是可安装、可版本化、可授权进化的 Skill 集合；其中每个 Skill 继续直接采用 Agent Skills 标准的 `SKILL.md`、YAML front matter 和 Markdown 正文。
+中央资源库统一管理 Skill 与 MCP；插件只保存规范引用，因此多个插件共享内容时不会重复安装。
 
-A plugin is an installable, versioned, externally authorized collection of Skills; every Skill still uses the standard Agent Skills `SKILL.md`, YAML front matter, and Markdown body.
+The central library manages Skills and MCP definitions; plugins keep canonical references only, so shared content is never installed twice.
+
+每个 Skill 继续直接采用 Agent Skills 标准的 `SKILL.md`、YAML front matter 和 Markdown 正文；MCP 描述不包含命令、地址、密钥或自动连接逻辑。
+
+Every Skill still uses standard Agent Skills `SKILL.md`, YAML front matter, and Markdown; MCP definitions contain no command, endpoint, secret, or automatic connection logic.
 
 默认 Python 安装没有第三方运行依赖，基础 `Agent()` 无状态、不写文件，存储、记忆、MCP 和学习都按需启用。
 
@@ -131,6 +135,7 @@ super-agent --plugin plugin:super-agent/code "检查这个仓库"
 super-agent config show
 super-agent plugins list
 super-agent skills list
+super-agent mcps list
 super-agent data storage verify --config common.toml
 super-agent data storage prune --config common.toml --user alice
 super-agent data storage prune --config common.toml --user alice --apply
@@ -143,10 +148,10 @@ super-agent data conversations list --config common.toml --user alice
 
 - 读取不会修改业务状态；显式启用磁盘披露缓存时，只会写入有界、可丢弃的缓存文件。
   Reads do not mutate domain state; an explicitly configured disclosure cache writes only bounded, disposable cache files.
-- 插件和 Skill 内容是被动数据，不能自行注册代码、权限、密钥或进化授权。
-  Plugin and Skill content is passive data and cannot register code, permissions, secrets, or evolution authority by itself.
-- 同一插件身份和内容跨来源只存一份；同身份不同内容直接冲突，运行中则固定使用启动时的不可变快照。
-  Identical plugin content is reused across sources; conflicting content under one identity fails, and each run uses its immutable starting snapshot.
+- 插件、Skill 和 MCP 描述都是被动数据，不能自行注册代码、连接、权限、密钥或进化授权。
+  Plugin, Skill, and MCP descriptions are passive data and cannot register code, connections, permissions, secrets, or evolution authority.
+- 同类型、ID、版本和内容跨来源只保留一个逻辑对象；同身份不同内容直接冲突，运行中固定使用启动时快照。
+  Matching type, ID, version, and content share one logical object; divergent identities fail, and each run uses its starting snapshot.
 - Provider、工具、存储和可选功能错误会保留原始失败语义。
   Provider, tool, storage, and optional-feature errors retain their original failure semantics.
 - 用户与 Agent 范围隔离对话、记忆、运行记录、披露缓存和 Skill 覆盖层。
@@ -226,5 +231,5 @@ Third-party projects retain their own copyrights and licenses; this project is l
 The full release gate checks Python tests, compilation, package contents, offline evaluation, and build.
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.16 --full
+python3.11 scripts/verify_release.py --version 0.2.17 --full
 ```

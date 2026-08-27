@@ -459,13 +459,13 @@ def get_or_create_agent_tree_runtime(
         return existing
     identity = RunIdentity(user_id=user_id, agent_name=owner.name)
     store = owner._event_store(identity)
-    catalog = owner._catalog(identity, store)
+    library = owner._library(identity, store)
     runtime = AgentTreeRuntime(
         root,
         owner.agent_tree_settings,
         user_id=user_id,
         record_event=_tree_event_recorder(store, root.group_id),
-        disclosures=catalog.disclosures if catalog is not None else DisclosureStore(),
+        disclosures=library.disclosures if library is not None else DisclosureStore(),
     )
     owner._agent_tree_runtimes[user_id] = runtime
     return runtime

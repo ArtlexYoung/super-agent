@@ -1,0 +1,9 @@
+schema = 1
+id = "super-agent/code"
+version = "0.2.17"
+description = "Repository coding methods"
+entry_skill = "skill:super-agent/code"
+skills = ["skill:super-agent/code/deep-optimization"]
+included_plugins = ["plugin:super-agent/common"]
+required_mcp_servers = []
+optional_mcp_servers = []

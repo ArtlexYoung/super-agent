@@ -33,9 +33,9 @@ run.started
 
 Synchronous and streaming APIs do not maintain separate model-call logic. Tool output, Skill bodies, memory, and subagent summaries share one `RunContext` context budget.
 
-运行开始时，`PluginCatalog` 将插件依赖图、版本和内容哈希固定为 `plugin_snapshot`，并写入运行开始、完成和结果元数据。运行中的 Skill 更新不会改变这个快照，新内容只在下一次顶层运行读取。
+运行开始时，`AgentLibrary` 将 Skill、MCP 和插件引用图的版本与内容哈希固定为 `library_snapshot`，并写入运行开始、完成和结果元数据。运行中的更新不会改变这个快照，新内容只在下一次顶层运行读取。
 
-At run start, `PluginCatalog` freezes the plugin dependency graph, versions, and content hashes as `plugin_snapshot`, recorded in start, completion, and result metadata. A Skill update during the run cannot alter that snapshot; new content is read only by the next top-level run.
+At run start, `AgentLibrary` freezes Skill, MCP, and plugin-reference versions and content hashes as `library_snapshot`, recorded in start, completion, and result metadata. An update during the run cannot alter that snapshot; new content is read only by the next top-level run.
 
 `RuntimeLifecycle` 位于核心运行循环中，记录父子运行、任务状态、深度和活动数量。多 Agent Skill 只把任务挂到当前 `RunContext` 的生命周期；子 Agent 继续使用同一对象，因此运行事件、任务等待和恢复元数据可以对齐，而不会保存模型正文。
 

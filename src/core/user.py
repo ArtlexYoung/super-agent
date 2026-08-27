@@ -288,10 +288,10 @@ class UserRuns:
 
         identity = RunIdentity(user_id=self.user.user_id, agent_name=self.user.agent.name)
         store = self._store()
-        catalog = self.user.agent._catalog(identity, store)
-        if catalog is None:
-            raise RuntimeError("Skill evolution requires a plugin catalog")
-        evolution = self.user.agent._evolution(catalog, store)
+        library = self.user.agent._library(identity, store)
+        if library is None:
+            raise RuntimeError("Skill evolution requires an AgentLibrary")
+        evolution = self.user.agent._evolution(library, store)
         evidence = evidence_from_run(result, score=score, success=success)
         for item in evidence:
             evolution.record_evidence(item)
@@ -329,9 +329,9 @@ class UserRuns:
             skills=tuple(str(item) for item in data.get("skills", []) if isinstance(item, str)),
             workflow=str(data.get("workflow", "model-directed")),
             usage=data.get("usage", {}) if isinstance(data.get("usage"), Mapping) else {},
-            plugin_snapshot=(
-                data.get("plugin_snapshot", {})
-                if isinstance(data.get("plugin_snapshot"), Mapping)
+            library_snapshot=(
+                data.get("library_snapshot", {})
+                if isinstance(data.get("library_snapshot"), Mapping)
                 else {}
             ),
         )
@@ -339,15 +339,15 @@ class UserRuns:
     def _skill_freshness(self, snapshot: Mapping[str, object]) -> list[dict[str, object]]:
         if not self.user.agent.evolution_enabled:
             return []
-        base_catalog = self.user.agent.plugin_catalog
-        if base_catalog is None:
+        base_library = self.user.agent.library
+        if base_library is None:
             return []
         store = self._store()
-        catalog = base_catalog.for_scope(self.user.user_id, self.user.agent.name)
+        library = base_library.for_scope(self.user.user_id, self.user.agent.name)
         from skill.evolution import SkillEvolution
 
         evolution = SkillEvolution(
-            catalog, policy=self.user.agent.evolution_policy, store=store
+            library, policy=self.user.agent.evolution_policy, store=store
         )
         values: list[dict[str, object]] = []
         for reference in snapshot.get("used_skills", []):

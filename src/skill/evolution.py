@@ -21,7 +21,7 @@ from core.model import Tool
 from core.records import EventStore
 from core.run import ToolContext
 from skill.document import Skill
-from skill.library import PluginCatalog
+from skill.library import AgentLibrary
 
 
 CandidateRunner = Callable[[str, str], str]
@@ -197,8 +197,8 @@ class SkillChange:
 class SkillEvolution:
     """候选、测试、应用和撤销四阶段保持彼此独立。"""
 
-    def __init__(self, catalog: PluginCatalog, *, policy: EvolutionConfig | None = None, store: EventStore | None = None, runner: CandidateRunner | None = None) -> None:
-        self.catalog = catalog
+    def __init__(self, library: AgentLibrary, *, policy: EvolutionConfig | None = None, store: EventStore | None = None, runner: CandidateRunner | None = None) -> None:
+        self.library = library
         self.policy = policy or EvolutionConfig()
         self.store = store
         self.runner = runner
@@ -206,7 +206,7 @@ class SkillEvolution:
         self._evidence: list[SkillEvidence] = []
 
     def propose(self, reference: str, candidate_body: str, *, reason: str, actor: str = "agent") -> SkillChange:
-        skill = self.catalog.find_skill(reference)
+        skill = self.library.find_skill(reference)
         self._check_permission(skill, actor=actor, auto_apply=False)
         change = SkillChange(
             change_id=f"change-{uuid4().hex}",
@@ -254,7 +254,7 @@ class SkillEvolution:
             "baseline_sha256": change.baseline_sha256,
             "affected_skills": [
                 change.skill_key,
-                *self.catalog.reverse_dependencies(change.skill_key),
+                *self.library.reverse_dependencies(change.skill_key),
             ],
         }
         tested = replace(change, status="tested", report=report)
@@ -265,9 +265,9 @@ class SkillEvolution:
         change = self._require_change(change_id, "tested")
         if not change.report or not change.report.get("passed"):
             raise ValueError("Skill change did not pass every test case")
-        skill = self.catalog.find_skill(change.skill_key)
+        skill = self.library.find_skill(change.skill_key)
         self._check_permission(skill, actor=actor, auto_apply=True)
-        updated = self.catalog.update_skill(
+        updated = self.library.update_skill(
             change.skill_key,
             change.candidate_body,
             expected_sha256=change.baseline_sha256,
@@ -280,9 +280,9 @@ class SkillEvolution:
         change = self._require_change(change_id, "applied")
         if change.applied_sha256 is None:
             raise ValueError("applied Skill change is missing its content hash")
-        skill = self.catalog.find_skill(change.skill_key)
+        skill = self.library.find_skill(change.skill_key)
         self._check_permission(skill, actor=actor, auto_apply=False)
-        restored = self.catalog.update_skill(
+        restored = self.library.update_skill(
             change.skill_key,
             change.baseline_body,
             expected_sha256=change.applied_sha256,
@@ -293,20 +293,20 @@ class SkillEvolution:
 
     def record_evidence(self, evidence: SkillEvidence) -> None:
         selected = evidence if evidence.used_at else replace(evidence, used_at=utc_now())
-        self.catalog.find_skill(selected.skill_key)
+        self.library.find_skill(selected.skill_key)
         if self.store is None:
             self._evidence.append(selected)
         else:
             self.store.append("skill_evidence", selected.skill_key, "skill.evaluated", selected.to_dict())
 
     def freshness(self, reference: str, *, now: datetime | None = None) -> Freshness:
-        skill = self.catalog.find_skill(reference)
+        skill = self.library.find_skill(reference)
         values = [item for item in self._load_evidence() if item.skill_key == skill.key]
         return calculate_freshness(values, now=now)
 
     def count_skill_evidence(self, reference: str) -> tuple[int, int]:
         """返回 Skill 的真实评价次数和成功次数，不从平滑分数反推。"""
-        skill = self.catalog.find_skill(reference)
+        skill = self.library.find_skill(reference)
         values = [item for item in self._load_evidence() if item.skill_key == skill.key]
         successes = sum(item.success and not item.error for item in values)
         return len(values), successes
@@ -394,7 +394,10 @@ class SkillEvolution:
         if actor != "agent":
             return
         allowed = self.policy.auto_apply if auto_apply else self.policy.allow
-        targets = {skill.reference, f"plugin:{skill.plugin_id}"}
+        targets = {skill.reference}
+        for plugin in self.library.snapshot().plugins.values():
+            if skill.reference in {plugin.entry_skill, *plugin.skills}:
+                targets.add(plugin.reference)
         if targets.isdisjoint(allowed):
             action = "auto-apply" if auto_apply else "evolve"
             raise PermissionError(f"agent cannot {action} Skill: {skill.reference}")

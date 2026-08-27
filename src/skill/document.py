@@ -50,8 +50,7 @@ class Skill:
     body: str
     path: Path
     reference: str
-    plugin_id: str
-    member_name: str
+    skill_id: str
     categories: tuple[str, ...] = ()
     requires: tuple[str, ...] = ()
     optional_tools: tuple[str, ...] = ()
@@ -59,6 +58,10 @@ class Skill:
     version: str = "0.1.0"
     metadata: Mapping[str, object] = field(default_factory=dict)
     sha256: str = ""
+    package_sha256: str = ""
+    base_hash: str | None = None
+    sources: tuple[Path, ...] = ()
+    writable: bool = False
 
     def __post_init__(self) -> None:
         _validate_name(self.name, "skill name")
@@ -67,8 +70,8 @@ class Skill:
             raise ValueError("skill description and body cannot be empty")
         if len(self.description) > 1024:
             raise ValueError("skill description cannot exceed 1024 characters")
-        if self.reference != f"skill:{self.plugin_id}/{self.member_name}":
-            raise ValueError("skill reference does not match its plugin and member")
+        if self.reference != f"skill:{self.skill_id}":
+            raise ValueError("skill reference does not match its ID")
 
     @property
     def key(self) -> str:
@@ -81,8 +84,7 @@ class Skill:
     def index_entry(self) -> dict[str, object]:
         return {
             "key": self.key,
-            "plugin": f"plugin:{self.plugin_id}",
-            "name": self.member_name,
+            "name": self.name,
             "type": self.skill_type,
             "description": self.description,
             "categories": list(self.categories),
@@ -319,18 +321,8 @@ def _validate_package_manifest(entries: tuple[tuple[Path, int], ...]) -> None:
     skill_paths = tuple(path for path in paths if path.name == SKILL_FILE)
     if Path(SKILL_FILE) not in skill_paths:
         raise ValueError("Skill package must contain one root SKILL.md")
-    invalid_skills = tuple(
-        path
-        for path in skill_paths
-        if path != Path(SKILL_FILE)
-        and not (
-            len(path.parts) == 3
-            and path.parts[0] == "skills"
-            and NAME_PATTERN.fullmatch(path.parts[1])
-        )
-    )
-    if invalid_skills:
-        raise ValueError("nested Skills must use skills/<name>/SKILL.md")
+    if skill_paths != (Path(SKILL_FILE),):
+        raise ValueError("a Skill package cannot contain nested Skills")
     occupied = set(paths)
     if any(parent in occupied for path in paths for parent in path.parents[:-1]):
         raise ValueError("Skill package path cannot be both a file and a directory")
@@ -362,9 +354,12 @@ def parse_skill_text(
     text: str,
     path: Path,
     *,
-    plugin_id: str | None = None,
-    member_name: str = "main",
+    skill_id: str | None = None,
     validate_path: bool = True,
+    package_sha256: str = "",
+    base_hash: str | None = None,
+    sources: tuple[Path, ...] = (),
+    writable: bool = False,
 ) -> Skill:
     """读取标准 YAML front matter 和 Markdown 正文。"""
     frontmatter, body = _split_front_matter(text)
@@ -372,8 +367,7 @@ def parse_skill_text(
     name = _required_text(metadata.get("name"), "skill name")
     if validate_path:
         _validate_skill_path(name, path)
-    selected_plugin = plugin_id or name
-    selected_member = _required_text(member_name, "skill member name")
+    selected_id = _required_text(skill_id or name, "skill ID").lower()
     digest = hashlib.sha256(text.encode()).hexdigest()
     return Skill(
         name=name,
@@ -381,9 +375,8 @@ def parse_skill_text(
         description=_required_text(metadata.get("description"), "skill description"),
         body=body.strip(),
         path=path.resolve(),
-        reference=f"skill:{selected_plugin}/{selected_member}",
-        plugin_id=selected_plugin,
-        member_name=selected_member,
+        reference=f"skill:{selected_id}",
+        skill_id=selected_id,
         categories=_text_array(metadata.get("categories", []), "skill categories"),
         requires=_text_array(metadata.get("requires", []), "skill requires"),
         optional_tools=_text_array(
@@ -393,6 +386,10 @@ def parse_skill_text(
         version=_required_text(metadata.get("version"), "skill version"),
         metadata=MappingProxyType(metadata),
         sha256=digest,
+        package_sha256=package_sha256 or digest,
+        base_hash=base_hash,
+        sources=sources or (path.parent.resolve(),),
+        writable=writable,
     )
 
 

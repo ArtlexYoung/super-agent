@@ -259,11 +259,20 @@ class McpServer(Protocol):
     def call_tool(self, name: str, arguments: Mapping[str, object]) -> object: ...
 
 
-def mcp_tools(server_name: str, server: McpServer, effects: Mapping[str, tuple[str, ...]]) -> tuple[Tool, ...]:
+def mcp_tools(
+    server_name: str,
+    server: McpServer,
+    effects: Mapping[str, tuple[str, ...]],
+    *,
+    declared_tools: Iterable[str] | None = None,
+) -> tuple[Tool, ...]:
     """MCP 描述不授予权限，每个工具必须由代码声明完整副作用。"""
     values: list[Tool] = []
-    for definition in server.list_tools():
-        remote_name = _required_text(definition.get("name"), "MCP tool name")
+    definitions = tuple(server.list_tools())
+    names = tuple(_required_text(item.get("name"), "MCP tool name") for item in definitions)
+    if declared_tools is not None and set(names) != set(declared_tools):
+        raise ValueError(f"MCP tools do not match the central definition: {server_name}")
+    for definition, remote_name in zip(definitions, names, strict=True):
         if remote_name not in effects:
             raise ValueError(f"MCP tool effects are not declared: {remote_name}")
         schema = definition.get("inputSchema", {"type": "object", "properties": {}})
