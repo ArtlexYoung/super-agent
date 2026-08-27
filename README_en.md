@@ -6,10 +6,10 @@
 
 > Skill is all you need.
 
-Super Agent gives a model a compact Skill index. The model decides what it needs, opens
-only that content, and runs the selected instructions or registered tools. Prompts,
-task instructions, run policies, memory methods, and tool-use methods all use the same
-Skill format and progressive disclosure path. Model connections and secrets remain explicit configuration.
+Super Agent gives a model compact plugin and Skill indexes. The model decides what it needs,
+opens only that content, and activates the selected method. Prompts, task instructions, run
+policies, memory methods, and tool-use methods all use the same Skill format and progressive
+disclosure path. Model connections and secrets remain explicit configuration.
 
 The default Python install has no third-party runtime dependencies. A basic `Agent()` is
 stateless and writes no files. Storage, conversations, memory, Skill updates, and MCP are
@@ -46,9 +46,19 @@ generated; add `common.toml`, `cli.toml`, `code.toml`, or local Skills only when
 
 Inside a conversation, use `/help`, `/clear`, or `/exit` for terminal controls.
 
-## Add a Skill
+## Add a Plugin and Skill
 
-Skills use the Agent Skills directory standard directly. Create `skills/research/SKILL.md`:
+A plugin is the installation, version, dependency, and evolution-authority boundary for Skills.
+Create `plugins/research/plugin.toml`:
+
+```toml
+schema = 1
+id = "local/research"
+version = "0.1.0"
+requires = []
+```
+
+Plugin entries and members use the Agent Skills standard directly. Create `plugins/research/SKILL.md`:
 
 ```markdown
 ---
@@ -59,10 +69,11 @@ description: Research questions and organize evidence. Use for investigations or
 Confirm the question and evidence scope, then report conclusions with sources.
 ```
 
-The directory name must match `name`; then add `skills` to `skill_paths`. There are no trigger
-words. The model decides which Skills to disclose or activate from their descriptions. Type,
-tool dependencies, composition, and update authority are optional string-valued
-`super-agent-*` metadata documented in [Skills](docs/skills.md).
+Add `plugins` to `plugin_paths` and enable the bundle with `plugin:local/research`. Member Skills
+live at `plugins/research/skills/<name>/SKILL.md` and use references such as
+`skill:local/research/<name>`. There are no trigger words. Evolution authority is granted only by
+external configuration or code; Skill content cannot grant it to itself. See
+[Skills](docs/skills.md) for the complete format and deduplication rules.
 
 ## Use Python
 
@@ -77,7 +88,7 @@ print(result.text)
 ```
 
 The most common direct `Agent` actions are `run`, `for_user`, `add_group`, `add_subagent`,
-`add_skill_path`, `add_tool`, and `add_model`. Advanced contracts are imported from the
+`add_plugin_path`, `enable_plugin`, `enable_skill`, `add_tool`, and `add_model`. Advanced contracts are imported from the
 module that owns them.
 
 Compose specialized Agents in code. A task Skill selection belongs to one run and does
@@ -90,7 +101,10 @@ main = Agent(model_from_environment())
 coder = Agent(model_from_environment())
 engineering = main.add_group("engineering")
 engineering.add_subagent(coder, name="coder", description="Implements and verifies code changes")
-result = main.run("Ask engineering to fix the failing test", skill="common-multi-producer-consumer")
+result = main.run(
+    "Ask engineering to fix the failing test",
+    skill="skill:super-agent/common/multi-agent",
+)
 ```
 
 Level 1 is always the root group. Structural groups organize Agents without calling a model,
@@ -99,7 +113,7 @@ through their parent board. One user-scoped tree runtime owns tasks, sleep and w
 routing, circuit retries, adaptive compression, and multi-model decisions. It is not created when
 the Agent has no groups or subagents.
 
-Enable `common-multi-review` when several outside perspectives should inspect the same artifact.
+Enable `skill:super-agent/common/review` when several outside perspectives should inspect the same artifact.
 At least two distinct Agents review independently before another pass cross-checks findings;
 insufficient diversity fails explicitly instead of degrading to executor self-review.
 
@@ -121,7 +135,7 @@ print(alice.runs.explain(result.run_id))
 
 Conversation messages are short-term context. Long-term memory stores durable facts,
 preferences, and abstractions, and can be explicitly organized or forgotten. User and
-Agent scopes isolate conversations, memory, runs, and Skill overlays.
+Agent scopes isolate conversations, memory, runs, plugin overlays, and disclosure caches.
 
 JSONL is the readable default backend. SQLite also uses the standard library. MySQL and
 PostgreSQL drivers are optional extras.
@@ -152,8 +166,9 @@ overlay, and failed tests block it. See [Evolution](docs/evolution.md) for the c
 ```bash
 super-agent check
 super-agent "one task"
-super-agent --skill code "inspect this repository"
+super-agent --plugin plugin:super-agent/code "inspect this repository"
 super-agent config show
+super-agent plugins list
 super-agent skills list
 super-agent data storage verify --config common.toml
 super-agent data storage prune --config common.toml --user alice
@@ -228,7 +243,7 @@ Runnable examples are in `examples/minimal.py`, `examples/custom_skill.py`, and
 ## Verify the Repository
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.15 --full
+python3.11 scripts/verify_release.py --version 0.2.16 --full
 ```
 
 For the complete local release gate, including version and package-shape checks, see

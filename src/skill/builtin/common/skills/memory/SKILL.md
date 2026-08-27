@@ -1,13 +1,11 @@
 ---
-name: "default"
+name: "memory"
 description: "Temporary working context and revisable long-term experience"
 metadata:
-  super-agent-agent-can-update: "false"
   super-agent-categories: "[\"memory/general\"]"
-  super-agent-created-by: "builtin"
   super-agent-requires: "[\"remember_temporary\",\"remember_long_term\",\"recall_memory\",\"promote_temporary_memory\",\"organize_long_term_memory\"]"
   super-agent-type: "memory"
-  super-agent-version: "0.2.0"
+  super-agent-version: "0.2.16"
 ---
 # Memory method
 

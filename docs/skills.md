@@ -1,103 +1,140 @@
-# Skill
+# 插件与 Skill / Plugins and Skills
 
-## 标准格式 / Standard Format
+## 两个概念 / Two Concepts
 
-Super Agent 直接使用 [Agent Skills](https://agentskills.io/specification) 目录格式：每个 Skill 是一个以 Skill 名称命名的目录，入口固定为 `SKILL.md`，内容为 YAML front matter 加 Markdown 正文。
+Skill 是一份被动方法或内容，继续完全采用 [Agent Skills](https://agentskills.io/specification) 的 `SKILL.md`、YAML front matter 和 Markdown 正文。
 
-Super Agent uses the [Agent Skills](https://agentskills.io/specification) directory format directly: each Skill is a name-matching directory with a `SKILL.md` entry containing YAML front matter and a Markdown body.
+A Skill is one passive method or content unit and continues to use the [Agent Skills](https://agentskills.io/specification) `SKILL.md`, YAML front matter, and Markdown body.
+
+插件是一个或多个 Skill 的安装、版本、依赖、去重和外部进化权限边界。它不加载 Python 代码，也不是第二套工作流格式。
+
+A plugin is the installation, version, dependency, deduplication, and external evolution-authority boundary for one or more Skills. It loads no Python code and is not a second workflow format.
 
 ```text
-skills/
+plugins/
 └── research/
-    └── SKILL.md
+    ├── plugin.toml
+    ├── SKILL.md
+    ├── skills/
+    │   └── evidence/
+    │       └── SKILL.md
+    └── references/
+        └── sources.md
 ```
 
-最小 Skill 只需要两个标准字段。没有 Super Agent 扩展时，它会作为用户拥有、不可由 Agent 更新的 `prompt` Skill 加载。
+## 插件清单 / Plugin Manifest
 
-A minimal Skill needs only the two standard fields. Without Super Agent extensions, it loads as a user-owned, non-Agent-updatable `prompt` Skill.
+```toml
+schema = 1
+id = "local/research"
+version = "1.0.0"
+requires = ["super-agent/common"]
+```
+
+`id` 是稳定的小写身份，支持用 `/` 分段；`requires` 使用插件 ID，不带 `plugin:` 前缀。插件入口引用为 `plugin:local/research`，入口 Skill 为 `skill:local/research/main`，成员引用为 `skill:local/research/evidence`。
+
+`id` is a stable lowercase slash-separated identity; `requires` contains plugin IDs without the `plugin:` prefix. The plugin reference is `plugin:local/research`, its entry Skill is `skill:local/research/main`, and a member is `skill:local/research/evidence`.
+
+单个标准 Agent Skill 可以不带 `plugin.toml`。此时目录名和 Skill `name` 形成隐式插件身份，因此其他标准 Skill 生态的目录可以直接读取，无需转换或私有 front matter。
+
+A single standard Agent Skill may omit `plugin.toml`. Its directory and Skill `name` then form an implicit plugin identity, so directories from other standard Skill ecosystems load directly without conversion or private front matter.
+
+## Skill 格式 / Skill Format
 
 ```markdown
 ---
-name: research
-description: 研究问题并整理证据；需要调查、比较来源或形成带依据结论时使用。
+name: evidence
+description: 研究问题并整理证据；需要比较来源或形成带依据结论时使用。
+metadata:
+  super-agent-type: "task"
+  super-agent-version: "1.0.0"
+  super-agent-categories: '["research"]'
+  super-agent-requires: '["search_documents"]'
+  super-agent-optional-tools: '["open_browser"]'
+  super-agent-includes: '["skill:super-agent/common/conversation"]'
 ---
 
 先澄清目标，再按证据组织结论。
 ```
 
-目录名必须与 `name` 一致。旧的平铺 `.md` 和 TOML front matter 不再读取，也没有兼容转换层。
+`super-agent-type` 和 categories 只用于索引。`requires` 中任一可信工具缺失时，整次激活原子回滚；已注册的 optional tools 会挂入运行，缺失的可选项不阻断纯方法内容。`includes` 必须使用规范 Skill 引用。
 
-The directory name must match `name`. Legacy flat `.md` files and TOML front matter are no longer read, and no compatibility converter remains.
+`super-agent-type` and categories affect only indexing. A missing trusted tool in `requires` rolls back the whole activation; registered optional tools join the run while absent optional tools do not block method-only content. `includes` must use canonical Skill references.
 
-## Super Agent 扩展 / Super Agent Extensions
+跨插件 include 只有在当前插件的 `requires` 已声明目标插件时才有效。插件依赖缺失或形成循环会在建立快照时直接失败。
 
-Agent Skills 规范要求 `metadata` 是字符串到字符串的映射。高级行为使用带命名空间的字符串字段，列表使用 JSON 字符串；标准顶层字段保持不变。
+A cross-plugin include is valid only when the current plugin declares the target plugin in `requires`. Missing or cyclic plugin dependencies fail while building the snapshot.
 
-The Agent Skills specification defines `metadata` as a string-to-string map. Advanced behavior uses namespaced string fields, with lists encoded as JSON strings, while standard top-level fields remain unchanged.
+Skill 不再包含“由谁创建”或“允许 Agent 更新”等自授权字段。写权限只来自外部 `[evolution]` 配置或 `Agent.allow_plugin_to_evolve`、`Agent.allow_skill_to_evolve`。
 
-```yaml
-metadata:
-  super-agent-type: "task"
-  super-agent-version: "1.0.0"
-  super-agent-created-by: "user"
-  super-agent-agent-can-update: "false"
-  super-agent-categories: '["research"]'
-  super-agent-requires: '["search_documents"]'
-  super-agent-optional-tools: '["open_browser"]'
-  super-agent-includes: '["prompt:evidence"]'
-```
+A Skill no longer carries self-authorizing creator or Agent-update fields. Write authority comes only from external `[evolution]` configuration or `Agent.allow_plugin_to_evolve` and `Agent.allow_skill_to_evolve`.
 
-`super-agent-type` 只是分类，不是隐藏执行器。`super-agent-requires` 中任一可信 Python 工具缺失时，激活失败并回滚；`super-agent-optional-tools` 中已经注册的工具会被挂载，缺失项不阻断纯方法内容。
+## 发现与去重 / Discovery and Deduplication
 
-`super-agent-type` is a category, not a hidden executor. Activation rolls back when any trusted Python tool in `super-agent-requires` is missing; registered tools from `super-agent-optional-tools` mount, while absent optional tools do not block the method itself.
+`PluginCatalog` 扫描只读根和用户-Agent 可写覆盖层，按以下规则建立一个快照：
+
+`PluginCatalog` scans read-only roots and the user-Agent writable overlay, then builds one snapshot under these rules:
+
+1. 相同插件 ID、版本和完整包 SHA-256 跨来源只保留一个逻辑实例，并记录全部来源。
+2. 相同 ID 但版本或内容不同直接报冲突，不按目录顺序偷偷覆盖。
+3. 可写覆盖层必须携带原内容的 `base_hash`，基线变化后拒绝应用。
+4. 每个规范 Skill 引用只有一个所有者；插件依赖复用 Skill，不复制文件。
+
+1. Matching plugin ID, version, and full-package SHA-256 across sources becomes one logical instance with every source recorded.
+2. A shared ID with divergent version or content fails instead of silently winning by path order.
+3. A writable overlay carries the original `base_hash` and is rejected after its baseline changes.
+4. Every canonical Skill reference has one owner; plugin dependencies reuse Skills instead of copying files.
+
+内置 `super-agent/code` 依赖 `super-agent/common`，因此复用 common 的多 Agent Skill，而不是安装第二份。
+
+The builtin `super-agent/code` plugin depends on `super-agent/common`, so it reuses the common multi-Agent Skill instead of installing another copy.
 
 ## 渐进式披露 / Progressive Disclosure
 
-运行先看有界索引，再用 `preview` 或 Skill 工具读取正文。正文过长时返回稳定的缓存路径、偏移量和哈希，模型可以显式读取下一页。
-
-The run starts with a bounded index, then uses `preview` or Skill tools to read the body. Large bodies return a stable cache path, offset, and hash so the model can explicitly request the next page.
-
 ```python
 from pathlib import Path
-from skill.library import SkillLibrary
+from skill.library import PluginCatalog
 
-library = SkillLibrary((Path("skills"),))
-print(library.list_skills(page=1, page_size=20).to_dict())
-page = library.disclose("research", max_characters=1200)
+catalog = PluginCatalog((Path("plugins"),))
+print(catalog.list_plugins().to_dict())
+print(catalog.list_skills(plugin="plugin:local/research").to_dict())
+
+page = catalog.disclose_skill(
+    "skill:local/research/evidence",
+    max_characters=1200,
+)
 print(page.cache_path, page.sha256)
-print(library.read_disclosed(page.cache_path, offset=page.next_offset or 0).to_dict())
+print(catalog.read_disclosed(page.cache_path, offset=page.next_offset or 0).to_dict())
 ```
 
-`preview`、`disclose`、缓存读取和激活共用同一个 Library。文件、记忆和子 Agent 结果过大时也使用 Runtime 的同一个 `DisclosureStore`，不会被静默截断。
+插件索引、Skill 索引、正文、资源、缓存历史和激活都经过同一个 Catalog 与 `DisclosureStore`。相同正文按 SHA-256 只保存一份缓存对象，不同逻辑引用仍各自保留披露历史。
 
-`preview`, `disclose`, cache reads, and activation share one Library. Large files, memories, and subagent results also use Runtime's single `DisclosureStore` and are never silently truncated.
+Plugin indexes, Skill indexes, bodies, resources, cache history, and activation all pass through one Catalog and `DisclosureStore`. Identical bodies share one SHA-256-addressed cache object while each logical reference retains its own disclosure history.
 
-## 标准资源 / Standard Resources
+`references/`、`scripts/`、`assets/` 和其他文件会随目录或 ZIP 打包安装。模型只能通过 `read_skill_resource` 分页读取安全的 UTF-8 文本；安装或激活永远不会执行 `scripts/`。
 
-`references/`、`scripts/`、`assets/` 和其他 Skill 内文件会随目录或 ZIP 一起打包和安装。模型通过 `read_skill_resource` 显式分页读取 UTF-8 文本资源；越界路径、软链接、超大文件和二进制内容直接失败。
+`references/`, `scripts/`, `assets/`, and other files remain in directory or ZIP packages. The model can only page safe UTF-8 text through `read_skill_resource`; installation and activation never execute `scripts/`.
 
-`references/`, `scripts/`, `assets/`, and other in-Skill files are preserved when directories or ZIP files are packed and installed. The model explicitly pages through UTF-8 text via `read_skill_resource`; escaping paths, symbolic links, oversized files, and binary content fail directly.
+## 激活和快照 / Activation and Snapshots
 
-资源始终是被动数据。安装或激活 Skill 不会执行 `scripts/`，执行仍需用户配置并授权的可信工具。
+`activate_plugin` 先递归激活插件依赖，再激活入口 Skill。`activate_skill` 递归处理 includes。工具缺失、内容过大或循环会回滚本次激活前添加的指令、工具、账本和活动引用。
 
-Resources always remain passive data. Installing or activating a Skill never executes `scripts/`; execution still requires a trusted tool configured and authorized by the user.
+`activate_plugin` activates plugin dependencies before its entry Skill. `activate_skill` recursively handles includes. Missing tools, oversized content, or cycles roll back instructions, tools, ledger entries, and active references added by that activation.
 
-## 多 Agent 检视 / Multi-Agent Review
+每次顶层运行保存不可变插件快照。更新成功后调用 `catalog.refresh()`，新内容只在下一次运行可见，避免一次模型调用中方法发生漂移。
 
-内置 `task:common-multi-review` 让至少两个不同 Agent 独立检查同一份材料，再由另一轮 Agent 交叉验证发现。它不是执行者自检，也不以简单投票替代证据；只有仍有重大争议的发现才进入决策组。
+Every top-level run records an immutable plugin snapshot. Call `catalog.refresh()` after a successful update; new content becomes visible only to the next run, preventing method drift during one model call.
 
-The builtin `task:common-multi-review` assigns the same artifact to at least two distinct Agents, then cross-checks findings in another Agent pass. It is neither executor self-review nor a simple vote; only consequential findings that remain disputed enter a decision quorum.
+## 内置方法 / Builtin Methods
 
-同一批任务先完成全部分配，再并行启动。Agent 或模型多样性不足时，整批任务保持未启动并明确失败，不会部分派发或退化成单 Agent 检查。
+- `plugin:super-agent/common`：通用证据驱动任务入口。
+- `skill:super-agent/common/multi-agent`：队列、等待唤醒和共享板方法。
+- `skill:super-agent/common/review`：独立多 Agent 检视与交叉验证。
+- `plugin:super-agent/code`：仓库编码方法。
+- `skill:super-agent/code/deep-optimization`：嵌套批次、轮换模型和实测优化。
 
-The complete batch is assigned before any task starts in parallel. Insufficient Agent or model diversity leaves the whole batch untouched and fails explicitly instead of partially dispatching or degrading to one-Agent review.
-
-## 更新与隔离 / Updates and Scope
-
-Agent 自建 Skill 会记录 `super-agent-created-by = "agent"`，并默认允许该 Agent 更新。用户 Skill 默认不允许 Agent 修改；更新、派生、删除都需要明确调用和当前哈希。
-
-Agent-created Skills record `super-agent-created-by = "agent"` and allow that Agent to update by default. User Skills are read-only to the Agent by default; update, derive, and delete require an explicit call and current hash.
-
-Skill Library 按用户和 Agent 建立作用域视图。共享目录可以复用，写入覆盖层和披露缓存仍然隔离。
-
-The Library creates a view per user and Agent. Shared roots may be reused, while writable overlays and disclosure caches remain isolated.
+- `plugin:super-agent/common`: general evidence-driven task entry.
+- `skill:super-agent/common/multi-agent`: queues, event-driven waiting, and shared boards.
+- `skill:super-agent/common/review`: independent multi-Agent review and cross-checking.
+- `plugin:super-agent/code`: repository coding method.
+- `skill:super-agent/code/deep-optimization`: nested batches, model rotation, and measured optimization.

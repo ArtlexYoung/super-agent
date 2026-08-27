@@ -9,6 +9,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from core import dataclass_data, require_integer as _integer, require_text as _text
 from core.event import utc_now
 from core.model import Tool
 from core.records import MemoryStore
@@ -46,23 +47,7 @@ class MemoryItem:
             raise ValueError("long-term memory cannot be owned by one conversation")
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "memory_id": self.memory_id,
-            "text": self.text,
-            "lifetime": self.lifetime,
-            "labels": list(self.labels),
-            "source": self.source,
-            "context": self.context,
-            "conversation_id": self.conversation_id,
-            "status": self.status,
-            "revision": self.revision,
-            "source_ids": list(self.source_ids),
-            "related_ids": list(self.related_ids),
-            "contradiction_ids": list(self.contradiction_ids),
-            "reason": self.reason,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-        }
+        return dataclass_data(self)
 
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> MemoryItem:
@@ -387,12 +372,6 @@ def _words(value: str) -> set[str]:
     return set(re.findall(r"[\w-]+", value.lower()))
 
 
-def _text(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{name} must be non-empty text")
-    return value.strip()
-
-
 def _optional_text(value: object) -> str | None:
     if value is None:
         return None
@@ -405,12 +384,6 @@ def _strings(value: object, name: str) -> tuple[str, ...]:
     if not isinstance(value, list) or any(not isinstance(item, str) or not item.strip() for item in value):
         raise ValueError(f"{name} must be an array of non-empty text")
     return tuple(dict.fromkeys(item.strip() for item in value))
-
-
-def _integer(value: object, name: str, minimum: int) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise ValueError(f"{name} must be an integer greater than or equal to {minimum}")
-    return value
 
 
 def _remember_schema(long_term: bool) -> dict[str, object]:

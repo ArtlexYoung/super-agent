@@ -10,6 +10,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
 
+from core import (
+    reject_unknown_fields as _reject_unknown,
+    require_boolean as _boolean,
+    require_integer as _integer,
+    require_number as _number,
+    require_text as _text,
+)
 from core.event import RunLimits
 from core.model import Model, ModelRequestOptions, validate_model_request_options
 from core.provider import (
@@ -61,6 +68,23 @@ class StorageConfig:
             raise ValueError(f"unknown storage backend: {self.backend}")
         if self.detailed_log_days < 1 or self.critical_log_days < 1:
             raise ValueError("log retention days must be positive")
+
+
+@dataclass(frozen=True)
+class EvolutionConfig:
+    """由外部配置授予进化目标，Skill 内容不能自行获得权限。"""
+
+    allow: tuple[str, ...] = ()
+    auto_apply: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        for reference in (*self.allow, *self.auto_apply):
+            if not reference.startswith(("plugin:", "skill:")):
+                raise ValueError(
+                    "evolution references must start with plugin: or skill:"
+                )
+        if not set(self.auto_apply) <= set(self.allow):
+            raise ValueError("evolution auto_apply must be a subset of allow")
 
 
 @dataclass(frozen=True)
@@ -142,13 +166,15 @@ class Config:
     name: str = "super-agent"
     working_directory: str | None = None
     instructions: tuple[str, ...] = ()
-    skill_paths: tuple[str, ...] = ()
-    writable_skill_path: str | None = None
-    skill_cache_path: str | None = None
+    plugin_paths: tuple[str, ...] = ()
+    writable_plugin_path: str | None = None
+    plugin_cache_path: str | None = None
+    enabled_plugins: tuple[str, ...] = ()
+    disabled_plugins: tuple[str, ...] = ()
     enabled_skills: tuple[str, ...] = ()
     disabled_skills: tuple[str, ...] = ()
     memory: bool = False
-    evolution: bool = False
+    evolution: EvolutionConfig | None = None
     warn_agent_level: int = 8
     max_agent_level: int | None = None
     max_agent_call_depth: int | None = None
@@ -214,9 +240,11 @@ def config_from_dict(
         "name",
         "working_directory",
         "instructions",
-        "skill_paths",
-        "writable_skill_path",
-        "skill_cache_path",
+        "plugin_paths",
+        "writable_plugin_path",
+        "plugin_cache_path",
+        "enabled_plugins",
+        "disabled_plugins",
         "enabled_skills",
         "disabled_skills",
         "memory",
@@ -234,6 +262,7 @@ def config_from_dict(
     if version != 1:
         raise ValueError(f"unsupported general configuration version: {version}")
     storage_value = _mapping(value.get("storage", {}), "storage configuration")
+    evolution_value = value.get("evolution")
     models_value = value.get("models", [])
     if not isinstance(models_value, list):
         raise TypeError("models configuration must be an array")
@@ -243,13 +272,15 @@ def config_from_dict(
         name=_text(value.get("name", "super-agent"), "Agent name"),
         working_directory=_optional_text(value.get("working_directory")),
         instructions=_strings(value.get("instructions", []), "Agent instructions"),
-        skill_paths=_strings(value.get("skill_paths", []), "Skill paths"),
-        writable_skill_path=_optional_text(value.get("writable_skill_path")),
-        skill_cache_path=_optional_text(value.get("skill_cache_path")),
+        plugin_paths=_strings(value.get("plugin_paths", []), "plugin paths"),
+        writable_plugin_path=_optional_text(value.get("writable_plugin_path")),
+        plugin_cache_path=_optional_text(value.get("plugin_cache_path")),
+        enabled_plugins=_strings(value.get("enabled_plugins", []), "enabled plugins"),
+        disabled_plugins=_strings(value.get("disabled_plugins", []), "disabled plugins"),
         enabled_skills=_strings(value.get("enabled_skills", []), "enabled Skills"),
         disabled_skills=_strings(value.get("disabled_skills", []), "disabled Skills"),
         memory=_boolean(value.get("memory", False), "memory"),
-        evolution=_boolean(value.get("evolution", False), "evolution"),
+        evolution=_evolution_config(evolution_value),
         warn_agent_level=_integer(
             value.get("warn_agent_level", 8), "warn_agent_level", 1
         ),
@@ -302,6 +333,17 @@ def _storage_config(value: Mapping[str, object]) -> StorageConfig:
     return StorageConfig(**_known_values(value, StorageConfig, "storage"))
 
 
+def _evolution_config(value: object) -> EvolutionConfig | None:
+    if value is None:
+        return None
+    data = _mapping(value, "evolution configuration")
+    _reject_unknown(data, {"allow", "auto_apply"}, "evolution configuration")
+    return EvolutionConfig(
+        allow=_strings(data.get("allow", []), "evolution allow"),
+        auto_apply=_strings(data.get("auto_apply", []), "evolution auto_apply"),
+    )
+
+
 def _model_config(value: object) -> ModelConfig:
     data = _mapping(value, "model configuration")
     allowed = {name for name in ModelConfig.__dataclass_fields__}
@@ -337,22 +379,10 @@ def _known_values(
     return dict(value)
 
 
-def _reject_unknown(value: Mapping[str, object], allowed: set[str], name: str) -> None:
-    unknown = sorted(set(value) - allowed)
-    if unknown:
-        raise ValueError(f"unknown {name} fields: {', '.join(unknown)}")
-
-
 def _mapping(value: object, name: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
         raise TypeError(f"{name} must be a TOML table")
     return value
-
-
-def _text(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{name} must be non-empty text")
-    return value.strip()
 
 
 def _optional_text(value: object) -> str | None:
@@ -369,26 +399,6 @@ def _strings(value: object, name: str) -> tuple[str, ...]:
     ):
         raise TypeError(f"{name} must be a text array")
     return tuple(dict.fromkeys(item.strip() for item in value))
-
-
-def _boolean(value: object, name: str) -> bool:
-    if not isinstance(value, bool):
-        raise TypeError(f"{name} must be a boolean")
-    return value
-
-
-def _number(value: object, name: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise TypeError(f"{name} must be a number")
-    return float(value)
-
-
-def _integer(value: object, name: str, minimum: int) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise ValueError(
-            f"{name} must be an integer greater than or equal to {minimum}"
-        )
-    return value
 
 
 def _optional_integer(value: object, name: str, minimum: int) -> int | None:

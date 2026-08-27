@@ -51,9 +51,46 @@ The evolution loop is not “the model says it changed, so it changes”:
 4. Test the candidate with declared cases.
 5. Apply explicitly after passing, and undo explicitly when needed.
 
-`SkillEvolution` 可以独立使用；`Agent.enable_skill_evolution()` 则把同一组动作作为渐进式工具交给模型。没有 Skill Library 时，启用进化会直接失败。
+`SkillEvolution` 可以独立使用；`Agent.enable_skill_evolution()` 则把同一组动作作为渐进式工具交给模型。没有 `PluginCatalog` 时，启用进化会直接失败。
 
-`SkillEvolution` can be used directly; `Agent.enable_skill_evolution()` exposes the same actions progressively to the model. Enabling evolution without a Skill Library fails directly.
+`SkillEvolution` can be used directly; `Agent.enable_skill_evolution()` exposes the same actions progressively to the model. Enabling evolution without a `PluginCatalog` fails directly.
+
+## 外部授权 / External Authority
+
+Skill 内容不能声明自己可更新。用户按插件或单个 Skill 明确授权：
+
+Skill content cannot declare itself writable. The user grants authority per plugin or individual Skill:
+
+```toml
+[evolution]
+allow = ["plugin:local/research", "skill:super-agent/common/review"]
+auto_apply = ["plugin:local/research"]
+```
+
+`allow` 允许模型创建候选、执行测试和由调用方显式应用；`auto_apply` 必须是 `allow` 的子集，允许模型在所有声明测试通过后调用应用。两者都不绕过内容哈希前置条件。
+
+`allow` permits candidate creation, testing, and caller-requested application. `auto_apply` must be a subset of `allow` and permits model-requested application only after every declared test passes. Neither bypasses content-hash preconditions.
+
+代码中使用直白 API 获得相同行为：
+
+The direct code APIs provide the same behavior:
+
+```python
+agent.enable_skill_evolution()
+agent.allow_plugin_to_evolve("plugin:local/research")
+agent.allow_skill_to_evolve(
+    "skill:super-agent/common/review",
+    auto_apply=False,
+)
+```
+
+共享只读插件的更新会写入当前用户和 Agent 的插件覆盖层，并记录共享版本的 `base_hash`。基线已变化、读取哈希过期或测试失败时直接拒绝更新；不存在静默合并或偷偷退化。
+
+Updating a shared read-only plugin writes a user-Agent plugin overlay and records the shared revision as `base_hash`. A changed baseline, stale read hash, or failed test rejects the update; there is no silent merge or hidden degradation.
+
+一次运行固定使用启动快照。即使模型在本轮应用了变更，本轮后续提示仍使用原 Skill；调用方刷新目录后，下一次顶层运行才加载新版本。
+
+One run keeps its starting snapshot. Even when the model applies a change during that run, later turns in the same run retain the original Skill; after the caller refreshes the catalog, the next top-level run loads the new version.
 
 每条 Skill 评价证据都关联原始运行 ID。记忆工具会把创建、提升和整理动作写入当前运行的紧凑审计事件，只保存哈希、大小、版本和 ID 等元数据；长期记忆正文仍由记忆状态单独管理。
 

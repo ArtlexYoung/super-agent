@@ -2,12 +2,10 @@
 name: "freshness"
 description: "Interpret deterministic multidimensional Skill freshness evidence"
 metadata:
-  super-agent-agent-can-update: "false"
   super-agent-categories: "[\"evaluation/skill\"]"
-  super-agent-created-by: "builtin"
   super-agent-requires: "[\"read_skill_freshness\"]"
   super-agent-type: "evaluation"
-  super-agent-version: "0.2.0"
+  super-agent-version: "0.2.16"
 ---
 # Skill freshness interpretation
 

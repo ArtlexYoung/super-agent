@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from core import require_boolean as _boolean, require_integer as _integer
 from core.model import Tool
 from core.run import FatalToolError, ToolContext
 
@@ -339,18 +340,6 @@ def _optional_text(value: object) -> str | None:
     if value is None:
         return None
     return _required_text(value, "optional text")
-
-
-def _integer(value: object, name: str, minimum: int, maximum: int) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
-        raise ValueError(f"{name} must be between {minimum} and {maximum}")
-    return value
-
-
-def _boolean(value: object, name: str) -> bool:
-    if not isinstance(value, bool):
-        raise ValueError(f"{name} must be a boolean")
-    return value
 
 
 def _empty_schema() -> dict[str, object]:

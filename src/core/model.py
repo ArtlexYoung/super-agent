@@ -8,6 +8,7 @@ from dataclasses import dataclass, field, replace
 from threading import RLock
 from typing import Callable, Iterable, Iterator, Mapping, Protocol
 
+from core import require_text as _text
 
 JsonObject = dict[str, object]
 
@@ -606,12 +607,6 @@ def _usage_value(usage: Mapping[str, int | float | None], name: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
         raise ValueError(f"model usage must be a non-negative number: {name}")
     return float(value)
-
-
-def _text(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{name} must be non-empty text")
-    return value.strip()
 
 
 def _integer(value: object) -> int:

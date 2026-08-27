@@ -10,6 +10,7 @@ from urllib.error import URLError
 from adapter.process import ProcessSettings, ProcessTools
 from adapter.storage import MemoryStorage
 from adapter.tools import CodeWorkspace, ToolPolicy, WorkspaceSettings
+from core.config import EvolutionConfig
 from core.event import RunIdentity
 from core.model import ModelEvent, Tool
 from core.provider import MockModel, ModelPricing
@@ -22,14 +23,21 @@ from skill.evolution import (
     SkillTestCase,
     calculate_freshness,
 )
-from skill.library import SkillLibrary
+from skill.library import PluginCatalog
 from skill.memory import Memory
 from skill.organization import AgentMemberSettings, AgentTreeSettings, agent_group_node
 from skill.organization_runtime import AgentTreeRuntime
 from super_agent import Agent
 
 
-def write_skill(root: Path, name: str = "demo", body: str = "Follow the demo method.", *, created_by: str = "user") -> Path:
+def write_skill(
+    root: Path,
+    name: str = "demo",
+    body: str = "Follow the demo method.",
+    *,
+    requires: tuple[str, ...] = (),
+    optional_tools: tuple[str, ...] = (),
+) -> Path:
     path = root / name / "SKILL.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -39,9 +47,9 @@ def write_skill(root: Path, name: str = "demo", body: str = "Follow the demo met
                 "type": "prompt",
                 "description": "A demo method",
                 "version": "1.0.0",
-                "created_by": created_by,
-                "agent_can_update": created_by == "agent",
                 "categories": ["demo"],
+                "requires": requires,
+                "optional_tools": optional_tools,
             },
             body,
         ),
@@ -50,7 +58,7 @@ def write_skill(root: Path, name: str = "demo", body: str = "Follow the demo met
     return path
 
 
-class SkillLibraryTests(unittest.TestCase):
+class PluginCatalogTests(unittest.TestCase):
     def test_standard_agent_skill_defaults_and_metadata_are_loaded(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "skills" / "external-method" / "SKILL.md"
@@ -66,9 +74,10 @@ class SkillLibraryTests(unittest.TestCase):
                 "Follow the external method.\n",
                 encoding="utf-8",
             )
-            skill = SkillLibrary((path.parents[1],)).find("external-method")
-            self.assertEqual("prompt:external-method", skill.key)
-            self.assertEqual("user", skill.created_by)
+            skill = PluginCatalog((path.parents[1],)).find_skill(
+                "skill:external-method/main"
+            )
+            self.assertEqual("skill:external-method/main", skill.key)
             self.assertEqual("example-org", skill.metadata["standard_metadata"]["author"])
 
             empty_metadata = parse_skill_text(
@@ -93,10 +102,11 @@ class SkillLibraryTests(unittest.TestCase):
             reference = skill_path.parent / "references" / "method.md"
             reference.parent.mkdir()
             reference.write_text("evidence-" * 4, encoding="utf-8")
-            source = SkillLibrary((source_root,))
+            source = PluginCatalog((source_root,))
 
-            direct = SkillLibrary((), writable_root=base / "direct")
-            direct_skill = direct.install(skill_path)
+            direct = PluginCatalog((), writable_root=base / "direct")
+            direct_plugin = direct.install_plugin(skill_path)
+            direct_skill = direct_plugin.entry
             self.assertEqual(
                 "evidence-" * 4,
                 (direct_skill.root / "references" / "method.md").read_text(
@@ -104,16 +114,18 @@ class SkillLibraryTests(unittest.TestCase):
                 ),
             )
 
-            archive = source.pack("demo", base / "demo.zip")
+            archive = source.pack_plugin("plugin:demo", base / "demo.zip")
 
             installed_root = base / "installed"
-            installed = SkillLibrary((), writable_root=installed_root)
-            skill = installed.install(archive)
-            self.assertEqual("prompt:demo", skill.key)
+            installed = PluginCatalog((), writable_root=installed_root)
+            plugin = installed.install_plugin(archive)
+            skill = plugin.entry
+            self.assertEqual("skill:demo/main", skill.key)
             self.assertEqual(
                 "evidence-" * 4,
                 (skill.root / "references" / "method.md").read_text(encoding="utf-8"),
             )
+            installed.refresh()
 
             tool = next(
                 item for item in installed.tools() if item.name == "read_skill_resource"
@@ -121,15 +133,15 @@ class SkillLibraryTests(unittest.TestCase):
             session = RunSession(RunIdentity(), [], [], {})
             context = ToolContext(session, lambda _event, _data: None)  # type: ignore[arg-type]
             page = tool.handler(
-                {"skill": "demo", "path": "references/method.md", "max_characters": 9},
+                {"skill": "skill:demo/main", "path": "references/method.md", "max_characters": 9},
                 context,
             )
             self.assertEqual("evidence-", page["content"])
             self.assertIsNotNone(page["next_offset"])
             with self.assertRaises(PermissionError):
-                tool.handler({"skill": "demo", "path": "../outside.md"}, context)
+                tool.handler({"skill": "skill:demo/main", "path": "../outside.md"}, context)
 
-            installed.remove(skill.key, expected_sha256=skill.sha256)
+            installed.remove_plugin(plugin.reference, expected_sha256=plugin.sha256)
             self.assertFalse(skill.root.exists())
 
     def test_package_rejects_nested_skills_and_unsafe_zip_manifests(self):
@@ -139,7 +151,7 @@ class SkillLibraryTests(unittest.TestCase):
             nested = skill_path.parent / "references" / "nested" / "SKILL.md"
             nested.parent.mkdir(parents=True)
             nested.write_text(skill_path.read_text(encoding="utf-8"), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "no nested SKILL.md"):
+            with self.assertRaisesRegex(ValueError, "skills/<name>/SKILL.md"):
                 read_skill_package(skill_path)
 
             content = skill_path.read_text(encoding="utf-8")
@@ -170,50 +182,50 @@ class SkillLibraryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "skills"
             write_skill(root, body="A" * 30)
-            library = SkillLibrary((root,), cache_root=Path(directory) / "cache")
-            page = library.list_skills(page=1, page_size=1)
-            self.assertEqual("prompt:demo", page.items[0]["key"])
-            first = library.disclose("prompt:demo", max_characters=10)
+            catalog = PluginCatalog((root,), cache_root=Path(directory) / "cache")
+            page = catalog.list_skills(page=1, page_size=1)
+            self.assertEqual("skill:demo/main", page.items[0]["key"])
+            first = catalog.disclose_skill("skill:demo/main", max_characters=10)
             self.assertEqual(10, len(first.content))
             self.assertIsNotNone(first.next_offset)
-            cached = library.read_disclosed(first.cache_path, max_characters=10)
+            cached = catalog.read_disclosed(first.cache_path, max_characters=10)
             self.assertEqual(first.content, cached.content)
-            self.assertEqual(2, len(library.history()))
+            self.assertEqual(2, len(catalog.history()))
 
             session = RunSession(RunIdentity(), [], [], {}, values={"available_tools": {}})
-            activated = library.activate("demo", session)
-            self.assertEqual(("prompt:demo",), activated)
+            activated = catalog.activate_skill("skill:demo/main", session)
+            self.assertEqual(("skill:demo/main",), activated)
             self.assertIn("AAAAAAAA", session.instructions[0])
 
     def test_memory_cache_path_can_replay_disclosed_content(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "skills"
             write_skill(root)
-            library = SkillLibrary((root,))
-            disclosed = library.disclose("prompt:demo")
+            catalog = PluginCatalog((root,))
+            disclosed = catalog.disclose_skill("skill:demo/main")
             self.assertTrue(disclosed.cache_path.startswith("memory://"))
-            self.assertEqual(disclosed, library.read_disclosed(disclosed.cache_path))
+            self.assertEqual(disclosed, catalog.read_disclosed(disclosed.cache_path))
 
     def test_disclosure_history_and_memory_cache_are_bounded(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "skills"
             write_skill(root, body="abcdef")
             write_skill(root, name="other", body="uvwxyz")
-            library = SkillLibrary((root,), cache_entries=1)
-            first = library.disclose("prompt:demo", offset=0, max_characters=2)
-            second = library.disclose("prompt:other", offset=0, max_characters=2)
-            self.assertEqual(second.cache_path, library.history()[0]["cache_path"])
+            catalog = PluginCatalog((root,), cache_entries=1)
+            first = catalog.disclose_skill("skill:demo/main", offset=0, max_characters=2)
+            second = catalog.disclose_skill("skill:other/main", offset=0, max_characters=2)
+            self.assertEqual(second.cache_path, catalog.history()[0]["cache_path"])
             with self.assertRaises(KeyError):
-                library.read_disclosed(first.cache_path)
+                catalog.read_disclosed(first.cache_path)
 
     def test_disabled_skill_is_hidden_and_cannot_be_activated(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "skills"
             write_skill(root)
-            library = SkillLibrary((root,), disabled_references=("prompt:demo",))
-            self.assertEqual(0, library.list_skills().total)
-            with self.assertRaises(KeyError):
-                library.find("prompt:demo")
+            catalog = PluginCatalog((root,), disabled_skills=("skill:demo/main",))
+            self.assertEqual(0, catalog.list_skills().total)
+            with self.assertRaises(PermissionError):
+                catalog.find_skill("skill:demo/main")
             session = RunSession(
                 RunIdentity(),
                 [],
@@ -221,20 +233,20 @@ class SkillLibraryTests(unittest.TestCase):
                 {},
                 values={"available_tools": {}},
             )
-            with self.assertRaises(KeyError):
-                library.activate("prompt:demo", session)
+            with self.assertRaises(PermissionError):
+                catalog.activate_skill("skill:demo/main", session)
             self.assertEqual([], session.instructions)
 
     def test_failed_activation_restores_run_session(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "skills"
-            library = SkillLibrary((), writable_root=root)
-            skill = library.create(
+            write_skill(
+                root,
                 "blocked",
                 "Needs two tools.",
-                description="Cannot activate partially",
                 requires=("available", "missing"),
             )
+            catalog = PluginCatalog((root,))
             available = Tool("available", "Available tool", lambda _args, _context: {})
             session = RunSession(
                 RunIdentity(),
@@ -245,7 +257,7 @@ class SkillLibraryTests(unittest.TestCase):
                 context_characters=8,
             )
             with self.assertRaises(RuntimeError):
-                library.activate(skill.key, session)
+                catalog.activate_skill("skill:blocked/main", session)
             self.assertEqual({}, session.tools)
             self.assertEqual(["existing"], session.instructions)
             self.assertEqual([], session.active_skills)
@@ -254,14 +266,14 @@ class SkillLibraryTests(unittest.TestCase):
     def test_optional_skill_tools_mount_only_when_registered(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "skills"
-            library = SkillLibrary((), writable_root=root)
-            skill = library.create(
+            write_skill(
+                root,
                 "optional",
                 "Use available tools.",
-                description="Optional tools",
                 requires=("required",),
                 optional_tools=("optional", "not_registered"),
             )
+            catalog = PluginCatalog((root,))
             required = Tool("required", "Required tool", lambda _args, _context: {})
             optional = Tool("optional", "Optional tool", lambda _args, _context: {})
             session = RunSession(
@@ -271,44 +283,55 @@ class SkillLibraryTests(unittest.TestCase):
                 {},
                 values={"available_tools": {"required": required, "optional": optional}},
             )
-            library.activate(skill.key, session)
+            catalog.activate_skill("skill:optional/main", session)
             self.assertEqual({"required", "optional"}, set(session.tools))
             self.assertEqual(
                 ["optional", "not_registered"],
-                library.list_skills().items[0]["optional_tools"],
+                catalog.list_skills().items[0]["optional_tools"],
             )
 
-    def test_agent_owned_skill_has_explicit_update_permission_and_hash_check(self):
+    def test_update_permission_is_external_and_hash_checked(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "skills"
-            library = SkillLibrary((), writable_root=root)
-            created = library.create("self", "initial", description="Self skill", actor="agent")
-            self.assertTrue(created.agent_can_update)
-            changed = library.update("prompt:self", "updated", expected_sha256=created.sha256, actor="agent")
+            root = Path(directory) / "plugins"
+            catalog = PluginCatalog((), writable_root=root)
+            plugin = catalog.create_plugin(
+                "local/self", "initial", description="Self Skill"
+            )
+            catalog.refresh()
+            created = catalog.find_skill("skill:local/self/main")
+            changed = catalog.update_skill(
+                created.reference, "updated", expected_sha256=created.sha256
+            )
             self.assertEqual("0.1.1", changed.version)
             with self.assertRaises(RuntimeError):
-                library.update("prompt:self", "stale", expected_sha256=created.sha256, actor="agent")
-
-            user_skill = library.create("user", "owned", description="User skill")
-            with self.assertRaises(PermissionError):
-                library.update(user_skill.key, "blocked", expected_sha256=user_skill.sha256, actor="agent")
+                catalog.update_skill(
+                    created.reference, "stale", expected_sha256=created.sha256
+                )
+            self.assertNotIn("agent-can-update", plugin.entry.metadata)
 
     def test_skill_evolution_requires_test_before_apply_and_can_undo(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "skills"
-            library = SkillLibrary((), writable_root=root)
-            skill = library.create("self", "old method", description="Self skill", actor="agent")
+            root = Path(directory) / "plugins"
+            catalog = PluginCatalog((), writable_root=root)
+            catalog.create_plugin("local/self", "old method", description="Self Skill")
+            catalog.refresh()
+            skill = catalog.find_skill("skill:local/self/main")
             runner = lambda body, _prompt: body
-            evolution = SkillEvolution(library, runner=runner)
-            change = evolution.propose(skill.key, "new method", reason="better", actor="agent")
+            policy = EvolutionConfig(
+                ("plugin:local/self",), ("plugin:local/self",)
+            )
+            evolution = SkillEvolution(catalog, policy=policy, runner=runner)
+            change = evolution.propose(skill.key, "new method", reason="better")
             with self.assertRaises(ValueError):
                 evolution.apply(change.change_id)
             tested = evolution.test(change.change_id, [SkillTestCase("contains", "use", required_text=("new",))])
             self.assertTrue(tested.report["passed"])
             applied = evolution.apply(change.change_id)
-            self.assertEqual("new method", library.find(skill.key).body)
+            catalog.refresh()
+            self.assertEqual("new method", catalog.find_skill(skill.key).body)
             undone = evolution.undo(applied.change_id)
-            self.assertEqual("old method", library.find(skill.key).body)
+            catalog.refresh()
+            self.assertEqual("old method", catalog.find_skill(skill.key).body)
             self.assertEqual("undone", undone.status)
             evolution.record_evidence(SkillEvidence(skill.key, 1.0, True))
             evolution.record_evidence(SkillEvidence(skill.key, 0.2, False))
@@ -316,11 +339,21 @@ class SkillLibraryTests(unittest.TestCase):
 
     def test_persisted_skill_change_stores_bodies_once_and_rebuilds_state(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "skills"
-            library = SkillLibrary((), writable_root=root)
-            skill = library.create("self", "old method", description="Self skill", actor="agent")
+            root = Path(directory) / "plugins"
+            catalog = PluginCatalog((), writable_root=root)
+            catalog.create_plugin("local/self", "old method", description="Self Skill")
+            catalog.refresh()
+            skill = catalog.find_skill("skill:local/self/main")
             store = EventStore(MemoryStorage(), "alice", "agent")
-            evolution = SkillEvolution(library, store=store, runner=lambda body, _prompt: body)
+            policy = EvolutionConfig(
+                ("plugin:local/self",), ("plugin:local/self",)
+            )
+            evolution = SkillEvolution(
+                catalog,
+                policy=policy,
+                store=store,
+                runner=lambda body, _prompt: body,
+            )
             proposed = evolution.propose(skill.key, "new method", reason="measured improvement")
             tested = evolution.test(
                 proposed.change_id,
@@ -330,15 +363,23 @@ class SkillLibraryTests(unittest.TestCase):
             records = store.read("skill_change", proposed.change_id)
             self.assertIn("candidate_body", records[0].data)
             self.assertTrue(all("candidate_body" not in item.data for item in records[1:]))
-            rebuilt = SkillEvolution(library, store=store, runner=lambda body, _prompt: body)
+            catalog.refresh()
+            rebuilt = SkillEvolution(
+                catalog,
+                policy=policy,
+                store=store,
+                runner=lambda body, _prompt: body,
+            )
             self.assertEqual("undone", rebuilt.undo(proposed.change_id).status)
 
     def test_skill_change_tool_event_is_linked_to_the_run_audit(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "skills"
-            write_skill(root, name="self", created_by="agent")
+            root = Path(directory) / "plugins"
+            write_skill(root, name="self")
             builtin = Path(__file__).resolve().parents[1] / "src" / "skill" / "builtin"
-            library = SkillLibrary((root, builtin), writable_root=Path(directory) / "owned")
+            catalog = PluginCatalog(
+                (root, builtin), writable_root=Path(directory) / "owned"
+            )
             model = MockModel(
                 responses=(
                     (
@@ -346,7 +387,7 @@ class SkillLibraryTests(unittest.TestCase):
                             "change-1",
                             "propose_skill_update",
                             {
-                                "skill": "prompt:self",
+                                "skill": "skill:self/main",
                                 "candidate_body": "Improved method.",
                                 "reason": "Measured improvement.",
                             },
@@ -357,10 +398,13 @@ class SkillLibraryTests(unittest.TestCase):
                 )
             )
             agent = Agent(model)
-            agent.use_skill_library(library)
+            agent.use_plugin_catalog(catalog)
             agent.enable_skill_evolution()
+            agent.allow_skill_to_evolve("skill:self/main")
             agent.use_storage(MemoryStorage())
-            result = agent.run("Improve the Skill", skill="evolution:self-update")
+            result = agent.run(
+                "Improve the Skill", skill="skill:super-agent/common/self-update"
+            )
             insight = agent.for_user("local").runs.explain(result.run_id)
             self.assertEqual(
                 ["skill_change.proposed"],
@@ -371,8 +415,8 @@ class SkillLibraryTests(unittest.TestCase):
     def test_freshness_is_deterministic_and_multidimensional(self):
         now = datetime.now(UTC)
         evidence = [
-            SkillEvidence("prompt:demo", 1.0, True, input_tokens=10, output_tokens=5, used_at=(now - timedelta(days=1)).isoformat()),
-            SkillEvidence("prompt:demo", 0.0, False, input_tokens=10_000, output_tokens=10_000, replacement_calls=2, used_at=(now - timedelta(days=60)).isoformat()),
+            SkillEvidence("skill:demo/main", 1.0, True, input_tokens=10, output_tokens=5, used_at=(now - timedelta(days=1)).isoformat()),
+            SkillEvidence("skill:demo/main", 0.0, False, input_tokens=10_000, output_tokens=10_000, replacement_calls=2, used_at=(now - timedelta(days=60)).isoformat()),
         ]
         first = calculate_freshness(evidence, now=now)
         second = calculate_freshness(evidence, now=now)

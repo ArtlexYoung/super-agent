@@ -13,6 +13,7 @@ from threading import RLock
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from core import dataclass_data, require_integer as _integer, require_text as _text
 from core.model import Tool
 
 if TYPE_CHECKING:
@@ -51,13 +52,7 @@ class DisclosurePage:
         return self.page * self.page_size < self.total
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "items": [dict(item) for item in self.items],
-            "page": self.page,
-            "page_size": self.page_size,
-            "total": self.total,
-            "has_more": self.has_more,
-        }
+        return {**dataclass_data(self), "has_more": self.has_more}
 
 
 @dataclass(frozen=True)
@@ -87,6 +82,7 @@ class DisclosureStore:
         self.max_content_characters = max_content_characters
         self.record_event = record_event
         self._memory: dict[str, _ContentResource] = {}
+        self._references: dict[str, str] = {}
         self._history: list[dict[str, object]] = []
         self._lock = RLock()
 
@@ -192,14 +188,16 @@ class DisclosureStore:
         )
 
     def _cache_path(self, resource: _ContentResource) -> str:
-        digest = hashlib.sha256(
-            f"{resource.reference}\0{resource.sha256}".encode()
-        ).hexdigest()
+        # 物理缓存按内容寻址；历史事件仍保留每次调用的逻辑引用。
+        digest = resource.sha256
         if self.cache_root is None:
             return f"memory://{digest}"
         return f"{digest[:2]}/{digest}.json"
 
     def _store(self, resource: _ContentResource, cache_path: str) -> None:
+        self._references[cache_path] = resource.reference
+        while len(self._references) > self.max_entries:
+            self._references.pop(next(iter(self._references)))
         if self.cache_root is None:
             self._memory.pop(cache_path, None)
             self._memory[cache_path] = resource
@@ -212,7 +210,6 @@ class DisclosureStore:
                 target,
                 json.dumps(
                     {
-                        "reference": resource.reference,
                         "content": resource.content,
                         "sha256": resource.sha256,
                     },
@@ -241,7 +238,7 @@ class DisclosureStore:
         if not isinstance(value, dict):
             raise TypeError("cached disclosure must be an object")
         resource = _ContentResource(
-            _text(value.get("reference"), "cached disclosure reference"),
+            self._references.get(cache_path, f"content:{value.get('sha256', '')}"),
             _text_value(value.get("content"), "cached disclosure content"),
             _text(value.get("sha256"), "cached disclosure SHA-256"),
         )
@@ -351,25 +348,9 @@ def _inside(root: Path, path: Path) -> Path:
     return selected
 
 
-def _text(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{name} must be non-empty text")
-    return value.strip()
-
-
 def _text_value(value: object, name: str) -> str:
     if not isinstance(value, str):
         raise TypeError(f"{name} must be text")
-    return value
-
-
-def _integer(value: object, name: str, minimum: int, maximum: int) -> int:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or not minimum <= value <= maximum
-    ):
-        raise ValueError(f"{name} must be between {minimum} and {maximum}")
     return value
 
 

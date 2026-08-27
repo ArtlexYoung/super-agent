@@ -1,4 +1,4 @@
-"""从独立 TOML 配置加载一个本地 Skill。"""
+"""从独立 TOML 配置加载一个本地插件。"""
 
 from pathlib import Path
 

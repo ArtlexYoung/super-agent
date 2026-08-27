@@ -8,6 +8,7 @@ from dataclasses import replace
 from threading import Condition, RLock, Thread
 from uuid import uuid4
 
+from core import require_text as _text
 from core.event import RunIdentity, RunResult, utc_now
 from core.records import compact_child_result
 from core.run import RuntimeLifecycle
@@ -524,10 +525,6 @@ class AgentTaskRuntime:
             self.record_event(event_type, data)
 
 
-def _text(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{name} must be non-empty text")
-    return value.strip()
 
 
 __all__ = ["TERMINAL", "AgentTaskRuntime", "RecordEvent"]

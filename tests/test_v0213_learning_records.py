@@ -6,7 +6,7 @@ from adapter.storage import MemoryStorage
 from core.model import ModelEvent
 from core.provider import MockModel
 from skill.document import format_skill
-from skill.library import SkillLibrary
+from skill.library import PluginCatalog
 from super_agent import Agent
 
 
@@ -49,25 +49,23 @@ class LearningRecordTests(unittest.TestCase):
                         "name": "self",
                         "description": "An agent-owned method",
                         "version": "0.1.0",
-                        "created_by": "agent",
-                        "agent_can_update": True,
                     },
                     "Use the method.",
                 ),
                 encoding="utf-8",
             )
             agent = Agent(MockModel("answer"))
-            agent.use_skill_library(SkillLibrary((root,)))
+            agent.use_plugin_catalog(PluginCatalog((root,)))
             agent.enable_skill_evolution()
             agent.use_storage(MemoryStorage())
-            result = agent.run("use it", skill="self")
+            result = agent.run("use it", skill="skill:self/main")
 
             self.assertEqual(
                 1, agent.for_user("local").runs.learn(result.run_id, score=0.8)
             )
             explanation = agent.for_user("local").runs.explain(result.run_id)
             self.assertEqual(
-                "prompt:self",
+                "skill:self/main",
                 explanation["skill_evidence"][0]["data"]["skill_key"],
             )
             self.assertTrue(

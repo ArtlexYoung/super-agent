@@ -28,8 +28,6 @@ STANDARD_FIELDS = {
 EXTENSION_KEYS = {
     "type": "super-agent-type",
     "version": "super-agent-version",
-    "created_by": "super-agent-created-by",
-    "agent_can_update": "super-agent-agent-can-update",
     "categories": "super-agent-categories",
     "requires": "super-agent-requires",
     "optional_tools": "super-agent-optional-tools",
@@ -51,13 +49,14 @@ class Skill:
     description: str
     body: str
     path: Path
+    reference: str
+    plugin_id: str
+    member_name: str
     categories: tuple[str, ...] = ()
     requires: tuple[str, ...] = ()
     optional_tools: tuple[str, ...] = ()
     includes: tuple[str, ...] = ()
     version: str = "0.1.0"
-    created_by: str = "user"
-    agent_can_update: bool = False
     metadata: Mapping[str, object] = field(default_factory=dict)
     sha256: str = ""
 
@@ -68,12 +67,12 @@ class Skill:
             raise ValueError("skill description and body cannot be empty")
         if len(self.description) > 1024:
             raise ValueError("skill description cannot exceed 1024 characters")
-        if self.created_by not in {"builtin", "user", "agent"}:
-            raise ValueError("skill created_by must be builtin, user, or agent")
+        if self.reference != f"skill:{self.plugin_id}/{self.member_name}":
+            raise ValueError("skill reference does not match its plugin and member")
 
     @property
     def key(self) -> str:
-        return f"{self.skill_type}:{self.name}"
+        return self.reference
 
     @property
     def root(self) -> Path:
@@ -82,6 +81,9 @@ class Skill:
     def index_entry(self) -> dict[str, object]:
         return {
             "key": self.key,
+            "plugin": f"plugin:{self.plugin_id}",
+            "name": self.member_name,
+            "type": self.skill_type,
             "description": self.description,
             "categories": list(self.categories),
             "requires": list(self.requires),
@@ -232,12 +234,14 @@ def _package_from_zip(path: Path) -> SkillPackage:
                     f"Skill package cannot exceed {MAX_PACKAGE_BYTES} unpacked bytes"
                 )
             entries.append((relative, info))
-        skill_paths = [
-            relative for relative, _ in entries if relative.name == SKILL_FILE
-        ]
-        if len(skill_paths) != 1:
-            raise ValueError("Skill package must contain exactly one SKILL.md")
-        root = skill_paths[0].parent
+        skill_paths = [relative for relative, _ in entries if relative.name == SKILL_FILE]
+        if not skill_paths:
+            raise ValueError("Skill package must contain a root SKILL.md")
+        shortest = min(len(path.parts) for path in skill_paths)
+        roots = [path.parent for path in skill_paths if len(path.parts) == shortest]
+        if len(roots) != 1:
+            raise ValueError("Skill package must contain one unambiguous root SKILL.md")
+        root = roots[0]
         selected = tuple(
             (relative.relative_to(root), info)
             for relative, info in entries
@@ -313,10 +317,20 @@ def _validate_package_manifest(entries: tuple[tuple[Path, int], ...]) -> None:
     if len(set(paths)) != len(paths):
         raise ValueError("Skill package cannot contain duplicate paths")
     skill_paths = tuple(path for path in paths if path.name == SKILL_FILE)
-    if skill_paths != (Path(SKILL_FILE),):
-        raise ValueError(
-            "Skill package must contain one root SKILL.md and no nested SKILL.md"
+    if Path(SKILL_FILE) not in skill_paths:
+        raise ValueError("Skill package must contain one root SKILL.md")
+    invalid_skills = tuple(
+        path
+        for path in skill_paths
+        if path != Path(SKILL_FILE)
+        and not (
+            len(path.parts) == 3
+            and path.parts[0] == "skills"
+            and NAME_PATTERN.fullmatch(path.parts[1])
         )
+    )
+    if invalid_skills:
+        raise ValueError("nested Skills must use skills/<name>/SKILL.md")
     occupied = set(paths)
     if any(parent in occupied for path in paths for parent in path.parents[:-1]):
         raise ValueError("Skill package path cannot be both a file and a directory")
@@ -344,12 +358,22 @@ def _safe_package_destination(root: Path, relative: Path) -> Path:
     return destination
 
 
-def parse_skill_text(text: str, path: Path) -> Skill:
+def parse_skill_text(
+    text: str,
+    path: Path,
+    *,
+    plugin_id: str | None = None,
+    member_name: str = "main",
+    validate_path: bool = True,
+) -> Skill:
     """读取标准 YAML front matter 和 Markdown 正文。"""
     frontmatter, body = _split_front_matter(text)
     metadata = _normalize_metadata(frontmatter)
     name = _required_text(metadata.get("name"), "skill name")
-    _validate_skill_path(name, path)
+    if validate_path:
+        _validate_skill_path(name, path)
+    selected_plugin = plugin_id or name
+    selected_member = _required_text(member_name, "skill member name")
     digest = hashlib.sha256(text.encode()).hexdigest()
     return Skill(
         name=name,
@@ -357,6 +381,9 @@ def parse_skill_text(text: str, path: Path) -> Skill:
         description=_required_text(metadata.get("description"), "skill description"),
         body=body.strip(),
         path=path.resolve(),
+        reference=f"skill:{selected_plugin}/{selected_member}",
+        plugin_id=selected_plugin,
+        member_name=selected_member,
         categories=_text_array(metadata.get("categories", []), "skill categories"),
         requires=_text_array(metadata.get("requires", []), "skill requires"),
         optional_tools=_text_array(
@@ -364,10 +391,6 @@ def parse_skill_text(text: str, path: Path) -> Skill:
         ),
         includes=_text_array(metadata.get("includes", []), "skill includes"),
         version=_required_text(metadata.get("version"), "skill version"),
-        created_by=_required_text(metadata.get("created_by"), "skill created_by"),
-        agent_can_update=_boolean(
-            metadata.get("agent_can_update"), "skill agent_can_update"
-        ),
         metadata=MappingProxyType(metadata),
         sha256=digest,
     )
@@ -414,10 +437,6 @@ def _normalize_metadata(frontmatter: Mapping[str, object]) -> dict[str, object]:
         ),
         "type": extra.get(EXTENSION_KEYS["type"], "prompt"),
         "version": extra.get(EXTENSION_KEYS["version"], "0.1.0"),
-        "created_by": extra.get(EXTENSION_KEYS["created_by"], "user"),
-        "agent_can_update": _extension_boolean(
-            extra.get(EXTENSION_KEYS["agent_can_update"], "false")
-        ),
         "standard_metadata": extra,
     }
     for key in ("license", "compatibility", "allowed-tools"):
@@ -446,11 +465,6 @@ def _extension_metadata(metadata: Mapping[str, object]) -> dict[str, str]:
     values[EXTENSION_KEYS["version"]] = _required_text(
         metadata.get("version", "0.1.0"), "skill version"
     )
-    values[EXTENSION_KEYS["created_by"]] = _required_text(
-        metadata.get("created_by", "user"), "skill created_by"
-    )
-    update = _boolean(metadata.get("agent_can_update", False), "skill agent_can_update")
-    values[EXTENSION_KEYS["agent_can_update"]] = "true" if update else "false"
     for key in LIST_FIELDS:
         items = _text_array(metadata.get(key, []), f"skill {key}")
         if items:
@@ -633,12 +647,6 @@ def _is_block_scalar(value: str) -> bool:
     return value in {"|", "|-", "|+", ">", ">-", ">+"}
 
 
-def _extension_boolean(value: str) -> bool:
-    if value not in {"true", "false"}:
-        raise ValueError("super-agent-agent-can-update must be 'true' or 'false'")
-    return value == "true"
-
-
 def _extension_list(value: str, name: str) -> list[str]:
     try:
         parsed = json.loads(value)
@@ -665,12 +673,6 @@ def _text_array(value: object, name: str) -> tuple[str, ...]:
     ):
         raise ValueError(f"{name} must be an array of non-empty text")
     return tuple(dict.fromkeys(item.strip() for item in value))
-
-
-def _boolean(value: object, name: str) -> bool:
-    if not isinstance(value, bool):
-        raise TypeError(f"{name} must be a boolean")
-    return value
 
 
 def _validate_name(value: str, name: str) -> None:

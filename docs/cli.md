@@ -2,59 +2,74 @@
 
 ## 直接运行 / Direct Use
 
-CLI 入口是 `super-agent`，也可以从源码运行 `python3.11 src/cli.py`。
+CLI 入口是 `super-agent`，源码检出也可以运行 `python3.11 src/cli.py`。
 
-The CLI entry point is `super-agent`; source checkout users may run `python3.11 src/cli.py`.
+The CLI entry point is `super-agent`; a source checkout may also run `python3.11 src/cli.py`.
 
 ```bash
 super-agent "总结当前目录"
-super-agent --output json "返回结构化结果"
-super-agent --skill code --save "检查并修复代码"
+super-agent --plugin plugin:super-agent/code "检查这个仓库"
+super-agent --skill skill:super-agent/common/review "检视当前方案"
+super-agent --save "保存本次对话"
 super-agent
 ```
 
-没有参数进入交互会话；`/help`、`/skills`、`/clear` 和 `/exit` 是终端控制命令。它们不是模型触发词，不会被送入模型。
+`--plugin` 显式激活整个插件及其依赖，`--skill` 只激活一个规范 Skill 引用。两者只影响本次运行，不会写回配置。
 
-Without arguments the CLI starts an interactive session; `/help`, `/skills`, `/clear`, and `/exit` are terminal controls. They are not model trigger words and are not sent to the model.
+`--plugin` explicitly activates a plugin and its dependencies, while `--skill` activates one canonical Skill reference. Both affect only the current run and never rewrite configuration.
 
-## 配置命令 / Configuration Commands
+没有参数时进入交互会话。`/help`、`/plugins`、`/skills`、`/clear` 和 `/exit` 是终端控制命令，不会被发送给模型，也不是 Skill 触发词。
+
+Without arguments the CLI starts an interactive session. `/help`, `/plugins`, `/skills`, `/clear`, and `/exit` are terminal controls, are never sent to the model, and are not Skill trigger words.
+
+## 目录命令 / Catalog Commands
+
+```bash
+super-agent plugins list --config common.toml
+super-agent plugins read plugin:super-agent/common --config common.toml
+super-agent skills list --config common.toml
+super-agent skills read skill:super-agent/common/review --config common.toml
+```
+
+`list` 只返回有界索引，`read` 只预览正文且不激活内容。禁用项不会出现在索引中。引用必须是规范的 `plugin:` 或 `skill:` 形式，不做旧名称猜测。
+
+`list` returns only a bounded index, and `read` previews a body without activation. Disabled entries stay out of the index. References must use canonical `plugin:` or `skill:` form; legacy names are never guessed.
+
+## 检查与配置 / Check and Configuration
 
 ```bash
 super-agent check --config common.toml
 super-agent config show --config common.toml
 super-agent config validate --config common.toml
-super-agent skills list --config common.toml
-super-agent skills read prompt:research --config common.toml
+```
+
+`check` 验证通用配置、模型前置条件以及插件依赖图，并报告插件、Skill 和模型数量。它不创建存储、不调用模型、不安装插件。
+
+`check` validates general configuration, model prerequisites, and the plugin dependency graph, then reports plugin, Skill, and model counts. It creates no storage, calls no model, and installs no plugin.
+
+`config show` 分别显示 CLI 和通用配置；`config validate` 还校验明确引用的 `code.toml`。三份配置不深度合并。
+
+`config show` displays CLI and general configuration separately; `config validate` also validates an explicitly referenced `code.toml`. The three files are never deep-merged.
+
+## 数据命令 / Data Commands
+
+```bash
 super-agent data storage verify --config common.toml
 super-agent data storage prune --config common.toml --user alice
 super-agent data storage prune --config common.toml --user alice --apply
 super-agent data conversations list --config common.toml --user alice
 ```
 
-这些命令只在其明确职责范围内工作。`check` 和 `config` 不创建存储；`data` 需要配置中显式启用后端。
-`storage prune` 默认只报告候选数量，只有 `--apply` 才执行删除；`--apply` 不能用于其他动作。
+`data` 需要显式存储后端。`storage prune` 默认只预览到期详细和关键记录，只有 `--apply` 才删除；`--apply` 用于其他动作会直接失败。
 
-Each command stays within its declared scope. `check` and `config` do not create storage; `data` requires an explicitly configured backend.
-`storage prune` reports candidates by default and deletes only with `--apply`; `--apply` is rejected for other actions.
+`data` requires an explicit storage backend. `storage prune` previews expired detailed and critical records by default and deletes only with `--apply`; using `--apply` with another action fails.
 
-## 三份配置 / Three Config Files
+## 配置查找 / Configuration Lookup
 
-- `common.toml`：模型、Skill、记忆、进化、存储和运行限制。
-- `cli.toml`：输出格式、用户和保存开关。
-- `code.toml`：工作区路径、写入/删除/Git/执行策略、验证命令。
+未指定 `--cli-config` 时，CLI 从当前目录向上寻找最近的 `cli.toml`，再检查用户配置目录。未指定 `--config` 时，从当前目录向上寻找最近的 `common.toml`。相对路径始终以所属配置文件目录解析。
 
-- `common.toml`: models, Skills, memory, evolution, storage, and run limits.
-- `cli.toml`: output format, user, and saving.
-- `code.toml`: workspace path, write/delete/Git/execute policy, and declared checks.
+Without `--cli-config`, the CLI searches upward for the nearest `cli.toml` and then checks the user configuration directory. Without `--config`, it searches upward for the nearest `common.toml`. Relative paths resolve from their owning configuration file.
 
-未指定 `--cli-config` 时，CLI 从当前目录向上寻找最近的 `cli.toml`，再检查用户配置目录；未指定通用配置时，从当前目录向上寻找最近的 `common.toml`。相对配置路径始终以所属配置文件目录解析。
+没有 `code.toml` 时，当前目录是工作区，Git 读取可用，写入和删除为 `ask`，且没有预设验证命令。非交互环境不会自动确认副作用。
 
-Without `--cli-config`, the CLI searches upward for the nearest `cli.toml` and then the user configuration directory; without a general config path, it searches upward for the nearest `common.toml`. Relative paths always resolve from their owning configuration file.
-
-配置文件不互相深度合并；同名或未知字段不会被静默覆盖。
-
-Configuration files are not deep-merged; duplicate or unknown fields are never silently overridden.
-
-代码动作使用 `deny`、`ask` 或 `allow`。拼写错误和未知字段直接失败；`allow` 不会再次询问，`ask` 才会逐次确认。模型可先调用 `list_process_commands` 查看完整允许列表，再提交完全一致的参数数组。
-
-Code actions use `deny`, `ask`, or `allow`. Misspellings and unknown fields fail; `allow` does not prompt again, while `ask` confirms each call. The model can call `list_process_commands` before submitting an exact declared argument array.
+Without `code.toml`, the current directory is the workspace, Git reads are available, writes and deletes use `ask`, and no verification command is assumed. Non-interactive environments never auto-confirm effects.

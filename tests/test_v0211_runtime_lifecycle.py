@@ -2,7 +2,7 @@ import unittest
 
 from core.event import RunIdentity
 from core.provider import MockModel
-from core.run import RuntimeLifecycle
+from core.run import RunSession, RuntimeLifecycle, ToolContext
 from skill.organization import AgentTreeSettings, agent_group_node
 from skill.organization_runtime import AgentTreeRuntime
 from super_agent import Agent
@@ -18,6 +18,30 @@ class RuntimeLifecycleTests(unittest.TestCase):
         self.assertEqual(0, snapshot["active_runs"])
         self.assertEqual("completed", snapshot["runs"][0]["status"])
         self.assertNotIn("answer", repr(snapshot))
+
+    def test_create_task_tool_uses_the_calling_runtime_lifecycle(self):
+        root = Agent(MockModel("root"), name="root")
+        runtime = AgentTreeRuntime(agent_group_node(root).root())
+        group_id = agent_group_node(root).group_id
+        identity = RunIdentity(agent_name="root", run_id="parent-run")
+        lifecycle = RuntimeLifecycle(identity.run_id)
+        session = RunSession(
+            identity,
+            [],
+            [],
+            {},
+            runtime_lifecycle=lifecycle,
+        )
+        context = ToolContext(session, lambda _event, _data: None)  # type: ignore[arg-type]
+        tool = next(
+            item for item in runtime.tools(group_id) if item.name == "create_agent_task"
+        )
+
+        created = tool.handler({"prompt": "child work"}, context)
+
+        snapshot = lifecycle.snapshot()
+        self.assertEqual(created["task_id"], snapshot["tasks"][0]["task_id"])
+        self.assertEqual("created", snapshot["tasks"][0]["status"])
 
     def test_child_task_and_run_share_the_parent_lifecycle(self):
         root = Agent(MockModel("root"), name="root")

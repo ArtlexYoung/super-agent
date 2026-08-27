@@ -8,6 +8,7 @@ from time import monotonic
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from core import require_text as _text
 from core.disclosure import DisclosureStore
 from core.event import RunIdentity
 from core.model import Tool
@@ -458,13 +459,13 @@ def get_or_create_agent_tree_runtime(
         return existing
     identity = RunIdentity(user_id=user_id, agent_name=owner.name)
     store = owner._event_store(identity)
-    library = owner._library(identity, store)
+    catalog = owner._catalog(identity, store)
     runtime = AgentTreeRuntime(
         root,
         owner.agent_tree_settings,
         user_id=user_id,
         record_event=_tree_event_recorder(store, root.group_id),
-        disclosures=library.disclosures if library is not None else DisclosureStore(),
+        disclosures=catalog.disclosures if catalog is not None else DisclosureStore(),
     )
     owner._agent_tree_runtimes[user_id] = runtime
     return runtime
@@ -496,12 +497,6 @@ def _tree_event_recorder(
         return store.append("agent_tree", stream_id, event, data)
 
     return record
-
-
-def _text(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{name} must be non-empty text")
-    return value.strip()
 
 
 __all__ = [

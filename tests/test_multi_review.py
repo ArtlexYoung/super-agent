@@ -5,7 +5,7 @@ from pathlib import Path
 from core.event import RunIdentity
 from core.provider import MockModel
 from core.run import RunSession, ToolContext
-from skill.library import SkillLibrary
+from skill.library import PluginCatalog
 from skill.organization import AgentMemberSettings, AgentTreeSettings, agent_group_node
 from skill.organization_runtime import AgentTreeRuntime
 from super_agent import Agent
@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class MultiAgentReviewTests(unittest.TestCase):
     def test_review_skill_mounts_the_shared_multi_agent_tools(self):
-        library = SkillLibrary((ROOT / "src" / "skill" / "builtin",))
+        catalog = PluginCatalog((ROOT / "src" / "skill" / "builtin",))
         root = Agent(MockModel("root"), name="root")
         root.add_subagent(Agent(MockModel("first")), name="reviewer-a")
         root.add_subagent(Agent(MockModel("second")), name="reviewer-b")
@@ -29,19 +29,21 @@ class MultiAgentReviewTests(unittest.TestCase):
             values={"available_tools": tools},
         )
 
-        activated = library.activate("task:common-multi-review", session)
+        activated = catalog.activate_skill(
+            "skill:super-agent/common/review", session
+        )
 
         self.assertEqual(
             (
-                "task:common-multi-producer-consumer",
-                "task:common-multi-review",
+                "skill:super-agent/common/multi-agent",
+                "skill:super-agent/common/review",
             ),
             activated,
         )
         self.assertIn("dispatch_agent_tasks", session.tools)
         self.assertIn("create_agent_decision", session.tools)
         self.assertIn("post_shared_note", session.tools)
-        review = library.find("task:common-multi-review")
+        review = catalog.find_skill("skill:super-agent/common/review")
         self.assertEqual(("dispatch_agent_tasks",), review.requires)
         self.assertIn("not executor self-check", review.body)
 

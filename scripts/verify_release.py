@@ -1,4 +1,4 @@
-"""运行 v0.2.15 的本地发布检查。"""
+"""运行 v0.2.16 的本地发布检查。"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-VERSION = "0.2.15"
+VERSION = "0.2.16"
 MAX_SOURCE_FILES = 25
 MAX_SOURCE_LINES = 10_600
 SOURCE_ROOTS = {"adapter", "core", "skill", "cli.py", "super_agent.py"}
@@ -51,17 +51,16 @@ EVALUATION_FILES = (
 )
 WHEEL_ROOTS = ["src/adapter", "src/core", "src/skill", "src/cli.py", "src/super_agent.py"]
 SDIST_ROOTS = ["README.md", "README_cn.md", "README_en.md", "pyproject.toml", "docs", "scripts", "src", "tests", "examples"]
-REQUIRED_BUILTIN_SKILLS = {
-    "code",
-    "code-multi-deep-optimization",
-    "common",
-    "common-multi-producer-consumer",
-    "common-multi-review",
-    "conversation",
-    "default",
-    "freshness",
-    "general",
-    "self-update",
+REQUIRED_BUILTIN_PLUGINS = {
+    "common": {
+        "conversation",
+        "freshness",
+        "memory",
+        "multi-agent",
+        "review",
+        "self-update",
+    },
+    "code": {"deep-optimization"},
 }
 
 
@@ -118,7 +117,7 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
     if lines > MAX_SOURCE_LINES:
         errors.append(f"source line count is {lines}, limit is {MAX_SOURCE_LINES}")
     errors.extend(_check_old_imports(files))
-    errors.extend(_check_builtin_skills(root / "src" / "skill" / "builtin"))
+    errors.extend(_check_builtin_plugins(root / "src" / "skill" / "builtin"))
     errors.extend(_check_benchmark(root / "examples" / "offline-gate-benchmark.json"))
     readme = (root / "README.md").read_text(encoding="utf-8") if (root / "README.md").is_file() else ""
     for marker in ("README_cn.md", "README_en.md", "## 致谢与借鉴"):
@@ -185,7 +184,7 @@ def _check_build_config(project: dict[str, object], root: Path) -> list[str]:
     wheel = targets.get("wheel", {})
     sdist = targets.get("sdist", {})
     if wheel.get("only-include") != WHEEL_ROOTS or wheel.get("sources") != ["src"]:
-        errors.append("wheel must contain only the v0.2.15 source roots")
+        errors.append("wheel must contain only the v0.2.16 source roots")
     if sdist.get("only-include") != SDIST_ROOTS:
         errors.append("sdist source roots changed")
     expected_force = {path: path for path in EVALUATION_FILES}
@@ -211,34 +210,34 @@ def _check_old_imports(files: list[Path]) -> list[str]:
     return errors
 
 
-def _check_builtin_skills(root: Path) -> list[str]:
+def _check_builtin_plugins(root: Path) -> list[str]:
     errors: list[str] = []
-    files = sorted(root.glob("*/SKILL.md"))
-    missing = sorted(
-        REQUIRED_BUILTIN_SKILLS - {path.parent.name for path in files}
-    )
-    if missing:
-        errors.append(f"required builtin Skills are missing: {', '.join(missing)}")
-    legacy = sorted(path.name for path in root.glob("*.md"))
-    if legacy:
-        errors.append(f"legacy flat builtin Skills remain: {', '.join(legacy)}")
-    for path in files:
+    directories = {path.name for path in root.iterdir() if path.is_dir()}
+    if directories != set(REQUIRED_BUILTIN_PLUGINS):
+        errors.append(f"builtin plugin layout changed: {sorted(directories)}")
+    for plugin_name, expected_members in REQUIRED_BUILTIN_PLUGINS.items():
+        plugin = root / plugin_name
+        manifest = _read_toml(plugin / "plugin.toml", errors)
+        if manifest.get("schema") != 1 or manifest.get("version") != VERSION:
+            errors.append(f"builtin plugin manifest is invalid: {plugin_name}")
+        members = {
+            path.parent.name for path in (plugin / "skills").glob("*/SKILL.md")
+        }
+        if members != expected_members:
+            errors.append(f"builtin plugin members changed: {plugin_name}: {sorted(members)}")
+    for path in sorted(root.rglob("SKILL.md")):
         try:
             text = path.read_text(encoding="utf-8")
-            expected_names = {
-                f"name: {path.parent.name}",
-                f'name: "{path.parent.name}"',
-                f"name: '{path.parent.name}'",
-            }
-            frontmatter = text.split("\n---\n", 1)[0]
-            if not text.startswith("---\n") or not any(
-                name in frontmatter.splitlines() for name in expected_names
+            if not text.startswith("---\n"):
+                errors.append(f"builtin Skill is not standard: {path}")
+            for forbidden in (
+                "super-agent-created-by",
+                "super-agent-agent-can-update",
             ):
-                errors.append(
-                    f"builtin Skill is not a standard SKILL.md: {path.parent.name}"
-                )
+                if forbidden in text:
+                    errors.append(f"builtin Skill grants its own permission: {path}")
         except OSError as error:
-            errors.append(f"cannot read builtin Skill {path.parent.name}: {error}")
+            errors.append(f"cannot read builtin Skill {path}: {error}")
     return errors
 
 

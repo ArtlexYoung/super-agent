@@ -12,17 +12,17 @@
 
 > Skill is all you need.
 
-Super Agent 只向模型提供精简的 Skill 索引，由模型判断需要什么，再按需读取并执行对应内容。
+Super Agent 只向模型提供精简的插件与 Skill 索引，由模型判断需要什么，再按需读取并激活对应内容。
 
-Super Agent gives the model a compact Skill index, lets the model decide what it needs, and discloses and executes only that content.
+Super Agent gives the model compact plugin and Skill indexes, lets the model decide what it needs, and discloses and activates only that content.
 
 提示、工具使用方法、记忆方法、工作流和任务策略都使用同一种 Skill 格式，并经过同一条中心化渐进式披露路径；模型连接和密钥仍由显式配置管理。
 
 Prompts, tool-use methods, memory methods, workflows, and task policies share one Skill format and one central progressive-disclosure path; model connections and secrets remain explicit configuration.
 
-Skill 直接采用 Agent Skills 标准的 `<name>/SKILL.md`、YAML front matter 和 Markdown 正文，不维护私有文档变体。
+插件是可安装、可版本化、可授权进化的 Skill 集合；其中每个 Skill 继续直接采用 Agent Skills 标准的 `SKILL.md`、YAML front matter 和 Markdown 正文。
 
-Skills use the Agent Skills standard `<name>/SKILL.md`, YAML front matter, and Markdown body directly, without a private document variant.
+A plugin is an installable, versioned, externally authorized collection of Skills; every Skill still uses the standard Agent Skills `SKILL.md`, YAML front matter, and Markdown body.
 
 默认 Python 安装没有第三方运行依赖，基础 `Agent()` 无状态、不写文件，存储、记忆、MCP 和学习都按需启用。
 
@@ -90,7 +90,7 @@ print(result.text)
 
 组和子 Agent 在代码中自然组合。第 1 层是根组，普通组不调用模型，每个 Agent 仍保留自己的模型、Skill 和配置。
 
-Groups and subagents compose naturally in code. Level 1 is the root group, structural groups do not call models, and each Agent keeps its own models, Skills, and configuration.
+Groups and subagents compose naturally in code. Level 1 is the root group, structural groups do not call models, and each Agent keeps its own models, plugins, Skills, and configuration.
 
 ```python
 from super_agent import Agent, model_from_environment
@@ -99,7 +99,10 @@ main = Agent(model_from_environment())
 coder = Agent(model_from_environment())
 engineering = main.add_group("engineering")
 engineering.add_subagent(coder, name="coder", description="实现并验证代码修改")
-result = main.run("让工程组修复失败的测试", skill="common-multi-producer-consumer")
+result = main.run(
+    "让工程组修复失败的测试",
+    skill="skill:super-agent/common/multi-agent",
+)
 ```
 
 同级组通过父组共享板交换带缓存路径的明确记录。任务队列、等待唤醒、价格和权重路由、断路重试、动态压缩及多模型决策都由同一个 `AgentTreeRuntime` 管理；不添加组或子 Agent 时不会创建这些状态。
@@ -110,9 +113,9 @@ Sibling groups exchange explicit records with cache paths through their parent b
 
 Models may carry a user-authored initial `description`; the system preserves that prior and appends separately learned reliability and explicit quality evidence by user, Agent, and task type instead of overwriting it.
 
-`common-multi-review` 让至少两个不同 Agent 独立检视同一材料，再交叉验证发现；多样性不足时明确失败，不退化成执行者自检。
+`skill:super-agent/common/review` 让至少两个不同 Agent 独立检视同一材料，再交叉验证发现；多样性不足时明确失败，不退化成执行者自检。
 
-`common-multi-review` assigns the same artifact to at least two distinct Agents and then cross-checks findings; insufficient diversity fails explicitly instead of degrading to executor self-review.
+`skill:super-agent/common/review` assigns the same artifact to at least two distinct Agents and then cross-checks findings; insufficient diversity fails explicitly instead of degrading to executor self-review.
 
 ## CLI
 
@@ -124,8 +127,9 @@ The CLI remains a direct entry point, configuration checks are read-only, and on
 
 ```bash
 super-agent check
-super-agent --skill code "检查这个仓库"
+super-agent --plugin plugin:super-agent/code "检查这个仓库"
 super-agent config show
+super-agent plugins list
 super-agent skills list
 super-agent data storage verify --config common.toml
 super-agent data storage prune --config common.toml --user alice
@@ -139,8 +143,10 @@ super-agent data conversations list --config common.toml --user alice
 
 - 读取不会修改业务状态；显式启用磁盘披露缓存时，只会写入有界、可丢弃的缓存文件。
   Reads do not mutate domain state; an explicitly configured disclosure cache writes only bounded, disposable cache files.
-- Skill 内容是被动数据，不能自行注册代码、权限或密钥。
-  Skill content is passive data and cannot register code, permissions, or secrets by itself.
+- 插件和 Skill 内容是被动数据，不能自行注册代码、权限、密钥或进化授权。
+  Plugin and Skill content is passive data and cannot register code, permissions, secrets, or evolution authority by itself.
+- 同一插件身份和内容跨来源只存一份；同身份不同内容直接冲突，运行中则固定使用启动时的不可变快照。
+  Identical plugin content is reused across sources; conflicting content under one identity fails, and each run uses its immutable starting snapshot.
 - Provider、工具、存储和可选功能错误会保留原始失败语义。
   Provider, tool, storage, and optional-feature errors retain their original failure semantics.
 - 用户与 Agent 范围隔离对话、记忆、运行记录、披露缓存和 Skill 覆盖层。
@@ -220,5 +226,5 @@ Third-party projects retain their own copyrights and licenses; this project is l
 The full release gate checks Python tests, compilation, package contents, offline evaluation, and build.
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.15 --full
+python3.11 scripts/verify_release.py --version 0.2.16 --full
 ```

@@ -11,12 +11,18 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from adapter.process import ProcessSettings
+from core import (
+    reject_unknown_fields as _reject_fields,
+    require_boolean as _boolean,
+    require_integer as _integer,
+    require_text as _text,
+)
+from adapter.process import ProcessSettings, ProcessTools
 from adapter.storage import create_storage, verify_storage
-from adapter.tools import ToolPolicy, WorkspaceSettings, general_tools
+from adapter.tools import CodeWorkspace, ToolPolicy, WorkspaceSettings, general_tools
 from core.config import Config, config_from_environment
 from core.records import AuditPolicy, Conversations, EventStore
-from skill.library import CodeSkill, SkillLibrary
+from skill.library import PluginCatalog
 from super_agent import Agent, AgentContext
 
 
@@ -77,7 +83,7 @@ class CliConfig:
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     try:
-        if arguments and arguments[0] in {"config", "skills", "data", "check"}:
+        if arguments and arguments[0] in {"config", "plugins", "skills", "data", "check"}:
             return _run_command(arguments)
         parser = _build_run_parser()
         parsed = parser.parse_args(arguments)
@@ -86,9 +92,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         agent, _store = _build_agent(cli, parsed.config, parsed.code_config)
         if parsed.prompt:
             return _run_prompt(
-                agent, cli, parsed.prompt, parsed.conversation_id, parsed.skill
+                agent,
+                cli,
+                parsed.prompt,
+                parsed.conversation_id,
+                parsed.plugin,
+                parsed.skill,
             )
-        return _run_chat(agent, cli, parsed.conversation_id, parsed.skill)
+        return _run_chat(
+            agent, cli, parsed.conversation_id, parsed.plugin, parsed.skill
+        )
     except (TypeError, ValueError, RuntimeError, OSError) as error:
         print(f"super-agent: {error}", file=sys.stderr)
         return 2
@@ -100,6 +113,8 @@ def _run_command(arguments: list[str]) -> int:
         return _check_command(arguments[1:])
     if command == "config":
         return _config_command(arguments[1:])
+    if command == "plugins":
+        return _plugins_command(arguments[1:])
     if command == "skills":
         return _skills_command(arguments[1:])
     return _data_command(arguments[1:])
@@ -115,12 +130,17 @@ def _check_command(arguments: list[str]) -> int:
     config = _load_general(parsed.config or cli.general_config)
     if config.models:
         config.create_model_profiles()
-    roots = _skill_roots(config)
-    library = SkillLibrary(roots, disabled_references=config.disabled_skills)
+    roots = _plugin_roots(config)
+    catalog = PluginCatalog(
+        roots,
+        disabled_plugins=config.disabled_plugins,
+        disabled_skills=config.disabled_skills,
+    )
     model_ready = _models_ready(config)
     result = {
         "config": "ok",
-        "skill_count": library.list_skills().total,
+        "plugin_count": catalog.list_plugins().total,
+        "skill_count": catalog.list_skills().total,
         "model_count": len(config.models),
         "model_ready": model_ready,
     }
@@ -148,8 +168,16 @@ def _config_command(arguments: list[str]) -> int:
     return _print_value(value, cli.output)
 
 
+def _plugins_command(arguments: list[str]) -> int:
+    return _catalog_command("plugins", arguments)
+
+
 def _skills_command(arguments: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="super-agent skills")
+    return _catalog_command("skills", arguments)
+
+
+def _catalog_command(kind: str, arguments: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog=f"super-agent {kind}")
     parser.add_argument("action", choices=("list", "read"), nargs="?", default="list")
     parser.add_argument("reference", nargs="?")
     parser.add_argument("--config")
@@ -157,19 +185,15 @@ def _skills_command(arguments: list[str]) -> int:
     parser.add_argument("--page-size", type=int, default=20)
     parser.add_argument("--output", choices=("text", "json"), default="json")
     parsed = parser.parse_args(arguments)
-    config = _load_general(parsed.config)
-    library = SkillLibrary(
-        _skill_roots(config),
-        disabled_references=config.disabled_skills,
-    )
+    catalog = _catalog_from_config(_load_general(parsed.config))
     if parsed.action == "list":
-        value = library.list_skills(
-            page=parsed.page, page_size=parsed.page_size
-        ).to_dict()
+        method = catalog.list_plugins if kind == "plugins" else catalog.list_skills
+        value = method(page=parsed.page, page_size=parsed.page_size).to_dict()
     else:
         if not parsed.reference:
-            raise ValueError("skills read requires a type:name reference")
-        value = library.preview(parsed.reference, max_characters=20_000).to_dict()
+            raise ValueError(f"{kind} read requires a canonical reference")
+        method = catalog.preview_plugin if kind == "plugins" else catalog.preview_skill
+        value = method(parsed.reference, max_characters=20_000).to_dict()
     return _print_value(value, parsed.output)
 
 
@@ -230,12 +254,13 @@ def _run_prompt(
     cli: CliConfig,
     prompt: str,
     conversation_id: str | None,
+    plugin: str | None,
     skill: str | None,
 ) -> int:
     result = _stream_to_terminal(
         agent,
         prompt,
-        _context(cli, conversation_id, skill),
+        _context(cli, conversation_id, plugin, skill),
         print_text=cli.output == "text",
     )
     if cli.output == "json":
@@ -246,7 +271,11 @@ def _run_prompt(
 
 
 def _run_chat(
-    agent: Agent, cli: CliConfig, conversation_id: str | None, skill: str | None
+    agent: Agent,
+    cli: CliConfig,
+    conversation_id: str | None,
+    plugin: str | None,
+    skill: str | None,
 ) -> int:
     current = conversation_id
     print("Super Agent. 输入 /help 查看命令，输入 /exit 退出。")
@@ -261,18 +290,13 @@ def _run_chat(
         if prompt == "/exit" or prompt == "/quit":
             return 0
         if prompt == "/help":
-            print("/help  /skills  /clear  /exit")
+            print("/help  /plugins  /skills  /clear  /exit")
             continue
-        if prompt == "/skills":
-            print(
-                json.dumps(
-                    agent.skill_library.list_skills().to_dict()
-                    if agent.skill_library
-                    else {"items": []},
-                    ensure_ascii=False,
-                    indent=2,
-                )
-            )
+        if prompt in {"/plugins", "/skills"}:
+            kind = prompt.removeprefix("/")
+            method = None if agent.plugin_catalog is None else getattr(agent.plugin_catalog, f"list_{kind}")
+            value = {"items": []} if method is None else method().to_dict()
+            print(json.dumps(value, ensure_ascii=False, indent=2))
             continue
         if prompt == "/clear":
             if current is not None and cli.save:
@@ -281,7 +305,7 @@ def _run_chat(
             print("当前会话上下文已清除。")
             continue
         result = _stream_to_terminal(
-            agent, prompt, _context(cli, current, skill), print_text=True
+            agent, prompt, _context(cli, current, plugin, skill), print_text=True
         )
         current = result.conversation_id or current
         if cli.show_summary:
@@ -324,17 +348,19 @@ def _build_agent(
             router_settings=config.router,
         )
     agent.set_instructions(*config.instructions)
-    roots = _skill_roots(config)
+    roots = _plugin_roots(config)
     writable = config.resolve_path(
-        config.writable_skill_path
-        or (config.storage.path + "/skills" if cli.save else None)
+        config.writable_plugin_path
+        or (config.storage.path + "/plugins" if cli.save else None)
     )
     cache = config.resolve_path(
-        config.skill_cache_path
+        config.plugin_cache_path
         or (config.storage.path + "/cache" if cli.save else None)
     )
-    library = SkillLibrary(roots, writable_root=writable, cache_root=cache)
-    agent.use_skill_library(library)
+    catalog = PluginCatalog(roots, writable_root=writable, cache_root=cache)
+    agent.use_plugin_catalog(catalog)
+    for reference in config.enabled_plugins:
+        agent.enable_plugin(reference)
     for reference in config.enabled_skills:
         agent.enable_skill(reference)
     policy = ToolPolicy(confirm=_confirm_action)
@@ -364,11 +390,11 @@ def _build_agent(
 def _attach_code_tools(agent: Agent, code_path: str | None) -> None:
     settings = _load_code(code_path)
     policy = ToolPolicy(settings.allowed_effects, _confirm_action)
-    code_skill = CodeSkill(settings.workspace, settings.process)
-    agent.add_instructions(*code_skill.load_instructions())
-    agent.add_tools_for_skills(
-        policy.protect_all(code_skill.tools())
-    )
+    agent.add_instructions(*_workspace_instructions(settings.workspace.root))
+    tools = list(CodeWorkspace(settings.workspace).tools())
+    if settings.process is not None:
+        tools.extend(ProcessTools(settings.process).tools())
+    agent.add_tools_for_skills(policy.protect_all(tools))
 
 
 @dataclass(frozen=True)
@@ -478,11 +504,15 @@ def _load_code(path: str | None) -> CodeConfig:
 
 
 def _context(
-    cli: CliConfig, conversation_id: str | None, skill: str | None = None
+    cli: CliConfig,
+    conversation_id: str | None,
+    plugin: str | None = None,
+    skill: str | None = None,
 ) -> AgentContext:
     return AgentContext(
         user_id=cli.user_id,
         conversation_id=conversation_id,
+        plugin=plugin,
         skill=skill,
         save_conversation=cli.save,
     )
@@ -529,11 +559,33 @@ def _load_general(path: str | None) -> Config:
     return Config.load(candidates[0]) if candidates else config_from_environment()
 
 
-def _skill_roots(config: Config) -> tuple[Path, ...]:
+def _plugin_roots(config: Config) -> tuple[Path, ...]:
     builtin = Path(__file__).resolve().parent.parent / "skill" / "builtin"
     roots = [builtin]
-    roots.extend(config.resolve_path(path) for path in config.skill_paths)
+    roots.extend(config.resolve_path(path) for path in config.plugin_paths)
     return tuple(path for path in roots if path is not None)
+
+
+def _catalog_from_config(config: Config) -> PluginCatalog:
+    return PluginCatalog(
+        _plugin_roots(config),
+        writable_root=config.resolve_path(config.writable_plugin_path),
+        cache_root=config.resolve_path(config.plugin_cache_path),
+        disabled_plugins=config.disabled_plugins,
+        disabled_skills=config.disabled_skills,
+    )
+
+
+def _workspace_instructions(root: Path) -> tuple[str, ...]:
+    """按外层到内层读取工作区规则，不创建任何文件。"""
+    values: list[str] = []
+    for directory in (*reversed(root.resolve().parents), root.resolve()):
+        path = directory / "AGENTS.md"
+        if path.is_file() and (content := path.read_text(encoding="utf-8").strip()):
+            values.append(
+                f"Coding instructions from {path.name} in {directory}:\n{content}"
+            )
+    return tuple(values)
 
 
 def _walk_up(start: Path, filename: str) -> list[Path]:
@@ -547,21 +599,21 @@ def _walk_up(start: Path, filename: str) -> list[Path]:
 
 
 def _database_url(config: Config) -> str | None:
-    return (
-        None
-        if not config.storage.database_url_env
-        else os.environ.get(config.storage.database_url_env)
-    )
+    return None if not config.storage.database_url_env else os.environ.get(config.storage.database_url_env)
 
 
 def _config_view(config: Config) -> dict[str, object]:
     return {
         "name": config.name,
-        "skill_paths": list(config.skill_paths),
+        "plugin_paths": list(config.plugin_paths),
+        "enabled_plugins": list(config.enabled_plugins),
+        "disabled_plugins": list(config.disabled_plugins),
         "enabled_skills": list(config.enabled_skills),
         "disabled_skills": list(config.disabled_skills),
         "memory": config.memory,
-        "evolution": config.evolution,
+        "evolution": (
+            None if config.evolution is None else config.evolution.__dict__
+        ),
         "warn_agent_level": config.warn_agent_level,
         "max_agent_level": config.max_agent_level,
         "max_agent_call_depth": config.max_agent_call_depth,
@@ -591,6 +643,7 @@ def _build_run_parser() -> argparse.ArgumentParser:
     parser.add_argument("--code-config")
     parser.add_argument("--user", default=None)
     parser.add_argument("--conversation-id", default=None)
+    parser.add_argument("--plugin", default=None, help="explicit plugin for this run")
     parser.add_argument("--skill", default=None, help="explicit Skill key for this run")
     parser.add_argument("--output", choices=("text", "json"), default=None)
     parser.add_argument("--save", action="store_true")
@@ -599,17 +652,8 @@ def _build_run_parser() -> argparse.ArgumentParser:
 
 
 def _print_value(value: object, output: str) -> int:
-    if output == "json":
-        print(json.dumps(value, ensure_ascii=False, indent=2))
-    else:
-        print(json.dumps(value, ensure_ascii=False, indent=2))
+    print(json.dumps(value, ensure_ascii=False, indent=2))
     return 0
-
-
-def _text(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{name} must be non-empty text")
-    return value.strip()
 
 
 def _optional_text(value: object) -> str | None:
@@ -626,22 +670,6 @@ def _configuration_path(value: object, source: Path) -> str | None:
     return str((path if path.is_absolute() else source.parent / path).resolve())
 
 
-def _boolean(value: object, name: str) -> bool:
-    if not isinstance(value, bool):
-        raise TypeError(f"{name} must be boolean")
-    return value
-
-
-def _integer(value: object, name: str, minimum: int, maximum: int) -> int:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or not minimum <= value <= maximum
-    ):
-        raise ValueError(f"{name} must be between {minimum} and {maximum}")
-    return value
-
-
 def _choice(value: object, name: str, choices: set[str]) -> str:
     selected = _text(value, name)
     if selected not in choices:
@@ -656,9 +684,3 @@ def _number(value: object, name: str, *, positive: bool = False) -> float:
     if positive and selected <= 0:
         raise ValueError(f"{name} must be positive")
     return selected
-
-
-def _reject_fields(value: Mapping[str, object], allowed: set[str], name: str) -> None:
-    unknown = sorted(set(value) - allowed)
-    if unknown:
-        raise ValueError(f"unknown {name} fields: {', '.join(unknown)}")

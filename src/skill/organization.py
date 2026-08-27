@@ -8,6 +8,7 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from core import dataclass_data, require_text as _text
 from core.event import RunIdentity, utc_now
 from core.provider import ModelPricing
 
@@ -172,22 +173,7 @@ class AgentDecision:
     created_at: str = field(default_factory=utc_now)
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "decision_id": self.decision_id,
-            "source_group_id": self.source_group_id,
-            "shared_note_id": self.shared_note_id,
-            "task_ids": list(self.task_ids),
-            "worker_names": list(self.worker_names),
-            "worker_link_ids": list(self.worker_link_ids),
-            "status": self.status,
-            "quorum": self.quorum,
-            "estimated_cost": self.estimated_cost,
-            "reduced": self.reduced,
-            "next_member": self.next_member,
-            "decisions": [dict(item) for item in self.decisions],
-            "result": self.result,
-            "created_at": self.created_at,
-        }
+        return dataclass_data(self)
 
 
 @dataclass(frozen=True)
@@ -577,10 +563,6 @@ def _next_name(used: set[str]) -> str:
     return f"subagent{number:02d}"
 
 
-def _text(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{name} must be non-empty text")
-    return value.strip()
 
 
 __all__ = [

@@ -41,9 +41,21 @@ super-agent "解释这个仓库"
 
 Provide `MODEL_API_KEY` in your external shell or secret manager first; documentation and configuration files store only the variable name, never the key value.
 
-`check` 只读取配置和 Skill，不创建存储、不调用模型；没有模型时返回失败是预期行为。
+`check` 只读取配置、插件与 Skill，不创建存储、不调用模型；没有模型时返回失败是预期行为。
 
-`check` only reads configuration and Skills. It does not create storage or call a model; failure without a model is intentional.
+`check` only reads configuration, plugins, and Skills. It does not create storage or call a model; failure without a model is intentional.
+
+## 显式选择插件 / Select a Plugin Explicitly
+
+内置 common 插件适合通用任务，code 插件适合仓库工作。模型也可以从索引自行选择相关 Skill；命令行参数只在需要固定本次方法时使用。
+
+The builtin common plugin suits general tasks, while the code plugin suits repository work. The model may also select relevant Skills from the index; use a command-line option only to fix the method for this run.
+
+```bash
+super-agent plugins list
+super-agent --plugin plugin:super-agent/code "检查当前仓库"
+super-agent --skill skill:super-agent/common/review "检视这个方案"
+```
 
 ## Python 嵌入 / Embed in Python
 

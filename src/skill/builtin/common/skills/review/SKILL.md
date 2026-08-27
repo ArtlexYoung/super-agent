@@ -1,14 +1,12 @@
 ---
-name: "common-multi-review"
+name: "review"
 description: "Coordinate several independent Agents to find defects, risks, questions, and improvements, then cross-check the findings"
 metadata:
-  super-agent-agent-can-update: "false"
   super-agent-categories: "[\"general/review\",\"review/multi-agent\"]"
-  super-agent-created-by: "builtin"
-  super-agent-includes: "[\"task:common-multi-producer-consumer\"]"
+  super-agent-includes: "[\"skill:super-agent/common/multi-agent\"]"
   super-agent-requires: "[\"dispatch_agent_tasks\"]"
   super-agent-type: "task"
-  super-agent-version: "0.2.1"
+  super-agent-version: "0.2.16"
 ---
 # Multi-Agent review method
 

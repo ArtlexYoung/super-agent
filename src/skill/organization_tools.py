@@ -7,6 +7,12 @@ from collections.abc import Iterable, Mapping
 from functools import partial
 from typing import TYPE_CHECKING
 
+from core import (
+    require_boolean as boolean,
+    require_integer as integer,
+    require_number as number,
+    require_text as text,
+)
 from core.model import Tool, estimate_tokens
 from core.run import ToolContext
 from skill.organization import AgentMember
@@ -14,95 +20,35 @@ from skill.organization import AgentMember
 if TYPE_CHECKING:
     from skill.organization_runtime import AgentTreeRuntime
 
+Arguments = dict[str, object]
+ToolDefinition = tuple[str, str, object, str, tuple[str, ...]]
+
 
 def agent_tree_tools(runtime: AgentTreeRuntime, group_id: str) -> tuple[Tool, ...]:
     """创建绑定当前组作用域的 Agent 树工具。"""
     schemas = _schemas()
+    return tuple(
+        Tool(name, description, partial(handler, runtime, group_id), schemas[schema], effects)
+        for name, description, handler, schema, effects in _tool_definitions()
+    )
+
+
+def _tool_definitions() -> tuple[ToolDefinition, ...]:
+    read, write, execute = ("read",), ("write",), ("execute",)
     return (
-        Tool(
-            "list_agent_tree",
-            "List the visible Agent group tree",
-            partial(_list_tree, runtime, group_id),
-            schemas["empty"],
-        ),
-        Tool(
-            "create_agent_task",
-            "Create one task for a child Agent or group",
-            partial(_create_task, runtime, group_id),
-            schemas["create_task"],
-            ("write",),
-        ),
-        Tool(
-            "dispatch_agent_task",
-            "Dispatch a created task to a suitable Agent",
-            partial(_dispatch_task, runtime, group_id),
-            schemas["dispatch"],
-            ("execute",),
-        ),
-        Tool(
-            "dispatch_agent_tasks",
-            "Dispatch matching tasks in parallel to distinct suitable Agents",
-            partial(_dispatch_tasks, runtime, group_id),
-            schemas["dispatch_many"],
-            ("execute",),
-        ),
-        Tool(
-            "read_agent_tasks",
-            "Read tasks created by this group",
-            partial(_read_tasks, runtime, group_id),
-            schemas["empty"],
-        ),
-        Tool(
-            "wait_for_agent_tasks",
-            "Sleep until a task event or timeout",
-            partial(_wait_tasks, runtime, group_id),
-            schemas["wait"],
-        ),
-        Tool(
-            "cancel_agent_task",
-            "Cancel a task that has not started",
-            partial(_cancel_task, runtime, group_id),
-            schemas["task"],
-            ("write",),
-        ),
-        Tool(
-            "post_shared_note",
-            "Post a note to the current or parent group board",
-            partial(_post_note, runtime, group_id),
-            schemas["post_note"],
-            ("write",),
-        ),
-        Tool(
-            "read_shared_notes",
-            "Read the bounded index of a group shared board",
-            partial(_read_notes, runtime, group_id),
-            schemas["read_notes"],
-        ),
-        Tool(
-            "wait_for_shared_notes",
-            "Sleep until a shared note is posted or timeout",
-            partial(_wait_notes, runtime, group_id),
-            schemas["wait_notes"],
-        ),
-        Tool(
-            "create_agent_decision",
-            "Create a staged multi-model decision",
-            partial(_create_decision, runtime, group_id),
-            schemas["create_decision"],
-            ("execute",),
-        ),
-        Tool(
-            "wait_for_agent_decision",
-            "Sleep until an Agent decision reaches quorum",
-            partial(_wait_decision, runtime, group_id),
-            schemas["wait_decision"],
-        ),
-        Tool(
-            "read_agent_decisions",
-            "Read decisions created by this group",
-            partial(_read_decisions, runtime, group_id),
-            schemas["empty"],
-        ),
+        ("list_agent_tree", "List the visible Agent group tree", _list_tree, "empty", read),
+        ("create_agent_task", "Create one task for a child Agent or group", _create_task, "create_task", write),
+        ("dispatch_agent_task", "Dispatch a created task to a suitable Agent", _dispatch_task, "dispatch", execute),
+        ("dispatch_agent_tasks", "Dispatch matching tasks in parallel to distinct suitable Agents", _dispatch_tasks, "dispatch_many", execute),
+        ("read_agent_tasks", "Read tasks created by this group", _read_tasks, "empty", read),
+        ("wait_for_agent_tasks", "Sleep until a task event or timeout", _wait_tasks, "wait", read),
+        ("cancel_agent_task", "Cancel a task that has not started", _cancel_task, "task", write),
+        ("post_shared_note", "Post a note to the current or parent group board", _post_note, "post_note", write),
+        ("read_shared_notes", "Read the bounded index of a group shared board", _read_notes, "read_notes", read),
+        ("wait_for_shared_notes", "Sleep until a shared note is posted or timeout", _wait_notes, "wait_notes", read),
+        ("create_agent_decision", "Create a staged multi-model decision", _create_decision, "create_decision", execute),
+        ("wait_for_agent_decision", "Sleep until an Agent decision reaches quorum", _wait_decision, "wait_decision", read),
+        ("read_agent_decisions", "Read decisions created by this group", _read_decisions, "empty", read),
     )
 
 
@@ -175,21 +121,11 @@ def quorum_result(decisions: Iterable[Mapping[str, object]], quorum: int) -> str
     return None
 
 
-def _list_tree(
-    runtime: AgentTreeRuntime,
-    group_id: str,
-    _arguments: dict[str, object],
-    _context: ToolContext,
-) -> dict[str, object]:
+def _list_tree(runtime: AgentTreeRuntime, group_id: str, _arguments: Arguments, _context: ToolContext) -> dict[str, object]:
     return runtime.list_tree(group_id)
 
 
-def _create_task(
-    runtime: AgentTreeRuntime,
-    group_id: str,
-    arguments: dict[str, object],
-    _context: ToolContext,
-) -> dict[str, object]:
+def _create_task(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, context: ToolContext) -> dict[str, object]:
     task = runtime.create_task(
         text(arguments.get("prompt"), "Agent task prompt"),
         source_group_id=group_id,
@@ -203,12 +139,7 @@ def _create_task(
     return task.to_dict()
 
 
-def _dispatch_task(
-    runtime: AgentTreeRuntime,
-    group_id: str,
-    arguments: dict[str, object],
-    context: ToolContext,
-) -> dict[str, object]:
+def _dispatch_task(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, context: ToolContext) -> dict[str, object]:
     task = runtime.dispatch_task(
         text(arguments.get("task_id"), "Agent task ID"),
         source_group_id=group_id,
@@ -219,12 +150,7 @@ def _dispatch_task(
     return task.to_dict()
 
 
-def _dispatch_tasks(
-    runtime: AgentTreeRuntime,
-    group_id: str,
-    arguments: dict[str, object],
-    context: ToolContext,
-) -> dict[str, object]:
+def _dispatch_tasks(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, context: ToolContext) -> dict[str, object]:
     tasks = runtime.dispatch_tasks(
         strings(arguments.get("task_ids", []), "Agent task IDs"),
         source_group_id=group_id,
@@ -237,21 +163,11 @@ def _dispatch_tasks(
     return {"tasks": [task.to_dict() for task in tasks]}
 
 
-def _read_tasks(
-    runtime: AgentTreeRuntime,
-    group_id: str,
-    _arguments: dict[str, object],
-    _context: ToolContext,
-) -> dict[str, object]:
+def _read_tasks(runtime: AgentTreeRuntime, group_id: str, _arguments: Arguments, _context: ToolContext) -> dict[str, object]:
     return {"version": runtime.version, "tasks": runtime.list_tasks(group_id)}
 
 
-def _wait_tasks(
-    runtime: AgentTreeRuntime,
-    group_id: str,
-    arguments: dict[str, object],
-    _context: ToolContext,
-) -> dict[str, object]:
+def _wait_tasks(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, _context: ToolContext) -> dict[str, object]:
     return runtime.wait_for_tasks(
         text(arguments.get("trigger"), "Agent task trigger"),
         group_id=group_id,
@@ -265,24 +181,14 @@ def _wait_tasks(
     )
 
 
-def _cancel_task(
-    runtime: AgentTreeRuntime,
-    group_id: str,
-    arguments: dict[str, object],
-    _context: ToolContext,
-) -> dict[str, object]:
+def _cancel_task(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, _context: ToolContext) -> dict[str, object]:
     return runtime.cancel_task(
         text(arguments.get("task_id"), "Agent task ID"),
         source_group_id=group_id,
     ).to_dict()
 
 
-def _post_note(
-    runtime: AgentTreeRuntime,
-    group_id: str,
-    arguments: dict[str, object],
-    _context: ToolContext,
-) -> dict[str, object]:
+def _post_note(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, _context: ToolContext) -> dict[str, object]:
     return runtime.post_note(
         group_id=group_id,
         title=text(arguments.get("title"), "shared note title"),
@@ -292,12 +198,7 @@ def _post_note(
     ).to_dict()
 
 
-def _read_notes(
-    runtime: AgentTreeRuntime,
-    group_id: str,
-    arguments: dict[str, object],
-    _context: ToolContext,
-) -> dict[str, object]:
+def _read_notes(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, _context: ToolContext) -> dict[str, object]:
     return runtime.list_notes(
         group_id=group_id,
         board=text(arguments.get("board", "current"), "shared board"),
@@ -306,12 +207,7 @@ def _read_notes(
     )
 
 
-def _wait_notes(
-    runtime: AgentTreeRuntime,
-    group_id: str,
-    arguments: dict[str, object],
-    _context: ToolContext,
-) -> dict[str, object]:
+def _wait_notes(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, _context: ToolContext) -> dict[str, object]:
     return runtime.wait_for_notes(
         group_id=group_id,
         board=text(arguments.get("board", "current"), "shared board"),
@@ -324,12 +220,7 @@ def _wait_notes(
     )
 
 
-def _create_decision(
-    runtime: AgentTreeRuntime,
-    group_id: str,
-    arguments: dict[str, object],
-    context: ToolContext,
-) -> dict[str, object]:
+def _create_decision(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, context: ToolContext) -> dict[str, object]:
     decision = runtime.create_decision(
         text(arguments.get("prompt"), "Agent decision prompt"),
         group_id=group_id,
@@ -353,12 +244,7 @@ def _create_decision(
     return decision.to_dict()
 
 
-def _wait_decision(
-    runtime: AgentTreeRuntime,
-    group_id: str,
-    arguments: dict[str, object],
-    context: ToolContext,
-) -> dict[str, object]:
+def _wait_decision(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, context: ToolContext) -> dict[str, object]:
     return runtime.wait_for_decision(
         text(arguments.get("decision_id"), "Agent decision ID"),
         group_id=group_id,
@@ -371,19 +257,8 @@ def _wait_decision(
     ).to_dict()
 
 
-def _read_decisions(
-    runtime: AgentTreeRuntime,
-    group_id: str,
-    _arguments: dict[str, object],
-    _context: ToolContext,
-) -> dict[str, object]:
+def _read_decisions(runtime: AgentTreeRuntime, group_id: str, _arguments: Arguments, _context: ToolContext) -> dict[str, object]:
     return {"decisions": runtime.list_decisions(group_id)}
-
-
-def text(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{name} must be non-empty text")
-    return value.strip()
 
 
 def optional_text(value: object) -> str | None:
@@ -398,30 +273,6 @@ def strings(value: object, name: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(item.strip() for item in value))
 
 
-def integer(value: object, name: str, minimum: int) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise ValueError(
-            f"{name} must be an integer greater than or equal to {minimum}"
-        )
-    return value
-
-
-def number(value: object, name: str, minimum: float) -> float:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, (int, float))
-        or value < minimum
-    ):
-        raise ValueError(f"{name} must be a number greater than or equal to {minimum}")
-    return float(value)
-
-
-def boolean(value: object, name: str) -> bool:
-    if not isinstance(value, bool):
-        raise TypeError(f"{name} must be a boolean")
-    return value
-
-
 def _inconclusive(evidence: object) -> dict[str, object]:
     return {
         "decision": "inconclusive",
@@ -431,114 +282,30 @@ def _inconclusive(evidence: object) -> dict[str, object]:
 
 
 def _schemas() -> dict[str, dict[str, object]]:
-    text_array = {"type": "array", "items": {"type": "string"}}
-    task = {
-        "type": "object",
-        "required": ["task_id"],
-        "properties": {"task_id": {"type": "string"}},
-    }
+    text = {"type": "string"}
+    text_array = {"type": "array", "items": text}
+    task = _object_schema({"task_id": text}, "task_id")
     board = {"type": "string", "enum": ["current", "parent"]}
     return {
-        "empty": {"type": "object", "properties": {}},
+        "empty": _object_schema({}),
         "task": task,
-        "dispatch": {
-            **task,
-            "properties": {
-                **task["properties"],
-                "agent_name": {"type": "string"},
-            },
-        },
-        "dispatch_many": {
-            "type": "object",
-            "required": ["task_ids"],
-            "properties": {
-                "task_ids": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "minItems": 2,
-                    "uniqueItems": True,
-                },
-                "different_models": {"type": "boolean"},
-            },
-        },
-        "create_task": {
-            "type": "object",
-            "required": ["prompt"],
-            "properties": {
-                "prompt": {"type": "string"},
-                "target_group_id": {"type": "string"},
-                "purpose": {"type": "string"},
-                "required_features": text_array,
-            },
-        },
-        "wait": {
-            "type": "object",
-            "required": ["trigger", "timeout_seconds"],
-            "properties": {
-                "trigger": {
-                    "type": "string",
-                    "enum": [
-                        "any_task_finished",
-                        "any_task_completed",
-                        "any_task_failed",
-                        "all_tasks_finished",
-                        "selected_tasks_finished",
-                        "timeout",
-                    ],
-                },
-                "timeout_seconds": {"type": "number", "minimum": 0},
-                "task_ids": text_array,
-                "after_version": {"type": "integer", "minimum": 0},
-            },
-        },
-        "wait_notes": {
-            "type": "object",
-            "required": ["timeout_seconds"],
-            "properties": {
-                "board": board,
-                "timeout_seconds": {"type": "number", "minimum": 0},
-                "after_version": {"type": "integer", "minimum": 0},
-            },
-        },
-        "post_note": {
-            "type": "object",
-            "required": ["title", "content"],
-            "properties": {
-                "title": {"type": "string"},
-                "content": {"type": "string"},
-                "board": board,
-                "supersedes": {"type": "string"},
-            },
-        },
-        "read_notes": {
-            "type": "object",
-            "properties": {
-                "board": board,
-                "page": {"type": "integer", "minimum": 1},
-                "page_size": {"type": "integer", "minimum": 1, "maximum": 100},
-            },
-        },
-        "create_decision": {
-            "type": "object",
-            "required": ["prompt"],
-            "properties": {
-                "prompt": {"type": "string"},
-                "roles": text_array,
-                "target_group_id": {"type": "string"},
-                "purpose": {"type": "string"},
-                "required_features": text_array,
-                "estimated_output_tokens": {"type": "integer", "minimum": 0},
-            },
-        },
-        "wait_decision": {
-            "type": "object",
-            "required": ["decision_id", "timeout_seconds"],
-            "properties": {
-                "decision_id": {"type": "string"},
-                "timeout_seconds": {"type": "number", "minimum": 0},
-            },
-        },
+        "dispatch": _object_schema({"task_id": text, "agent_name": text}, "task_id"),
+        "dispatch_many": _object_schema({"task_ids": {**text_array, "minItems": 2, "uniqueItems": True}, "different_models": {"type": "boolean"}}, "task_ids"),
+        "create_task": _object_schema({"prompt": text, "target_group_id": text, "purpose": text, "required_features": text_array}, "prompt"),
+        "wait": _object_schema({"trigger": {"type": "string", "enum": ["any_task_finished", "any_task_completed", "any_task_failed", "all_tasks_finished", "selected_tasks_finished", "timeout"]}, "timeout_seconds": {"type": "number", "minimum": 0}, "task_ids": text_array, "after_version": {"type": "integer", "minimum": 0}}, "trigger", "timeout_seconds"),
+        "wait_notes": _object_schema({"board": board, "timeout_seconds": {"type": "number", "minimum": 0}, "after_version": {"type": "integer", "minimum": 0}}, "timeout_seconds"),
+        "post_note": _object_schema({"title": text, "content": text, "board": board, "supersedes": text}, "title", "content"),
+        "read_notes": _object_schema({"board": board, "page": {"type": "integer", "minimum": 1}, "page_size": {"type": "integer", "minimum": 1, "maximum": 100}}),
+        "create_decision": _object_schema({"prompt": text, "roles": text_array, "target_group_id": text, "purpose": text, "required_features": text_array, "estimated_output_tokens": {"type": "integer", "minimum": 0}}, "prompt"),
+        "wait_decision": _object_schema({"decision_id": text, "timeout_seconds": {"type": "number", "minimum": 0}}, "decision_id", "timeout_seconds"),
     }
+
+
+def _object_schema(properties: Mapping[str, object], *required: str) -> dict[str, object]:
+    schema: dict[str, object] = {"type": "object", "properties": dict(properties)}
+    if required:
+        schema["required"] = list(required)
+    return schema
 
 
 __all__ = [

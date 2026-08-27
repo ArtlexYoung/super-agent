@@ -14,6 +14,7 @@ from threading import Lock, Thread
 from time import monotonic, sleep
 from uuid import uuid4
 
+from core import require_text as _text
 from core.model import Tool
 
 
@@ -244,7 +245,7 @@ class StdioMcpServer:
     def _initialize(self, process: subprocess.Popen[str]) -> None:
         self._request_id += 1
         request_id = self._request_id
-        payload = {"jsonrpc": "2.0", "id": request_id, "method": "initialize", "params": {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "super-agent", "version": "0.2.15"}}}
+        payload = {"jsonrpc": "2.0", "id": request_id, "method": "initialize", "params": {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "super-agent", "version": "0.2.16"}}}
         if process.stdin is None or process.stdout is None:
             raise RuntimeError("MCP process pipes are unavailable")
         process.stdin.write(json.dumps(payload) + "\n")
@@ -261,12 +262,6 @@ def _signal_group(process: subprocess.Popen[bytes], selected: signal.Signals) ->
         os.killpg(process.pid, selected)
     except ProcessLookupError:
         return
-
-
-def _text(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{name} must be non-empty text")
-    return value.strip()
 
 
 def _empty_schema() -> dict[str, object]:

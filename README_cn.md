@@ -6,9 +6,9 @@
 
 > Skill is all you need.
 
-Super Agent 只给模型一份精简的 Skill 索引。模型自行判断需要什么，按需打开内容，再执行选中的
-指令或已注册工具。提示、运行策略、记忆方法、工具使用方法和任务指令使用同一种 Skill 格式，
-也经过同一条渐进式披露路径；模型连接和密钥继续由显式配置管理。
+Super Agent 只给模型精简的插件与 Skill 索引。模型自行判断需要什么，按需打开内容，再激活选中的
+方法。提示、运行策略、记忆方法、工具使用方法和任务指令使用同一种 Skill 格式，也经过同一条
+渐进式披露路径；模型连接和密钥继续由显式配置管理。
 
 默认 Python 安装没有第三方运行依赖。基础 `Agent()` 无状态且不写文件。存储、对话、记忆、
 Skill 更新和 MCP 都是可选层；缺少必要条件时会明确失败。
@@ -42,9 +42,18 @@ super-agent check
 
 在对话中使用 `/help`、`/clear` 或 `/exit` 控制终端会话。
 
-## 添加 Skill
+## 添加插件和 Skill
 
-Skill 直接使用 Agent Skills 标准目录。创建 `skills/research/SKILL.md`：
+插件是 Skill 的安装、版本、依赖和进化权限边界。创建 `plugins/research/plugin.toml`：
+
+```toml
+schema = 1
+id = "local/research"
+version = "0.1.0"
+requires = []
+```
+
+插件入口和成员都直接使用 Agent Skills 标准格式。创建 `plugins/research/SKILL.md`：
 
 ```markdown
 ---
@@ -55,9 +64,10 @@ description: 研究问题并整理证据；需要调查或形成带依据结论�
 先确认问题和证据范围，再给出带来源的结论。
 ```
 
-目录名必须与 `name` 一致，再将 `skills` 加入 `skill_paths`。系统没有触发词表，模型根据描述
-自行判断披露或启用哪些 Skill。类型、工具依赖、组合和更新权限是可选的 `super-agent-*`
-字符串元数据，完整格式见 [Skill 文档](docs/skills.md)。
+再将 `plugins` 加入 `plugin_paths`，用 `plugin:local/research` 启用整个插件。成员 Skill 放在
+`plugins/research/skills/<name>/SKILL.md`，规范引用为 `skill:local/research/<name>`。系统没有
+触发词表，模型根据描述自行判断披露或启用哪些内容。进化权限只在外部配置或代码中授予，
+Skill 不能自授权。完整格式与去重规则见 [Skill 文档](docs/skills.md)。
 
 ## Python 用法
 
@@ -72,7 +82,7 @@ print(result.text)
 ```
 
 `Agent` 常用的直白操作是 `run`、`for_user`、`add_group`、`add_subagent`、
-`add_skill_path`、`add_tool` 和 `add_model`。高级类型从其所属模块导入。
+`add_plugin_path`、`enable_plugin`、`enable_skill`、`add_tool` 和 `add_model`。高级类型从其所属模块导入。
 
 专用 Agent 在代码中组合。任务 Skill 只属于本次运行，不会偷偷改变后续运行：
 
@@ -83,14 +93,17 @@ main = Agent(model_from_environment())
 coder = Agent(model_from_environment())
 engineering = main.add_group("engineering")
 engineering.add_subagent(coder, name="coder", description="实现并验证代码修改")
-result = main.run("让工程组修复失败的测试", skill="common-multi-producer-consumer")
+result = main.run(
+    "让工程组修复失败的测试",
+    skill="skill:super-agent/common/multi-agent",
+)
 ```
 
 第 1 层始终是根组。普通组只组织 Agent，不调用模型；Agent 可以带着已有子树挂入任意组。
 同级 Agent 通过父组共享板交换稳定引用。任务、等待唤醒、价格路由、断路重试、动态压缩和多模型
 决策都由同一个树运行器管理，并按用户隔离。不添加组或子 Agent 时不会创建树运行状态。
 
-需要旁观者共同检视时，启用 `common-multi-review`。它先让至少两个不同 Agent 独立检查，
+需要旁观者共同检视时，启用 `skill:super-agent/common/review`。它先让至少两个不同 Agent 独立检查，
 再交叉验证发现；多样性不足会明确失败，不会退化成执行者自检。
 
 ## 按需添加状态
@@ -110,7 +123,7 @@ print(alice.runs.explain(result.run_id))
 ```
 
 对话消息是短期上下文。长期记忆只保存持久事实、偏好和抽象信息，并可显式整理或遗忘。
-用户与 Agent 范围会隔离对话、记忆、运行记录和 Skill 覆盖层。
+用户与 Agent 范围会隔离对话、记忆、运行记录、插件覆盖层和披露缓存。
 
 JSONL 是可直接阅读的默认存储。SQLite 同样只用标准库；MySQL 和 PostgreSQL 驱动为可选依赖。
 
@@ -129,15 +142,17 @@ JSONL 是可直接阅读的默认存储。SQLite 同样只用标准库；MySQL �
 
 学习只记录评价、保鲜度和模型使用证据，不会修改 Skill。`SkillEvolution` 将更新拆成
 `propose`、`test`、`apply` 和 `undo` 四个显式动作。提案和测试都不能启用候选内容；只有
-`apply` 会修改用户覆盖层，测试失败时禁止应用。完整示例见[进化文档](docs/evolution.md)。
+`apply` 会修改用户插件覆盖层，测试失败时禁止应用。可进化插件和 Skill 通过 `[evolution]`
+的 `allow`、`auto_apply` 或同名代码 API 逐项授权，完整示例见[进化文档](docs/evolution.md)。
 
 ## CLI
 
 ```bash
 super-agent check
 super-agent "执行一次任务"
-super-agent --skill code "检查这个仓库"
+super-agent --plugin plugin:super-agent/code "检查这个仓库"
 super-agent config show
+super-agent plugins list
 super-agent skills list
 super-agent data storage verify --config common.toml
 super-agent data storage prune --config common.toml --user alice
@@ -205,7 +220,7 @@ super-agent data conversations list --config common.toml --user alice
 ## 验证仓库
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.15 --full
+python3.11 scripts/verify_release.py --version 0.2.16 --full
 ```
 
 完整的本地发布检查（包括版本一致性和打包范围）见[本地发布流程](docs/releasing.md)。

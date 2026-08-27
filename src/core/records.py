@@ -12,6 +12,7 @@ from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 from uuid import uuid4
 
+from core import dataclass_data, require_integer as _integer, require_text as _text
 from core.event import RunEvent, RunIdentity, utc_now
 from core.model import Message
 
@@ -70,14 +71,7 @@ class SessionRecordEntry:
         object.__setattr__(self, "data", MappingProxyType(_json_copy(self.data)))
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "session_id": self.session_id,
-            "run_id": self.run_id,
-            "sequence": self.sequence,
-            "event_type": self.event_type,
-            "data": dict(self.data),
-            "created_at": self.created_at,
-        }
+        return dataclass_data(self)
 
 
 class SessionRecord:
@@ -178,17 +172,7 @@ class Record:
         object.__setattr__(self, "data", MappingProxyType(_json_copy(self.data)))
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "event_id": self.event_id,
-            "user_id": self.user_id,
-            "agent_name": self.agent_name,
-            "stream": self.stream,
-            "stream_id": self.stream_id,
-            "event_type": self.event_type,
-            "data": dict(self.data),
-            "created_at": self.created_at,
-            "position": self.position,
-        }
+        return dataclass_data(self)
 
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> Record:
@@ -596,15 +580,3 @@ def _parse_time(value: str) -> datetime:
     if parsed.tzinfo is None:
         raise ValueError("record timestamp must include a timezone")
     return parsed.astimezone(UTC)
-
-
-def _text(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{name} must be non-empty text")
-    return value.strip()
-
-
-def _integer(value: object, name: str, minimum: int) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise ValueError(f"{name} must be an integer greater than or equal to {minimum}")
-    return value

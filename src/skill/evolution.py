@@ -8,11 +8,20 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from core import (
+    dataclass_data,
+    require_boolean as _boolean,
+    require_integer as _integer,
+    require_number as _number,
+    require_text as _text,
+)
+from core.config import EvolutionConfig
 from core.event import RunResult, utc_now
 from core.model import Tool
 from core.records import EventStore
 from core.run import ToolContext
-from skill.library import SkillLibrary
+from skill.document import Skill
+from skill.library import PluginCatalog
 
 
 CandidateRunner = Callable[[str, str], str]
@@ -164,10 +173,7 @@ class SkillChange:
     applied_sha256: str | None = None
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            **self.__dict__,
-            "report": None if self.report is None else dict(self.report),
-        }
+        return dataclass_data(self)
 
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> SkillChange:
@@ -191,17 +197,17 @@ class SkillChange:
 class SkillEvolution:
     """候选、测试、应用和撤销四阶段保持彼此独立。"""
 
-    def __init__(self, library: SkillLibrary, *, store: EventStore | None = None, runner: CandidateRunner | None = None) -> None:
-        self.library = library
+    def __init__(self, catalog: PluginCatalog, *, policy: EvolutionConfig | None = None, store: EventStore | None = None, runner: CandidateRunner | None = None) -> None:
+        self.catalog = catalog
+        self.policy = policy or EvolutionConfig()
         self.store = store
         self.runner = runner
         self._changes: dict[str, SkillChange] = {}
         self._evidence: list[SkillEvidence] = []
 
     def propose(self, reference: str, candidate_body: str, *, reason: str, actor: str = "agent") -> SkillChange:
-        skill = self.library.find(reference)
-        if actor == "agent" and not (skill.created_by == "agent" and skill.agent_can_update):
-            raise PermissionError(f"agent cannot update skill: {skill.key}")
+        skill = self.catalog.find_skill(reference)
+        self._check_permission(skill, actor=actor, auto_apply=False)
         change = SkillChange(
             change_id=f"change-{uuid4().hex}",
             skill_key=skill.key,
@@ -246,34 +252,40 @@ class SkillEvolution:
             "cases": results,
             "candidate_sha256": _digest(change.candidate_body),
             "baseline_sha256": change.baseline_sha256,
+            "affected_skills": [
+                change.skill_key,
+                *self.catalog.reverse_dependencies(change.skill_key),
+            ],
         }
         tested = replace(change, status="tested", report=report)
         self._save_change(tested, "skill_change.tested")
         return tested
 
-    def apply(self, change_id: str) -> SkillChange:
+    def apply(self, change_id: str, *, actor: str = "agent") -> SkillChange:
         change = self._require_change(change_id, "tested")
         if not change.report or not change.report.get("passed"):
             raise ValueError("Skill change did not pass every test case")
-        updated = self.library.update(
+        skill = self.catalog.find_skill(change.skill_key)
+        self._check_permission(skill, actor=actor, auto_apply=True)
+        updated = self.catalog.update_skill(
             change.skill_key,
             change.candidate_body,
             expected_sha256=change.baseline_sha256,
-            actor="agent",
         )
         applied = replace(change, status="applied", applied_sha256=updated.sha256)
         self._save_change(applied, "skill_change.applied")
         return applied
 
-    def undo(self, change_id: str) -> SkillChange:
+    def undo(self, change_id: str, *, actor: str = "agent") -> SkillChange:
         change = self._require_change(change_id, "applied")
         if change.applied_sha256 is None:
             raise ValueError("applied Skill change is missing its content hash")
-        restored = self.library.update(
+        skill = self.catalog.find_skill(change.skill_key)
+        self._check_permission(skill, actor=actor, auto_apply=False)
+        restored = self.catalog.update_skill(
             change.skill_key,
             change.baseline_body,
             expected_sha256=change.applied_sha256,
-            actor="agent",
         )
         undone = replace(change, status="undone", applied_sha256=restored.sha256)
         self._save_change(undone, "skill_change.undone")
@@ -281,20 +293,20 @@ class SkillEvolution:
 
     def record_evidence(self, evidence: SkillEvidence) -> None:
         selected = evidence if evidence.used_at else replace(evidence, used_at=utc_now())
-        self.library.find(selected.skill_key)
+        self.catalog.find_skill(selected.skill_key)
         if self.store is None:
             self._evidence.append(selected)
         else:
             self.store.append("skill_evidence", selected.skill_key, "skill.evaluated", selected.to_dict())
 
     def freshness(self, reference: str, *, now: datetime | None = None) -> Freshness:
-        skill = self.library.find(reference)
+        skill = self.catalog.find_skill(reference)
         values = [item for item in self._load_evidence() if item.skill_key == skill.key]
         return calculate_freshness(values, now=now)
 
     def count_skill_evidence(self, reference: str) -> tuple[int, int]:
         """返回 Skill 的真实评价次数和成功次数，不从平滑分数反推。"""
-        skill = self.library.find(reference)
+        skill = self.catalog.find_skill(reference)
         values = [item for item in self._load_evidence() if item.skill_key == skill.key]
         successes = sum(item.success and not item.error for item in values)
         return len(values), successes
@@ -375,6 +387,17 @@ class SkillEvolution:
         if change.status != status:
             raise ValueError(f"Skill change must be {status}, not {change.status}")
         return change
+
+    def _check_permission(
+        self, skill: Skill, *, actor: str, auto_apply: bool
+    ) -> None:
+        if actor != "agent":
+            return
+        allowed = self.policy.auto_apply if auto_apply else self.policy.allow
+        targets = {skill.reference, f"plugin:{skill.plugin_id}"}
+        if targets.isdisjoint(allowed):
+            action = "auto-apply" if auto_apply else "evolve"
+            raise PermissionError(f"agent cannot {action} Skill: {skill.reference}")
 
     def _propose_tool(self, arguments: dict[str, object], context: ToolContext) -> dict[str, object]:
         change = self.propose(
@@ -461,12 +484,6 @@ def _digest(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
-def _text(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{name} must be non-empty text")
-    return value.strip()
-
-
 def _optional_text(value: object) -> str | None:
     if value is None:
         return None
@@ -479,27 +496,6 @@ def _strings(value: object, name: str) -> tuple[str, ...]:
     if not isinstance(value, list) or any(not isinstance(item, str) or not item.strip() for item in value):
         raise ValueError(f"{name} must be an array of non-empty text")
     return tuple(item.strip() for item in value)
-
-
-def _number(value: object, name: str, minimum: float, maximum: float | None = None) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"{name} must be a number")
-    selected = float(value)
-    if selected < minimum or maximum is not None and selected > maximum:
-        raise ValueError(f"{name} is outside its allowed range")
-    return selected
-
-
-def _integer(value: object, name: str, minimum: int) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise ValueError(f"{name} must be an integer greater than or equal to {minimum}")
-    return value
-
-
-def _boolean(value: object, name: str) -> bool:
-    if not isinstance(value, bool):
-        raise ValueError(f"{name} must be a boolean")
-    return value
 
 
 def _propose_schema() -> dict[str, object]:

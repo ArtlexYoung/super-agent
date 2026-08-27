@@ -33,6 +33,10 @@ run.started
 
 Synchronous and streaming APIs do not maintain separate model-call logic. Tool output, Skill bodies, memory, and subagent summaries share one `RunContext` context budget.
 
+运行开始时，`PluginCatalog` 将插件依赖图、版本和内容哈希固定为 `plugin_snapshot`，并写入运行开始、完成和结果元数据。运行中的 Skill 更新不会改变这个快照，新内容只在下一次顶层运行读取。
+
+At run start, `PluginCatalog` freezes the plugin dependency graph, versions, and content hashes as `plugin_snapshot`, recorded in start, completion, and result metadata. A Skill update during the run cannot alter that snapshot; new content is read only by the next top-level run.
+
 `RuntimeLifecycle` 位于核心运行循环中，记录父子运行、任务状态、深度和活动数量。多 Agent Skill 只把任务挂到当前 `RunContext` 的生命周期；子 Agent 继续使用同一对象，因此运行事件、任务等待和恢复元数据可以对齐，而不会保存模型正文。
 
 `RuntimeLifecycle` lives in the core execution loop and records parent-child runs, task states, depth, and active counts. Multi-Agent Skills attach tasks to the current `RunContext` lifecycle; child Agents keep using that object, so run events, task waits, and recovery metadata stay aligned without storing model text.
@@ -57,9 +61,9 @@ Before a run, structure is checked only after the tree changes. Maximum tree lev
 
 `dispatch_agent_tasks` is the organization tree's generic atomic dispatch mechanism. A caller first creates at least two tasks with the same target, purpose, and required features, then requests distinct Agents in one call; distinct models may also be required. Tasks start in parallel only after the complete assignment succeeds.
 
-Agent 或模型不足时，任务保持原状态并返回明确错误，不会部分启动。Runtime 只提供这一通用机制；独立检视、交叉验证和争议裁决等方法由 `task:common-multi-review` Skill 定义。
+Agent 或模型不足时，任务保持原状态并返回明确错误，不会部分启动。Runtime 只提供这一通用机制；独立检视、交叉验证和争议裁决等方法由 `skill:super-agent/common/review` 定义。
 
-When Agent or model diversity is insufficient, tasks remain unchanged and an explicit error is returned. Runtime provides only this generic mechanism; the `task:common-multi-review` Skill defines independent review, cross-checking, and dispute adjudication.
+When Agent or model diversity is insufficient, tasks remain unchanged and an explicit error is returned. Runtime provides only this generic mechanism; `skill:super-agent/common/review` defines independent review, cross-checking, and dispute adjudication.
 
 ## 事件监听 / Event Listening
 

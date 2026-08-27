@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Iterable, Mapping, Protocol
 from uuid import uuid4
 
+from core import dataclass_data
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
@@ -26,9 +27,7 @@ class ContextEntry:
     cache_reference: str | None = None
 
     def to_dict(self) -> dict[str, object]:
-        return {name: getattr(self, name) for name in (
-            "item_id", "kind", "source", "characters", "sha256", "summary", "cache_reference"
-        )}
+        return dataclass_data(self)
 
 
 class ContextLedger:
@@ -73,6 +72,17 @@ class ContextLedger:
 
     def entries(self) -> tuple[ContextEntry, ...]:
         return tuple(self._entries)
+
+    def restore(self, entry_count: int) -> None:
+        """将账本恢复到先前条目数，用于原子组合失败回滚。"""
+        if (
+            isinstance(entry_count, bool)
+            or not isinstance(entry_count, int)
+            or not 0 <= entry_count <= len(self._entries)
+        ):
+            raise ValueError("context restore point is outside the ledger")
+        del self._entries[entry_count:]
+        self._total_characters = sum(item.characters for item in self._entries)
 
     def snapshot(self) -> dict[str, object]:
         return {"max_characters": self.max_characters, "total_characters": self.total_characters, "remaining_characters": self.remaining_characters(), "entries": [item.to_dict() for item in self._entries]}
@@ -127,16 +137,7 @@ class RunCheckpoint:
             raise TypeError("checkpoint state must be a mapping")
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "checkpoint_id": self.checkpoint_id,
-            "run_id": self.run_id,
-            "session_id": self.session_id,
-            "status": self.status,
-            "event_sequence": self.event_sequence,
-            "turn": self.turn,
-            "state": dict(self.state),
-            "created_at": self.created_at,
-        }
+        return dataclass_data(self)
 
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> RunCheckpoint:
@@ -219,11 +220,7 @@ class RunEvent:
             raise TypeError("event data must be a mapping")
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "event_type": self.event_type,
-            "created_at": self.created_at,
-            "data": dict(self.data),
-        }
+        return dataclass_data(self)
 
     @property
     def run_id(self) -> str | None:
@@ -284,6 +281,7 @@ class RunResult:
     session_id: str | None = None
     context_ledger: Mapping[str, object] = field(default_factory=dict)
     runtime_lifecycle: Mapping[str, object] = field(default_factory=dict)
+    plugin_snapshot: Mapping[str, object] = field(default_factory=dict)
 
     @property
     def model_turns(self) -> int:
@@ -294,20 +292,4 @@ class RunResult:
         return self.run_id
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "text": self.text,
-            "run_id": self.run_id,
-            "trace_id": self.trace_id,
-            "stop_reason": self.stop_reason,
-            "skills": list(self.skills),
-            "workflow": self.workflow,
-            "warning_messages": list(self.warning_messages),
-            "usage": dict(self.usage),
-            "subscriber_failures": [dict(item) for item in self.subscriber_failures],
-            "parent_run_id": self.parent_run_id,
-            "conversation_id": self.conversation_id,
-            "session_id": self.session_id,
-            "context_ledger": dict(self.context_ledger),
-            "runtime_lifecycle": dict(self.runtime_lifecycle),
-            "events": [event.to_dict() for event in self.events],
-        }
+        return {**dataclass_data(self), "trace_id": self.trace_id}
