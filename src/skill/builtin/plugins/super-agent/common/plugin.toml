@@ -1,6 +1,6 @@
 schema = 1
 id = "super-agent/common"
-version = "0.2.21"
+version = "0.2.22"
 description = "General task methods"
 entry_skill = "skill:super-agent/common"
 skills = [
@@ -8,6 +8,6 @@ skills = [
   "skill:super-agent/common/multi-agent",
   "skill:super-agent/common/review",
 ]
-included_plugins = []
+included_plugins = ["plugin:super-agent/task"]
 required_mcp_servers = []
 optional_mcp_servers = []
