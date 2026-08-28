@@ -497,7 +497,7 @@ class AgentLibraryTests(unittest.TestCase):
     def test_builtin_scene_uses_central_paths_and_activates(self):
         root = Path(__file__).resolve().parents[1] / "src" / "skill" / "builtin"
         library = AgentLibrary((root,))
-        self.assertEqual(9, library.list_skills().total)
+        self.assertEqual(10, library.list_skills().total)
         session = RunSession(
                 RunIdentity(), [], [], {}, values={"available_tools": {"calculate_numbers": object()}}
         )
@@ -667,7 +667,7 @@ class AgentLibraryTests(unittest.TestCase):
             agent.use_storage(MemoryStorage())
             result = agent.run(
                 "Improve the Skill",
-                skill="skill:super-agent/common/self-update",
+                skill="skill:super-agent/evolution/self-update",
             )
             insight = agent.for_user("local").runs.explain(result.run_id)
             self.assertEqual(

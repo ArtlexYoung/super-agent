@@ -51,9 +51,9 @@ The evolution loop is not “the model says it changed, so it changes”:
 4. Test the candidate with declared cases.
 5. Apply explicitly after passing, and undo explicitly when needed.
 
-`SkillEvolution` 可以独立使用；`Agent.enable_skill_evolution()` 则把同一组动作作为渐进式工具交给模型。没有 `AgentLibrary` 时，启用进化会直接失败。
+`SkillEvolution` 是独立的可选 Evolution 插件实现；`Agent.enable_skill_evolution()` 只在显式启用该插件后把同一组动作作为渐进式工具交给模型。没有 `AgentLibrary` 时，启用进化会直接失败。
 
-`SkillEvolution` can be used directly; `Agent.enable_skill_evolution()` exposes the same actions progressively to the model. Enabling evolution without an `AgentLibrary` fails directly.
+`SkillEvolution` is an independent optional Evolution plugin implementation; `Agent.enable_skill_evolution()` exposes the same actions progressively only after that plugin is explicitly enabled. Enabling evolution without an `AgentLibrary` fails directly.
 
 ## 外部授权 / External Authority
 
