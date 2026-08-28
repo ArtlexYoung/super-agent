@@ -3,10 +3,10 @@ name: "review"
 description: "Coordinate several independent Agents to find defects, risks, questions, and improvements, then cross-check the findings"
 metadata:
   super-agent-categories: "[\"general/review\",\"review/multi-agent\"]"
-  super-agent-includes: "[\"skill:super-agent/common/multi-agent\"]"
+  super-agent-includes: "[\"skill:super-agent/team/multi-agent\"]"
   super-agent-requires: "[\"dispatch_agent_tasks\"]"
   super-agent-type: "task"
-  super-agent-version: "0.2.22"
+  super-agent-version: "0.2.23"
 ---
 # Multi-Agent review method
 

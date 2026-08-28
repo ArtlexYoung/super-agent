@@ -1,0 +1,9 @@
+schema = 1
+id = "super-agent/team"
+version = "0.2.23"
+description = "Explicit multi-Agent team coordination methods"
+entry_skill = "skill:super-agent/team"
+skills = ["skill:super-agent/team/multi-agent"]
+included_plugins = []
+required_mcp_servers = []
+optional_mcp_servers = []

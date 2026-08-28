@@ -35,7 +35,7 @@ class MultiAgentReviewTests(unittest.TestCase):
 
         self.assertEqual(
             (
-                "skill:super-agent/common/multi-agent",
+                "skill:super-agent/team/multi-agent",
                 "skill:super-agent/common/review",
             ),
             activated,

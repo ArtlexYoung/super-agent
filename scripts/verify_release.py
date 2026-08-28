@@ -1,4 +1,4 @@
-"""运行 v0.2.22 的本地发布检查。"""
+"""运行 v0.2.23 的本地发布检查。"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-VERSION = "0.2.22"
+VERSION = "0.2.23"
 MAX_SOURCE_FILES = 25
 MAX_SOURCE_LINES = 12_000
 SOURCE_ROOTS = {"adapter", "core", "skill", "cli.py", "super_agent.py"}
@@ -54,13 +54,13 @@ SDIST_ROOTS = ["README.md", "README_cn.md", "README_en.md", "pyproject.toml", "d
 REQUIRED_BUILTIN_SKILLS = {
     "common": {
         "conversation",
-        "multi-agent",
         "review",
     },
     "code": {"deep-optimization"},
     "evolution": {"freshness", "self-update"},
     "memory": set(),
     "task": set(),
+    "team": {"multi-agent"},
 }
 
 
@@ -184,7 +184,7 @@ def _check_build_config(project: dict[str, object], root: Path) -> list[str]:
     wheel = targets.get("wheel", {})
     sdist = targets.get("sdist", {})
     if wheel.get("only-include") != WHEEL_ROOTS or wheel.get("sources") != ["src"]:
-        errors.append("wheel must contain only the v0.2.22 source roots")
+        errors.append("wheel must contain only the v0.2.23 source roots")
     if sdist.get("only-include") != SDIST_ROOTS:
         errors.append("sdist source roots changed")
     expected_force = {path: path for path in EVALUATION_FILES}
