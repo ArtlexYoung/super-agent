@@ -175,7 +175,7 @@ commands = [["python3.11", "-V"]]
         self.assertNotIn("private failure detail", json.dumps(insight))
 
     def test_release_shape_matches_v0217(self):
-        self.assertEqual([], verify_release(ROOT, "0.2.24"))
+        self.assertEqual([], verify_release(ROOT, "0.2.25"))
 
 
 if __name__ == "__main__":

@@ -247,7 +247,7 @@ Runnable examples are in `examples/minimal.py`, `examples/custom_skill.py`, and
 ## Verify the Repository
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.24 --full
+python3.11 scripts/verify_release.py --version 0.2.25 --full
 ```
 
 For the complete local release gate, including version and package-shape checks, see

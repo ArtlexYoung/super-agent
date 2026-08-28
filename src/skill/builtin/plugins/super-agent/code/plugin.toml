@@ -1,9 +1,9 @@
 schema = 1
 id = "super-agent/code"
-version = "0.2.24"
+version = "0.2.25"
 description = "Repository coding methods"
 entry_skill = "skill:super-agent/code"
 skills = ["skill:super-agent/code/deep-optimization"]
-included_plugins = ["plugin:super-agent/common"]
+included_plugins = ["plugin:super-agent/common", "plugin:super-agent/model-routing"]
 required_mcp_servers = []
 optional_mcp_servers = []
