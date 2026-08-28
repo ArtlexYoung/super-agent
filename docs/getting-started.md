@@ -54,7 +54,7 @@ The builtin common plugin suits general tasks, while the code plugin suits repos
 ```bash
 super-agent plugins list
 super-agent --plugin plugin:super-agent/code "检查当前仓库"
-super-agent --skill skill:super-agent/common/review "检视这个方案"
+super-agent --skill skill:super-agent/review/multi-agent "检视这个方案"
 ```
 
 ## Python 嵌入 / Embed in Python

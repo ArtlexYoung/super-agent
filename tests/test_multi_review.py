@@ -30,20 +30,20 @@ class MultiAgentReviewTests(unittest.TestCase):
         )
 
         activated = library.activate_skill(
-            "skill:super-agent/common/review", session
+            "skill:super-agent/review/multi-agent", session
         )
 
         self.assertEqual(
             (
                 "skill:super-agent/team/multi-agent",
-                "skill:super-agent/common/review",
+                "skill:super-agent/review/multi-agent",
             ),
             activated,
         )
         self.assertIn("dispatch_agent_tasks", session.tools)
         self.assertIn("create_agent_decision", session.tools)
         self.assertIn("post_shared_note", session.tools)
-        review = library.find_skill("skill:super-agent/common/review")
+        review = library.find_skill("skill:super-agent/review/multi-agent")
         self.assertEqual(("dispatch_agent_tasks",), review.requires)
         self.assertIn("not executor self-check", review.body)
 

@@ -109,7 +109,7 @@ result = main.run(
 同级 Agent 通过父组共享板交换稳定引用。任务、等待唤醒、价格路由、断路重试、动态压缩和多模型
 决策都由同一个树运行器管理，并按用户隔离。不添加组或子 Agent 时不会创建树运行状态。
 
-需要旁观者共同检视时，启用 `skill:super-agent/common/review`。它先让至少两个不同 Agent 独立检查，
+需要旁观者共同检视时，启用 `skill:super-agent/review/multi-agent`。它先让至少两个不同 Agent 独立检查，
 再交叉验证发现；多样性不足会明确失败，不会退化成执行者自检。
 
 ## 按需添加状态
@@ -226,7 +226,7 @@ super-agent data conversations list --config common.toml --user alice
 ## 验证仓库
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.23 --full
+python3.11 scripts/verify_release.py --version 0.2.24 --full
 ```
 
 完整的本地发布检查（包括版本一致性和打包范围）见[本地发布流程](docs/releasing.md)。

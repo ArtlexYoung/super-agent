@@ -9,7 +9,7 @@ The CLI entry point is `super-agent`; a source checkout may also run `python3.11
 ```bash
 super-agent "总结当前目录"
 super-agent --plugin plugin:super-agent/code "检查这个仓库"
-super-agent --skill skill:super-agent/common/review "检视当前方案"
+super-agent --skill skill:super-agent/review/multi-agent "检视当前方案"
 super-agent --save "保存本次对话"
 super-agent
 ```
@@ -28,7 +28,7 @@ Without arguments the CLI starts an interactive session. `/help`, `/plugins`, `/
 super-agent plugins list --config common.toml
 super-agent plugins read plugin:super-agent/common --config common.toml
 super-agent skills list --config common.toml
-super-agent skills read skill:super-agent/common/review --config common.toml
+super-agent skills read skill:super-agent/review/multi-agent --config common.toml
 super-agent mcps list --config common.toml
 super-agent mcps read mcp:example/search --config common.toml
 ```

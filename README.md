@@ -117,9 +117,9 @@ Sibling groups exchange explicit records with cache paths through their parent b
 
 Models may carry a user-authored initial `description`; the system preserves that prior and appends separately learned reliability and explicit quality evidence by user, Agent, and task type instead of overwriting it.
 
-`skill:super-agent/common/review` 让至少两个不同 Agent 独立检视同一材料，再交叉验证发现；多样性不足时明确失败，不退化成执行者自检。
+`skill:super-agent/review/multi-agent` 让至少两个不同 Agent 独立检视同一材料，再交叉验证发现；多样性不足时明确失败，不退化成执行者自检。
 
-`skill:super-agent/common/review` assigns the same artifact to at least two distinct Agents and then cross-checks findings; insufficient diversity fails explicitly instead of degrading to executor self-review.
+`skill:super-agent/review/multi-agent` assigns the same artifact to at least two distinct Agents and then cross-checks findings; insufficient diversity fails explicitly instead of degrading to executor self-review.
 
 ## CLI
 
@@ -231,5 +231,5 @@ Third-party projects retain their own copyrights and licenses; this project is l
 The full release gate checks Python tests, compilation, package contents, offline evaluation, and build.
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.23 --full
+python3.11 scripts/verify_release.py --version 0.2.24 --full
 ```

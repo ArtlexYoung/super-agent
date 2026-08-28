@@ -63,7 +63,7 @@ Skill content cannot declare itself writable. The user grants authority per plug
 
 ```toml
 [evolution]
-allow = ["plugin:local/research", "skill:super-agent/common/review"]
+allow = ["plugin:local/research", "skill:super-agent/review/multi-agent"]
 auto_apply = ["plugin:local/research"]
 ```
 
@@ -79,7 +79,7 @@ The direct code APIs provide the same behavior:
 agent.enable_skill_evolution()
 agent.allow_plugin_to_evolve("plugin:local/research")
 agent.allow_skill_to_evolve(
-    "skill:super-agent/common/review",
+    "skill:super-agent/review/multi-agent",
     auto_apply=False,
 )
 ```

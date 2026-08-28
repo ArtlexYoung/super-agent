@@ -1,0 +1,9 @@
+schema = 1
+id = "super-agent/review"
+version = "0.2.24"
+description = "Independent multi-Agent review methods"
+entry_skill = "skill:super-agent/review"
+skills = ["skill:super-agent/review/multi-agent"]
+included_plugins = ["plugin:super-agent/team"]
+required_mcp_servers = []
+optional_mcp_servers = []

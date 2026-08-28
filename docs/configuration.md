@@ -16,7 +16,7 @@ writable_library_path = ".super-agent/library"
 library_cache_path = ".super-agent/cache"
 enabled_plugins = ["plugin:super-agent/common"]
 disabled_plugins = []
-enabled_skills = ["skill:super-agent/common/review"]
+enabled_skills = ["skill:super-agent/review/multi-agent"]
 disabled_skills = []
 enabled_mcp_servers = []
 disabled_mcp_servers = []
@@ -27,7 +27,7 @@ warn_agent_level = 8
 # max_agent_call_depth = 12
 
 [evolution]
-allow = ["plugin:local/research", "skill:super-agent/common/review"]
+allow = ["plugin:local/research", "skill:super-agent/review/multi-agent"]
 auto_apply = []
 
 [[models]]

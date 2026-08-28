@@ -117,7 +117,7 @@ through their parent board. One user-scoped tree runtime owns tasks, sleep and w
 routing, circuit retries, adaptive compression, and multi-model decisions. It is not created when
 the Agent has no groups or subagents.
 
-Enable `skill:super-agent/common/review` when several outside perspectives should inspect the same artifact.
+Enable `skill:super-agent/review/multi-agent` when several outside perspectives should inspect the same artifact.
 At least two distinct Agents review independently before another pass cross-checks findings;
 insufficient diversity fails explicitly instead of degrading to executor self-review.
 
@@ -247,7 +247,7 @@ Runnable examples are in `examples/minimal.py`, `examples/custom_skill.py`, and
 ## Verify the Repository
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.23 --full
+python3.11 scripts/verify_release.py --version 0.2.24 --full
 ```
 
 For the complete local release gate, including version and package-shape checks, see

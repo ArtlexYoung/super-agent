@@ -61,9 +61,9 @@ Before a run, structure is checked only after the tree changes. Maximum tree lev
 
 `dispatch_agent_tasks` is the organization tree's generic atomic dispatch mechanism. A caller first creates at least two tasks with the same target, purpose, and required features, then requests distinct Agents in one call; distinct models may also be required. Tasks start in parallel only after the complete assignment succeeds.
 
-Agent 或模型不足时，任务保持原状态并返回明确错误，不会部分启动。Runtime 只提供这一通用机制；独立检视、交叉验证和争议裁决等方法由 `skill:super-agent/common/review` 定义。
+Agent 或模型不足时，任务保持原状态并返回明确错误，不会部分启动。Runtime 只提供这一通用机制；独立检视、交叉验证和争议裁决等方法由 `skill:super-agent/review/multi-agent` 定义。
 
-When Agent or model diversity is insufficient, tasks remain unchanged and an explicit error is returned. Runtime provides only this generic mechanism; `skill:super-agent/common/review` defines independent review, cross-checking, and dispute adjudication.
+When Agent or model diversity is insufficient, tasks remain unchanged and an explicit error is returned. Runtime provides only this generic mechanism; `skill:super-agent/review/multi-agent` defines independent review, cross-checking, and dispute adjudication.
 
 ## 事件监听 / Event Listening
 
