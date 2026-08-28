@@ -11,7 +11,7 @@ PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
 python3.11 -m unittest discover -s tests -p 'test_*.py' -v
 
 PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
-python3.11 scripts/verify_release.py --version 0.2.17 --full
+python3.11 scripts/verify_release.py --version 0.2.18 --full
 ```
 
 发布检查验证版本、Python 最低版本、零默认依赖、源码布局、旧目录删除、构建范围、内置插件去重关系和离线评测资产。
@@ -24,9 +24,9 @@ Log writes never trigger retention cleanup. Run `super-agent data storage prune 
 
 ## 版本 / Version
 
-v0.2.17 引入中央 Skill/MCP/插件资源库、规范引用、跨来源内容去重、哈希覆盖层、运行快照和逐插件/Skill 进化授权。同步更新 `pyproject.toml`、`src/core/__init__.py`、README 和发布检查脚本。
+v0.2.18 引入中央 Skill/MCP/插件资源库、规范引用、跨来源内容去重、哈希覆盖层、运行快照和逐插件/Skill 进化授权。同步更新 `pyproject.toml`、`src/core/__init__.py`、README 和发布检查脚本。
 
-v0.2.17 introduces the central Skill/MCP/plugin library, canonical references, cross-source content deduplication, hash-based overlays, run snapshots, and per-plugin or per-Skill evolution authority. Update `pyproject.toml`, `src/core/__init__.py`, the READMEs, and the release gate together.
+v0.2.18 introduces the central Skill/MCP/plugin library, canonical references, cross-source content deduplication, hash-based overlays, run snapshots, and per-plugin or per-Skill evolution authority. Update `pyproject.toml`, `src/core/__init__.py`, the READMEs, and the release gate together.
 
 检查通过后创建一个本地逻辑提交和标签；远程推送是单独的授权边界。
 

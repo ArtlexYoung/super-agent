@@ -35,6 +35,9 @@ class CoreRuntimeTests(unittest.TestCase):
         self.assertEqual("ready", result.text)
         self.assertEqual([], agent.list_agent_tree()["root"]["children"])
         self.assertIsNone(agent.storage)
+        self.assertTrue(agent.is_plain_agent())
+        self.assertEqual((), agent.list_enabled_plugins())
+        self.assertEqual((), agent.list_enabled_skills())
 
     def test_config_is_applied_without_creating_storage(self):
         config = Config(

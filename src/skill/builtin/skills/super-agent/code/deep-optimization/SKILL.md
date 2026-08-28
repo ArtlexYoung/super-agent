@@ -5,7 +5,7 @@ metadata:
   super-agent-categories: "[\"code/optimization\",\"experiment/multi-agent\",\"competition\"]"
   super-agent-includes: "[\"skill:super-agent/code\",\"skill:super-agent/common/multi-agent\"]"
   super-agent-type: "task"
-  super-agent-version: "0.2.17"
+  super-agent-version: "0.2.18"
 ---
 # Multi-Agent deep optimization method
 

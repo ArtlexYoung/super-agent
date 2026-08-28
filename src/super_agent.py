@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from core import require_text as _text
 from adapter.storage import EventMemoryStore, JsonlMemoryStore
@@ -43,21 +44,19 @@ from core.user import (
     model_scope,
     model_tracking_listener,
 )
-from skill.evolution import CandidateRunner, SkillEvolution
 from skill.library import AgentLibrary
-from skill.memory import Memory
-from skill.organization import (
-    AgentGroup,
-    AgentMemberSettings,
-    AgentTreeSettings,
-    agent_group_node,
-    validate_tree,
-)
-from skill.organization_runtime import (
-    AgentTreeRuntime,
-    clear_agent_tree_runtimes,
-    get_or_create_agent_tree_runtime,
-)
+
+if TYPE_CHECKING:
+    from skill.evolution import CandidateRunner, SkillEvolution
+    from skill.memory import Memory
+    from skill.organization import AgentGroup, AgentMemberSettings, AgentTreeSettings
+    from skill.organization_runtime import AgentTreeRuntime
+
+CandidateRunner = Callable[[str, str], str]
+AgentTreeRuntime = Any
+AgentMemberSettings = Any
+AgentTreeSettings = Any
+Memory = Any
 
 
 @dataclass(frozen=True)
@@ -119,7 +118,7 @@ class Agent:
         self.working_directory = _make_working_directory(working_directory)
         self.instructions: list[str] = []
         self.settings = AgentSettings()
-        self.agent_tree_settings = AgentTreeSettings()
+        self.agent_tree_settings = None
         self.library: AgentLibrary | None = None
         self._mcp_servers: dict[str, tuple[object, Mapping[str, tuple[str, ...]]]] = {}
         self.storage: RecordBackend | None = None
@@ -135,7 +134,7 @@ class Agent:
         self._disabled_plugins: list[str] = []
         self._disabled_skills: list[str] = []
         self._enabled_mcp_servers: list[str] = []
-        self._agent_group_node = agent_group_node(self)
+        self._agent_group_node = None
         self._router_settings = RouterSettings()
         if isinstance(model, ModelRouter):
             self._model_profiles = list(model.profiles)
@@ -159,7 +158,7 @@ class Agent:
             self.working_directory = config.resolve_working_directory()
         self.settings = AgentSettings(config.limits)
         self.agent_tree_settings = replace(
-            self.agent_tree_settings,
+            _get_tree_settings(self),
             warn_level=config.warn_agent_level,
             max_level=config.max_agent_level,
             max_call_depth=config.max_agent_call_depth,
@@ -292,15 +291,17 @@ class Agent:
         self.model = model
         self._loaded_model_scopes.clear()
 
-    def add_group(self, name: str, *, description: str = "") -> AgentGroup:
+    def add_group(self, name: str, *, description: str = "") -> Any:
         """在当前 Agent 下创建一个不调用模型的结构组。"""
-        return AgentGroup(agent_group_node(self)).add_group(
+        from skill.organization import AgentGroup
+
+        return AgentGroup(_get_agent_group_node(self)).add_group(
             name, description=description
         )
 
     def list_agent_tree(self) -> dict[str, object]:
         """读取完整组织树和当前 Agent 所在位置。"""
-        current = agent_group_node(self)
+        current = _get_agent_group_node(self)
         return {
             "current_group_id": current.group_id,
             "root": current.root().to_dict(),
@@ -308,10 +309,12 @@ class Agent:
 
     def validate_agent_tree(self) -> tuple[str, ...]:
         """显式检查层级、空组和委派链路。"""
+        from skill.organization import validate_tree
+
         return validate_tree(
-            agent_group_node(self).root(),
-            warn_level=self.agent_tree_settings.warn_level,
-            max_level=self.agent_tree_settings.max_level,
+            _get_agent_group_node(self).root(),
+            warn_level=_get_tree_settings(self).warn_level,
+            max_level=_get_tree_settings(self).max_level,
         )
 
     def list_models(self) -> tuple[ModelProfile, ...]:
@@ -335,7 +338,7 @@ class Agent:
         if not isinstance(library, AgentLibrary):
             raise TypeError("agent library must be an AgentLibrary")
         self.library = library
-        clear_agent_tree_runtimes(self)
+        _clear_agent_tree_runtimes(self)
 
     def add_library_path(self, path: str | Path) -> None:
         """在内存中增加一个中央资源库路径。"""
@@ -377,8 +380,8 @@ class Agent:
         self.storage = storage
         self._loaded_model_scopes.clear()
         self._memories.clear()
-        clear_agent_tree_runtimes(self)
-        for node in agent_group_node(self).walk():
+        _clear_agent_tree_runtimes(self)
+        for node in _get_agent_group_node(self).walk():
             child = node.coordinator
             if child is not None and child is not self and child.storage is None:
                 child.use_storage(storage)
@@ -394,6 +397,32 @@ class Agent:
         selected = _text(reference, "plugin reference")
         if selected not in self._enabled_plugins:
             self._enabled_plugins.append(selected)
+
+    def list_enabled_plugins(self) -> tuple[str, ...]:
+        """返回显式启用的插件，不触发插件读取或执行。"""
+        return tuple(self._enabled_plugins)
+
+    def list_enabled_skills(self) -> tuple[str, ...]:
+        """返回显式启用的 Skill，不触发 Skill 读取或执行。"""
+        return tuple(self._enabled_skills)
+
+    def is_plain_agent(self) -> bool:
+        """判断 Agent 是否仍是只包含模型和基础运行循环的普通 Agent。"""
+        return not any(
+            (
+                self.library is not None,
+                self.storage is not None,
+                self.memory_enabled,
+                self.evolution_enabled,
+                self._active_tools,
+                self._skill_tools,
+                self._enabled_plugins,
+                self._enabled_skills,
+                self._mcp_servers,
+                self._agent_group_node is not None
+                and len(tuple(self._agent_group_node.walk())) > 1,
+            )
+        )
 
     def enable_skill(self, reference: str) -> None:
         selected = _text(reference, "Skill reference")
@@ -448,8 +477,8 @@ class Agent:
 
     def configure_agent_tree(self, settings: AgentTreeSettings | None = None) -> None:
         """原子替换整棵树共用的任务、等待和层级设置。"""
-        self.agent_tree_settings = settings or AgentTreeSettings()
-        clear_agent_tree_runtimes(self)
+        self.agent_tree_settings = settings or _new_tree_settings()
+        _clear_agent_tree_runtimes(self)
 
     def add_event_listener(self, listener: EventListener) -> None:
         if not callable(listener):
@@ -465,7 +494,9 @@ class Agent:
         settings: AgentMemberSettings | None = None,
     ) -> str:
         """把子 Agent 的已有子树挂到当前 Agent 下。"""
-        return AgentGroup(agent_group_node(self)).add_subagent(
+        from skill.organization import AgentGroup
+
+        return AgentGroup(_get_agent_group_node(self)).add_subagent(
             agent,
             name=name,
             description=description,
@@ -523,16 +554,16 @@ class Agent:
         library = self._library(identity, store)
         agent_tree = (
             selected_context.agent_tree_runtime
-            or get_or_create_agent_tree_runtime(self, identity.user_id)
+            or _get_or_create_agent_tree_runtime(self, identity.user_id)
         )
         runtime_lifecycle = selected_context.runtime_lifecycle or RuntimeLifecycle(
             identity.run_id
         )
-        group_id = selected_context.agent_group_id or agent_group_node(self).group_id
+        group_id = selected_context.agent_group_id or _get_agent_group_node(self).group_id
         if agent_tree is not None and library is not None:
             library.use_disclosure_store(agent_tree.disclosures)
         tree_settings = (
-            self.agent_tree_settings if agent_tree is None else agent_tree.settings
+            _get_tree_settings(self) if agent_tree is None else agent_tree.settings
         )
         if (
             tree_settings.max_call_depth is not None
@@ -805,12 +836,16 @@ class Agent:
                 )
             elif store is not None:
                 selected_store = EventMemoryStore(store)
-            self._memories[key] = Memory(selected_store)
+            from skill.memory import Memory as MemoryClass
+
+            self._memories[key] = MemoryClass(selected_store)
         return self._memories[key]
 
     def _evolution(
         self, library: AgentLibrary, store: EventStore | None
     ) -> SkillEvolution:
+        from skill.evolution import SkillEvolution
+
         return SkillEvolution(
             library,
             policy=self.evolution_policy,
@@ -829,6 +864,43 @@ class Agent:
         if self.model is None:
             raise RuntimeError("Agent requires an explicit model")
         return self.model
+
+
+def _new_tree_settings() -> Any:
+    """Create tree settings only when a tree-related feature is requested."""
+    from skill.organization import AgentTreeSettings
+
+    return AgentTreeSettings()
+
+
+def _get_tree_settings(agent: Agent) -> Any:
+    settings = getattr(agent, "agent_tree_settings", None)
+    if settings is None:
+        settings = _new_tree_settings()
+        agent.agent_tree_settings = settings
+    return settings
+
+
+def _get_agent_group_node(agent: Agent) -> Any:
+    node = getattr(agent, "_agent_group_node", None)
+    if node is None:
+        from skill.organization import agent_group_node
+
+        node = agent_group_node(agent)
+        agent._agent_group_node = node
+    return node
+
+
+def _get_or_create_agent_tree_runtime(agent: Agent, user_id: str) -> Any:
+    from skill.organization_runtime import get_or_create_agent_tree_runtime
+
+    return get_or_create_agent_tree_runtime(agent, user_id)
+
+
+def _clear_agent_tree_runtimes(agent: Agent) -> None:
+    from skill.organization_runtime import clear_agent_tree_runtimes
+
+    clear_agent_tree_runtimes(agent)
 
 
 def model_from_environment(environment: Mapping[str, str] | None = None) -> Model:
