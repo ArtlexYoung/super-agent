@@ -265,6 +265,42 @@ class ToolContext:
         return self.session.values.get(name, default)
 
 
+@dataclass
+class RunPlan:
+    """收集一次运行的显式贡献，Runtime 不关心贡献来自哪个插件。"""
+
+    instructions: list[str] = field(default_factory=list)
+    active_tools: dict[str, Tool] = field(default_factory=dict)
+    values: dict[str, object] = field(default_factory=dict)
+    listeners: list[EventListener] = field(default_factory=list)
+    prepare_hooks: list[RunPreparation] = field(default_factory=list)
+
+    def add_instruction(self, instruction: str) -> None:
+        text = instruction.strip()
+        if text and text not in self.instructions:
+            self.instructions.append(text)
+
+    def add_tool(self, tool: Tool) -> None:
+        add_unique_tool(self.active_tools, tool)
+
+    def add_value(self, name: str, value: object) -> None:
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("run plan value name cannot be empty")
+        if name in self.values and self.values[name] != value:
+            raise ValueError(f"run plan value is already registered: {name}")
+        self.values[name] = value
+
+    def add_listener(self, listener: EventListener) -> None:
+        if not callable(listener):
+            raise TypeError("run plan listener must be callable")
+        self.listeners.append(listener)
+
+    def add_prepare_hook(self, hook: RunPreparation) -> None:
+        if not callable(hook):
+            raise TypeError("run plan preparation hook must be callable")
+        self.prepare_hooks.append(hook)
+
+
 @dataclass(frozen=True)
 class RunSetup:
     """收拢运行身份、监听器和可选机制的接线信息。"""
@@ -281,6 +317,7 @@ class RunSetup:
     resume_checkpoint: RunCheckpoint | None = None
     interrupt_check: CancelCheck | None = None
     runtime_lifecycle: RuntimeLifecycle | None = None
+    plan: RunPlan | None = None
 
 
 @dataclass(frozen=True)
@@ -368,6 +405,7 @@ def stream_run(
     setup: RunSetup | None = None,
 ) -> Generator[RunEvent, None, RunResult]:
     selected = setup or RunSetup()
+    request, tools, selected = _apply_run_plan(request, tools, selected)
     session = _create_session(request, tools, selected)
     engine = _RunEngine(
         request,
@@ -386,6 +424,45 @@ def stream_run(
         selected.interrupt_check,
     )
     return (yield from engine.stream())
+
+
+def _apply_run_plan(
+    request: RunRequest,
+    tools: Iterable[Tool],
+    setup: RunSetup,
+) -> tuple[RunRequest, tuple[Tool, ...], RunSetup]:
+    plan = setup.plan
+    if plan is None:
+        return request, tuple(tools), setup
+    selected_prepare = _combine_preparations(plan.prepare_hooks, setup.prepare)
+    selected = replace(
+        setup,
+        listeners=(*plan.listeners, *setup.listeners),
+        values={**plan.values, **dict(setup.values)},
+        prepare=selected_prepare,
+        plan=None,
+    )
+    return (
+        replace(request, instructions=(*plan.instructions, *request.instructions)),
+        (*plan.active_tools.values(), *tuple(tools)),
+        selected,
+    )
+
+
+def _combine_preparations(
+    hooks: Iterable[RunPreparation], final: RunPreparation | None
+) -> RunPreparation | None:
+    selected = tuple(hooks)
+    if not selected:
+        return final
+
+    def prepare(session: RunContext, context: ToolContext) -> None:
+        for hook in selected:
+            hook(session, context)
+        if final is not None:
+            final(session, context)
+
+    return prepare
 
 
 def _create_session(

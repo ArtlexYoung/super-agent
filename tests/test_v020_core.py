@@ -24,11 +24,26 @@ from core.provider import (
     create_model,
 )
 from core.records import AuditPolicy, Conversations, EventStore, RecordQuery
-from core.run import RunRequest, collect_run, stream_run
+from core.run import RunPlan, RunRequest, RunSetup, collect_run, stream_run
 from super_agent import Agent, model_from_environment
 
 
 class CoreRuntimeTests(unittest.TestCase):
+    def test_run_plan_contributes_without_domain_knowledge_in_runtime(self):
+        tool = Tool("planned", "Planned tool", lambda _args, _context: {"ok": True})
+        plan = RunPlan()
+        plan.add_instruction("follow the plan")
+        plan.add_tool(tool)
+        plan.add_value("marker", "value")
+        result = collect_run(
+            stream_run(
+                RunRequest("use plan"),
+                MockModel("complete"),
+                setup=RunSetup(plan=plan),
+            )
+        )
+        self.assertEqual("complete", result.text)
+
     def test_agent_is_stateless_until_storage_is_selected(self):
         agent = Agent(MockModel("ready"))
         result = agent.run("hello")

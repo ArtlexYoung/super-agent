@@ -27,6 +27,7 @@ from core.run import (
     EventListener,
     RunRequest,
     RunContext,
+    RunPlan,
     RunSetup,
     RuntimeLifecycle,
     ToolDecision,
@@ -618,7 +619,7 @@ class Agent:
         request = RunRequest(
             prompt=selected_prompt,
             messages=messages,
-            instructions=instructions,
+            instructions=(),
             purpose=selected_context.purpose,
             required_features=required_features,
             limits=self.settings.limits,
@@ -636,6 +637,29 @@ class Agent:
         )
         if tracking is not None:
             listeners.append(tracking)
+
+        plan = RunPlan(
+            instructions=list(instructions),
+            active_tools=dict(active_tools),
+            values={
+                **build_run_values(
+                    available_tools,
+                    agent_tree.disclosures
+                    if agent_tree is not None
+                    else None if library is None else library.disclosures,
+                    selected_working_directory,
+                ),
+                **(
+                    {}
+                    if library is None
+                    else {
+                        "library_snapshot": library.snapshot().to_dict(),
+                        "mcp_tools_by_server": mcp_tools_by_server,
+                    }
+                ),
+            },
+            listeners=listeners,
+        )
 
         def prepare(session: RunContext, tool_context: ToolContext) -> None:
             session.values["available_tools"] = available_tools
@@ -659,27 +683,9 @@ class Agent:
         result = yield from stream_run(
             request,
             model,
-            active_tools.values(),
+            (),
             setup=RunSetup(
                 identity=identity,
-                listeners=tuple(listeners),
-                values={
-                    **build_run_values(
-                    available_tools,
-                    agent_tree.disclosures
-                    if agent_tree is not None
-                    else None if library is None else library.disclosures,
-                    selected_working_directory,
-                    ),
-                    **(
-                        {}
-                        if library is None
-                        else {
-                            "library_snapshot": library.snapshot().to_dict(),
-                            "mcp_tools_by_server": mcp_tools_by_server,
-                        }
-                    ),
-                },
                 prepare=prepare,
                 session_record=selected_session,
                 tool_decider=effective_context.tool_decider,
@@ -689,6 +695,7 @@ class Agent:
                 resume_checkpoint=effective_context.resume_checkpoint,
                 interrupt_check=effective_context.interrupt_check,
                 runtime_lifecycle=runtime_lifecycle,
+                plan=plan,
             ),
         )
         if conversation_id and selected_context.save_conversation:

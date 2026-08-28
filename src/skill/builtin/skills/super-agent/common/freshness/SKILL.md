@@ -5,7 +5,7 @@ metadata:
   super-agent-categories: "[\"evaluation/skill\"]"
   super-agent-requires: "[\"read_skill_freshness\"]"
   super-agent-type: "evaluation"
-  super-agent-version: "0.2.18"
+  super-agent-version: "0.2.19"
 ---
 # Skill freshness interpretation
 
