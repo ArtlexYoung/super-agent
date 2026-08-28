@@ -226,7 +226,7 @@ super-agent data conversations list --config common.toml --user alice
 ## 验证仓库
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.20 --full
+python3.11 scripts/verify_release.py --version 0.2.21 --full
 ```
 
 完整的本地发布检查（包括版本一致性和打包范围）见[本地发布流程](docs/releasing.md)。

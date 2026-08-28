@@ -5,7 +5,7 @@ metadata:
   super-agent-categories: "[\"general/task\",\"tool/general\"]"
   super-agent-requires: "[\"calculate_numbers\"]"
   super-agent-type: "task"
-  super-agent-version: "0.2.20"
+  super-agent-version: "0.2.21"
 ---
 # General task method
 

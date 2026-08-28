@@ -1,0 +1,9 @@
+schema = 1
+id = "super-agent/memory"
+version = "0.2.21"
+description = "Explicit temporary and long-term memory methods"
+entry_skill = "skill:super-agent/memory"
+skills = []
+included_plugins = []
+required_mcp_servers = []
+optional_mcp_servers = []
