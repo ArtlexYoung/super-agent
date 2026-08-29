@@ -170,6 +170,103 @@ class ToolExecutionCenter:
                 raise TimeoutError(f"tool timed out: {tool.name}") from error
 
 
+class EventBus:
+    """将一次运行的事件发送给所有明确注册的观察者。"""
+
+    def __init__(
+        self,
+        listeners: Iterable[EventListener] = (),
+        *,
+        session_record: SessionRecord | None = None,
+        checkpoint_store: CheckpointStore | None = None,
+        checkpoint_factory: Callable[[RunEvent], RunCheckpoint] | None = None,
+        allow_listener_failures: bool = False,
+    ) -> None:
+        self.listeners = tuple(listeners)
+        self.session_record = session_record
+        self.checkpoint_store = checkpoint_store
+        self.checkpoint_factory = checkpoint_factory
+        self.allow_listener_failures = allow_listener_failures
+
+    def publish(self, event: RunEvent) -> tuple[dict[str, str], ...]:
+        """按固定顺序写入会话、检查点并通知监听器。"""
+        if self.session_record is not None:
+            self.session_record.append_event(event)
+        if self.checkpoint_store is not None:
+            if self.checkpoint_factory is None:
+                raise RuntimeError("checkpoint factory is required")
+            self.checkpoint_store.save(self.checkpoint_factory(event))
+        failures: list[dict[str, str]] = []
+        for listener in self.listeners:
+            try:
+                listener(event)
+            except Exception as error:
+                failure = {
+                    "listener": getattr(
+                        listener, "__qualname__", type(listener).__name__
+                    ),
+                    "error_type": type(error).__name__,
+                    "message": str(error),
+                }
+                failures.append(failure)
+                if not self.allow_listener_failures:
+                    raise
+        return tuple(failures)
+
+
+class ToolRegistry:
+    """统一保存始终可用和按 Skill 激活的工具。"""
+
+    def __init__(
+        self,
+        active: Iterable[Tool] = (),
+        available: Iterable[Tool] = (),
+    ) -> None:
+        self._active: dict[str, Tool] = {}
+        self._available: dict[str, Tool] = {}
+        for tool in active:
+            self.register(tool, exposure="always")
+        for tool in available:
+            self.register(tool, exposure="after_skill")
+
+    @property
+    def active(self) -> dict[str, Tool]:
+        return self._active
+
+    @property
+    def available(self) -> dict[str, Tool]:
+        return self._available
+
+    def register(self, tool: Tool, *, exposure: str = "always") -> None:
+        """注册工具；同名不同实现直接失败。"""
+        if not isinstance(tool, Tool):
+            raise TypeError("tool registry accepts Tool values only")
+        if exposure not in {"always", "after_skill"}:
+            raise ValueError("tool exposure must be always or after_skill")
+        target = self._active if exposure == "always" else self._available
+        other = self._available if exposure == "always" else self._active
+        existing = target.get(tool.name) or other.get(tool.name)
+        if existing is not None and existing != tool:
+            raise ValueError(f"tool already registered: {tool.name}")
+        if tool.name in other:
+            if exposure == "after_skill":
+                return
+            other.pop(tool.name)
+        target[tool.name] = tool
+
+    def activate(self, name: str) -> Tool:
+        """将一个已登记的候选工具加入当前运行。"""
+        tool = self._available.get(name)
+        if tool is None:
+            raise KeyError(f"available tool not found: {name}")
+        self._active[name] = tool
+        return tool
+
+    def register_many(self, tools: Iterable[Tool], *, exposure: str) -> None:
+        for tool in tools:
+            self.register(tool, exposure=exposure)
+
+
 @dataclass
 class RunResources:
     """一次运行可使用的外部资源；空值表示宿主没有提供该资源。"""
@@ -179,11 +276,21 @@ class RunResources:
     working_directory: object | None = None
     library_snapshot: Mapping[str, object] | None = None
     mcp_tools_by_server: Mapping[str, tuple[Tool, ...]] | None = None
+    tool_registry: ToolRegistry | None = None
 
     def ready(self) -> RunResources:
         """创建运行期副本，并只为本轮补齐内存级默认值。"""
+        registry = self.tool_registry or ToolRegistry()
+        registry.register_many(
+            (
+                tool
+                for tool in (self.available_tools or {}).values()
+                if isinstance(tool, Tool)
+            ),
+            exposure="after_skill",
+        )
         return RunResources(
-            available_tools=dict(self.available_tools or {}),
+            available_tools=registry.available,
             disclosure_store=self.disclosure_store or DisclosureStore(),
             working_directory=self.working_directory,
             library_snapshot=dict(self.library_snapshot or {}),
@@ -191,6 +298,7 @@ class RunResources:
                 key: tuple(value)
                 for key, value in (self.mcp_tools_by_server or {}).items()
             },
+            tool_registry=registry,
         )
 
     def merge(self, override: RunResources) -> RunResources:
@@ -223,6 +331,11 @@ class RunResources:
                 if override.mcp_tools_by_server is not None
                 else self.mcp_tools_by_server
             ),
+            tool_registry=(
+                override.tool_registry
+                if override.tool_registry is not None
+                else self.tool_registry
+            ),
         )
 
 
@@ -244,6 +357,10 @@ class RunContext:
         if not isinstance(self.resources, RunResources):
             raise TypeError("run resources must be RunResources")
         self.resources = self.resources.ready()
+        self.resources.tool_registry.register_many(
+            self.tools.values(), exposure="always"
+        )
+        self.tools = self.resources.tool_registry.active
         if self.ledger is None:
             self.ledger = ContextLedger(
                 self.context_limit,
@@ -297,10 +414,7 @@ class RunContext:
         return self.ledger.snapshot()
 
     def add_tool(self, tool: Tool) -> None:
-        existing = self.tools.get(tool.name)
-        if existing is not None and existing != tool:
-            raise ValueError(f"tool is already registered: {tool.name}")
-        self.tools[tool.name] = tool
+        self.resources.tool_registry.register(tool, exposure="always")
 
     def activate_skill(self, key: str) -> None:
         if key not in self.active_skills:
@@ -417,6 +531,7 @@ def build_run_resources(
     *,
     library_snapshot: Mapping[str, object] | None = None,
     mcp_tools_by_server: Mapping[str, tuple[Tool, ...]] | None = None,
+    tool_registry: ToolRegistry | None = None,
 ) -> RunResources:
     """集中构造一次运行的资源，不创建文件、数据库或网络连接。"""
     if disclosure_store is not None and not isinstance(disclosure_store, DisclosureStore):
@@ -427,6 +542,7 @@ def build_run_resources(
         working_directory=working_directory,
         library_snapshot=library_snapshot,
         mcp_tools_by_server=mcp_tools_by_server,
+        tool_registry=tool_registry,
     )
 
 
@@ -582,9 +698,17 @@ class _RunEngine:
     captured_events: list[RunEvent] = field(default_factory=list)
     turns: int = 0
     context: ToolContext = field(init=False)
+    event_bus: EventBus = field(init=False)
 
     def __post_init__(self) -> None:
         self.context = ToolContext(self.session, self.capture)
+        self.event_bus = EventBus(
+            self.listeners,
+            session_record=self.session_record,
+            checkpoint_store=self.checkpoint_store,
+            checkpoint_factory=self._checkpoint_for,
+            allow_listener_failures=self.request.allow_listener_failures,
+        )
 
     def emit(
         self,
@@ -602,27 +726,7 @@ class _RunEngine:
             self.session.identity, event.event_type
         )
         self.events.append(event)
-        if self.session_record is not None:
-            self.session_record.append_event(event)
-        if self.checkpoint_store is not None:
-            self.checkpoint_store.save(self._checkpoint_for(event))
-        for listener in self.listeners:
-            try:
-                listener(event)
-            except Exception as error:
-                self.listener_failures.append(
-                    {
-                        "listener": getattr(
-                            listener,
-                            "__qualname__",
-                            type(listener).__name__,
-                        ),
-                        "error_type": type(error).__name__,
-                        "message": str(error),
-                    }
-                )
-                if not self.request.allow_listener_failures:
-                    raise
+        self.listener_failures.extend(self.event_bus.publish(event))
         return event
 
     def capture(self, event_type: str, data: Mapping[str, object]) -> RunEvent:

@@ -629,12 +629,12 @@ class AgentLibrary:
             return
         if skill.reference in stack:
             raise ValueError(f"Skill include cycle: {' -> '.join((*stack, skill.reference))}")
-        available = session.resources.available_tools or {}
-        if not isinstance(available, Mapping):
-            raise TypeError("run available_tools must be an object")
+        registry = session.resources.tool_registry
+        if registry is None:  # pragma: no cover - RunContext always creates it
+            raise RuntimeError("run tool registry is unavailable")
         for name in (*skill.requires, *skill.optional_tools):
-            if name not in session.tools and isinstance(available.get(name), Tool):
-                session.add_tool(available[name])
+            if name not in session.tools and isinstance(registry.available.get(name), Tool):
+                registry.activate(name)
         missing = sorted(set(skill.requires) - set(session.tools))
         if missing:
             raise RuntimeError(f"Skill requires unregistered tools: {skill.reference}: {', '.join(missing)}")

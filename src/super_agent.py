@@ -32,8 +32,7 @@ from core.run import (
     RuntimeLifecycle,
     ToolDecision,
     ToolContext,
-    add_optional_tools,
-    add_unique_tool,
+    ToolRegistry,
     build_run_instructions,
     build_run_resources,
     collect_run,
@@ -128,8 +127,7 @@ class Agent:
         self.evolution_enabled = False
         self.evolution_policy = EvolutionConfig()
         self.candidate_runner: CandidateRunner | None = None
-        self._active_tools: dict[str, Tool] = {}
-        self._skill_tools: dict[str, Tool] = {}
+        self._tool_registry = ToolRegistry()
         self._enabled_plugins: list[str] = []
         self._enabled_skills: list[str] = []
         self._disabled_plugins: list[str] = []
@@ -392,11 +390,10 @@ class Agent:
                 child.use_storage(storage)
 
     def add_tool(self, tool: Tool) -> None:
-        add_unique_tool(self._active_tools, tool)
+        self._tool_registry.register(tool, exposure="always")
 
     def add_tools_for_skills(self, tools: Iterable[Tool]) -> None:
-        for tool in tools:
-            add_unique_tool(self._skill_tools, tool)
+        self._tool_registry.register_many(tools, exposure="after_skill")
 
     def enable_plugin(self, reference: str) -> None:
         selected = _text(reference, "plugin reference")
@@ -419,8 +416,8 @@ class Agent:
                 self.storage is not None,
                 self.memory_enabled,
                 self.evolution_enabled,
-                self._active_tools,
-                self._skill_tools,
+                self._tool_registry.active,
+                self._tool_registry.available,
                 self._enabled_plugins,
                 self._enabled_skills,
                 self._mcp_servers,
@@ -601,9 +598,11 @@ class Agent:
             effective_context.save_conversation,
             store,
         )
-        active_tools, available_tools, mcp_tools_by_server = self._run_tools(
+        tool_registry, mcp_tools_by_server = self._run_tools(
             identity, library, store, agent_tree, group_id, selected_working_directory
         )
+        active_tools = tool_registry.active
+        available_tools = tool_registry.available
         plugin_index = (
             None
             if library is None
@@ -659,6 +658,7 @@ class Agent:
                     None if library is None else library.snapshot().to_dict()
                 ),
                 mcp_tools_by_server=mcp_tools_by_server,
+                tool_registry=tool_registry,
             ),
             listeners=listeners,
         )
@@ -742,13 +742,14 @@ class Agent:
         agent_tree: AgentTreeRuntime | None,
         group_id: str,
         working_directory: WorkingDirectory | None,
-    ) -> tuple[dict[str, Tool], dict[str, Tool], dict[str, tuple[Tool, ...]]]:
-        active = dict(self._active_tools)
-        available = dict(self._skill_tools)
+    ) -> tuple[ToolRegistry, dict[str, tuple[Tool, ...]]]:
+        registry = ToolRegistry(
+            active=self._tool_registry.active.values(),
+            available=self._tool_registry.available.values(),
+        )
         mcp_tools_by_server: dict[str, tuple[Tool, ...]] = {}
         if library is not None:
-            for tool in library.tools():
-                add_unique_tool(active, tool)
+            registry.register_many(library.tools(), exposure="always")
             if self._mcp_servers:
                 from adapter.tools import mcp_tools
 
@@ -764,8 +765,9 @@ class Agent:
             if "plugin:super-agent/memory" not in self._enabled_plugins:
                 raise RuntimeError("memory requires the explicit Memory plugin")
             memory = self._memory(identity, store, working_directory)
-            add_optional_tools(
-                active, available, memory.tools(), progressive=library is not None
+            registry.register_many(
+                memory.tools(),
+                exposure="after_skill" if library is not None else "always",
             )
         if self.evolution_enabled:
             if "plugin:super-agent/evolution" not in self._enabled_plugins:
@@ -773,19 +775,15 @@ class Agent:
             if library is None:
                 raise RuntimeError("Skill evolution requires an AgentLibrary")
             evolution = self._evolution(library, store)
-            add_optional_tools(active, available, evolution.tools(), progressive=True)
+            registry.register_many(evolution.tools(), exposure="after_skill")
         if agent_tree is not None:
-            add_optional_tools(
-                active,
-                available,
+            registry.register_many(
                 agent_tree.tools(group_id),
-                progressive=library is not None,
+                exposure="after_skill" if library is not None else "always",
             )
             if library is None:
-                add_unique_tool(active, agent_tree.disclosures.tool())
-        for name in set(active) & set(available):
-            raise ValueError(f"tool is both active and Skill-gated: {name}")
-        return active, available, mcp_tools_by_server
+                registry.register(agent_tree.disclosures.tool(), exposure="always")
+        return registry, mcp_tools_by_server
 
     def _library(
         self, identity: RunIdentity, store: EventStore | None

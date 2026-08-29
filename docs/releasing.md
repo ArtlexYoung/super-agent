@@ -11,7 +11,7 @@ PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
 python3.11 -m unittest discover -s tests -p 'test_*.py' -v
 
 PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
-python3.11 scripts/verify_release.py --version 0.2.33 --full
+python3.11 scripts/verify_release.py --version 0.2.34 --full
 ```
 
 发布检查验证版本、Python 最低版本、零默认依赖、源码布局、旧目录删除、构建范围、内置插件去重关系和离线评测资产。
@@ -24,9 +24,9 @@ Log writes never trigger retention cleanup. Run `super-agent data storage prune 
 
 ## 版本 / Version
 
-v0.2.33 收敛 CLI、插件目录、README、示例和发布门禁，并以 `RunResources` 作为运行资源的唯一入口。同步更新 `pyproject.toml`、`src/core/__init__.py`、README 和发布检查脚本。
+v0.2.34 统一事件分发和工具注册边界，减少 Agent 与运行循环之间的重复接线。同步更新 `pyproject.toml`、`src/core/__init__.py`、README 和发布检查脚本。
 
-v0.2.33 centralizes the CLI, plugin catalog, READMEs, examples, and release gate, with `RunResources` as the single runtime-resource entry point. Update `pyproject.toml`, `src/core/__init__.py`, the READMEs, and the release gate together.
+v0.2.34 centralizes event delivery and tool registration, reducing duplicate wiring between Agent and Runtime. Update `pyproject.toml`, `src/core/__init__.py`, the READMEs, and the release gate together.
 
 检查通过后创建一个本地逻辑提交和标签；远程推送是单独的授权边界。
 
