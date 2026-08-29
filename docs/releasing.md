@@ -26,7 +26,7 @@ Log writes never trigger retention cleanup. Run `super-agent data storage prune 
 
 v0.2.26 引入中央 Skill/MCP/插件资源库、规范引用、跨来源内容去重、哈希覆盖层、运行快照和逐插件/Skill 进化授权。同步更新 `pyproject.toml`、`src/core/__init__.py`、README 和发布检查脚本。
 
-v0.2.29 extracts tool permission guidance into the optional Policy plugin. Update `pyproject.toml`, `src/core/__init__.py`, the READMEs, and the release gate together.
+v0.2.30 adds optional Research and Knowledge plugins. Update `pyproject.toml`, `src/core/__init__.py`, the READMEs, and the release gate together.
 
 检查通过后创建一个本地逻辑提交和标签；远程推送是单独的授权边界。
 

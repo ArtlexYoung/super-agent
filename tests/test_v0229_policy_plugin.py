@@ -16,7 +16,7 @@ class PolicyPluginTests(unittest.TestCase):
         policy = library.find_plugin("plugin:super-agent/policy")
 
         self.assertEqual((), policy.skills)
-        self.assertEqual("0.2.29", policy.version)
+        self.assertEqual("0.2.30", policy.version)
         self.assertNotIn("policy", library.find_plugin("plugin:super-agent/common").description)
 
     def test_policy_blocks_ask_without_interactive_confirmation(self):
