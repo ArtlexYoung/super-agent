@@ -90,6 +90,11 @@ class Plugin:
     def reference(self) -> str:
         return f"plugin:{self.plugin_id}"
 
+    @property
+    def skill_references(self) -> tuple[str, ...]:
+        """返回入口和成员 Skill 的有序去重引用。"""
+        return tuple(dict.fromkeys((self.entry_skill, *self.skills)))
+
     def index_entry(self) -> dict[str, object]:
         return {
             "key": self.reference,
@@ -97,6 +102,7 @@ class Plugin:
             "description": self.description,
             "entry_skill": self.entry_skill,
             "skills": list(self.skills),
+            "skill_references": list(self.skill_references),
             "included_plugins": [f"plugin:{item}" for item in self.included_plugins],
             "required_mcp_servers": [f"mcp:{item}" for item in self.required_mcp_servers],
             "optional_mcp_servers": [f"mcp:{item}" for item in self.optional_mcp_servers],
@@ -259,7 +265,15 @@ class AgentLibrary:
             values = [item for item in values if item.skill_type == skill_type]
         if category:
             values = [item for item in values if category in item.categories]
-        return _page(values, page, page_size, lambda item: item.index_entry())
+        return _page(
+            values,
+            page,
+            page_size,
+            lambda item: {
+                **item.index_entry(),
+                "plugins": list(self.plugins_using_skill(item.reference)),
+            },
+        )
 
     def list_mcp_servers(self, *, page: int = 1, page_size: int = 20) -> DisclosurePage:
         values = sorted(
@@ -297,6 +311,35 @@ class AgentLibrary:
         if key in self.disabled_mcp_servers:
             raise PermissionError(f"MCP server is disabled: {key}")
         return value
+
+    def plugin_skill_references(self, reference: str) -> tuple[str, ...]:
+        """解析插件及其嵌套插件的全部 Skill，并按引用去重。"""
+        result: list[str] = []
+        visited: set[str] = set()
+
+        def visit(plugin: Plugin) -> None:
+            if plugin.plugin_id in visited:
+                return
+            visited.add(plugin.plugin_id)
+            for skill in plugin.skill_references:
+                if skill not in result:
+                    result.append(skill)
+            for included in plugin.included_plugins:
+                visit(self.find_plugin(included))
+
+        visit(self.find_plugin(reference))
+        return tuple(result)
+
+    def plugins_using_skill(self, reference: str) -> tuple[str, ...]:
+        """查找直接或间接引用指定 Skill 的插件。"""
+        selected = self.find_skill(reference).reference
+        return tuple(
+            sorted(
+                plugin.reference
+                for plugin in self.snapshot().plugins.values()
+                if selected in self.plugin_skill_references(plugin.reference)
+            )
+        )
 
     def preview_plugin(self, reference: str, **page: int) -> DisclosedContent:
         return self._read(self.find_plugin(reference).entry_skill, None, page)
@@ -469,11 +512,7 @@ class AgentLibrary:
             for item in self.snapshot().skills.values()
             if item.reference != skill.reference and item.root.is_relative_to(skill.root)
         )
-        plugins = tuple(
-            item.reference
-            for item in self.snapshot().plugins.values()
-            if skill.reference in {item.entry_skill, *item.skills}
-        )
+        plugins = self.plugins_using_skill(skill.reference)
         if dependents or plugins or descendants:
             references = ", ".join((*plugins, *dependents, *descendants))
             raise RuntimeError(f"Skill is still referenced: {skill.reference}: {references}")
@@ -644,7 +683,7 @@ class AgentLibrary:
                 (*stack, plugin.plugin_id),
                 unavailable,
             )
-        for reference in (plugin.entry_skill, *plugin.skills):
+        for reference in plugin.skill_references:
             self._activate_skill(self.find_skill(reference), session, activated, ())
 
     def _activate_skill(self, skill: Skill, session: RunContext, activated: list[str], stack: tuple[str, ...]) -> None:
@@ -839,10 +878,25 @@ def _read_plugin_manifest(path: Path, library_root: Path, *, writable: bool) -> 
         raise ValueError(f"unsupported plugin schema: {value.get('schema')}")
     if _resource_id(value.get("id"), "plugin ID") != plugin_id:
         raise ValueError(f"plugin ID must match its directory: {plugin_id}")
+    extra_files = tuple(
+        item for item in path.parent.rglob("*") if item.is_file() and item.name != PLUGIN_FILE
+    )
+    if extra_files:
+        raise ValueError(
+            f"plugin directory may contain only {PLUGIN_FILE}: {plugin_id}"
+        )
     skills = _references(value.get("skills", []), "skill", "plugin skills")
     entry = _skill_reference(value.get("entry_skill"))
     if entry in skills:
         raise ValueError(f"plugin entry_skill must not be repeated in skills: {plugin_id}")
+    for label, raw, normalized in (
+        ("plugin skills", value.get("skills", []), skills),
+        ("included plugins", value.get("included_plugins", []), _references(value.get("included_plugins", []), "plugin", "included plugins")),
+        ("required MCP servers", value.get("required_mcp_servers", []), _references(value.get("required_mcp_servers", []), "mcp", "required MCP servers")),
+        ("optional MCP servers", value.get("optional_mcp_servers", []), _references(value.get("optional_mcp_servers", []), "mcp", "optional MCP servers")),
+    ):
+        if isinstance(raw, list) and len(normalized) != len(raw):
+            raise ValueError(f"{label} must not contain duplicates: {plugin_id}")
     return Plugin(
         plugin_id,
         _version(value.get("version"), "plugin version"),

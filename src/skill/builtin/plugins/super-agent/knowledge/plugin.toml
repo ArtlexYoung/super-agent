@@ -1,6 +1,6 @@
 schema = 1
 id = "super-agent/knowledge"
-version = "0.2.44"
+version = "0.2.45"
 description = "Explicit project context, goals, status, plan, and knowledge methods"
 entry_skill = "skill:super-agent/knowledge"
 skills = ["skill:super-agent/knowledge/project-context"]
