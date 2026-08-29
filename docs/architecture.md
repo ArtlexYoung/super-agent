@@ -1,6 +1,6 @@
 # 架构 / Architecture
 
-## 六个边界 / Six Boundaries
+## 七个边界 / Seven Boundaries
 
 ```text
 Provider -> 提供模型智能 / provides model intelligence

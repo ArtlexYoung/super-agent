@@ -94,14 +94,17 @@ print(result.text)
 
 ```python
 from super_agent import Agent, model_from_environment
+from pathlib import Path
+from skill.library import AgentLibrary
 
 main = Agent(model_from_environment())
 coder = Agent(model_from_environment())
+main.use_agent_library(AgentLibrary((Path("src/skill/builtin"),)))
 engineering = main.add_group("engineering")
 engineering.add_subagent(coder, name="coder", description="实现并验证代码修改")
 result = main.run(
     "让工程组修复失败的测试",
-    skill="skill:super-agent/common/multi-agent",
+    plugin="plugin:super-agent/team",
 )
 ```
 
@@ -226,7 +229,7 @@ super-agent data conversations list --config common.toml --user alice
 ## 验证仓库
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.26 --full
+python3.11 scripts/verify_release.py --version 0.2.33 --full
 ```
 
 完整的本地发布检查（包括版本一致性和打包范围）见[本地发布流程](docs/releasing.md)。

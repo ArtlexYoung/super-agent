@@ -47,9 +47,9 @@ Provide `MODEL_API_KEY` in your external shell or secret manager first; document
 
 ## 显式选择插件 / Select a Plugin Explicitly
 
-内置 common 插件适合通用任务，code 插件适合仓库工作。模型也可以从索引自行选择相关 Skill；命令行参数只在需要固定本次方法时使用。
+内置插件按场景拆分：`common` 适合通用任务，`code` 适合仓库工作，`research` 适合资料核验，`knowledge` 适合项目背景，`team` 和 `review` 适合多 Agent 协作。`session`、`audit`、`policy`、`automation`、`memory`、`evolution`、`task` 和 `model-routing` 也都可以独立启用。
 
-The builtin common plugin suits general tasks, while the code plugin suits repository work. The model may also select relevant Skills from the index; use a command-line option only to fix the method for this run.
+Builtin plugins are separated by purpose: `common` handles general tasks, `code` handles repositories, `research` handles source verification, `knowledge` handles project context, and `team` and `review` handle multi-Agent work. `session`, `audit`, `policy`, `automation`, `memory`, `evolution`, `task`, and `model-routing` can also be enabled independently.
 
 ```bash
 super-agent plugins list

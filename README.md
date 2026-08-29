@@ -24,6 +24,10 @@ Prompts, tool-use methods, memory methods, workflows, and task policies share on
 
 The central library manages Skills and MCP definitions; plugins keep canonical references only, so shared content is never installed twice.
 
+内置插件按场景拆分：`common`、`code`、`session`、`audit`、`policy`、`research`、`knowledge`、`automation`、`memory`、`evolution`、`task`、`team`、`review` 和 `model-routing`；只启用当前任务需要的插件。
+
+Builtin plugins are split by purpose: `common`, `code`, `session`, `audit`, `policy`, `research`, `knowledge`, `automation`, `memory`, `evolution`, `task`, `team`, `review`, and `model-routing`; enable only what the current task needs.
+
 每个 Skill 继续直接采用 Agent Skills 标准的 `SKILL.md`、YAML front matter 和 Markdown 正文；MCP 描述不包含命令、地址、密钥或自动连接逻辑。
 
 Every Skill still uses standard Agent Skills `SKILL.md`, YAML front matter, and Markdown; MCP definitions contain no command, endpoint, secret, or automatic connection logic.
@@ -97,15 +101,18 @@ print(result.text)
 Groups and subagents compose naturally in code. Level 1 is the root group, structural groups do not call models, and each Agent keeps its own models, plugins, Skills, and configuration.
 
 ```python
+from pathlib import Path
 from super_agent import Agent, model_from_environment
+from skill.library import AgentLibrary
 
 main = Agent(model_from_environment())
 coder = Agent(model_from_environment())
+main.use_agent_library(AgentLibrary((Path("src/skill/builtin"),)))
 engineering = main.add_group("engineering")
 engineering.add_subagent(coder, name="coder", description="实现并验证代码修改")
 result = main.run(
     "让工程组修复失败的测试",
-    skill="skill:super-agent/common/multi-agent",
+    plugin="plugin:super-agent/team",
 )
 ```
 
@@ -231,5 +238,5 @@ Third-party projects retain their own copyrights and licenses; this project is l
 The full release gate checks Python tests, compilation, package contents, offline evaluation, and build.
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.26 --full
+python3.11 scripts/verify_release.py --version 0.2.33 --full
 ```

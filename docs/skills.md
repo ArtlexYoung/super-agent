@@ -20,6 +20,10 @@ Skill 和 MCP 是中央资源。插件只保存引用，不含 `SKILL.md`、MCP 
 
 Skills and MCP definitions are central resources. A plugin stores references only and contains no `SKILL.md`, MCP command, endpoint, or secret.
 
+内置插件都位于 `src/skill/builtin/plugins/super-agent/`，对应正文位于 `src/skill/builtin/skills/super-agent/`。它们是可选方法集合，不会因为被发现而自动执行。
+
+Builtin plugins live under `src/skill/builtin/plugins/super-agent/`, with their Skill bodies under `src/skill/builtin/skills/super-agent/`. They are optional method sets and never execute merely because they were discovered.
+
 ## Skill
 
 ```markdown

@@ -100,14 +100,17 @@ not silently change later runs:
 
 ```python
 from super_agent import Agent, model_from_environment
+from pathlib import Path
+from skill.library import AgentLibrary
 
 main = Agent(model_from_environment())
 coder = Agent(model_from_environment())
+main.use_agent_library(AgentLibrary((Path("src/skill/builtin"),)))
 engineering = main.add_group("engineering")
 engineering.add_subagent(coder, name="coder", description="Implements and verifies code changes")
 result = main.run(
     "Ask engineering to fix the failing test",
-    skill="skill:super-agent/common/multi-agent",
+    plugin="plugin:super-agent/team",
 )
 ```
 
@@ -247,7 +250,7 @@ Runnable examples are in `examples/minimal.py`, `examples/custom_skill.py`, and
 ## Verify the Repository
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.26 --full
+python3.11 scripts/verify_release.py --version 0.2.33 --full
 ```
 
 For the complete local release gate, including version and package-shape checks, see
