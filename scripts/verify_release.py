@@ -1,4 +1,4 @@
-"""运行 v0.2.28 的本地发布检查。"""
+"""运行 v0.2.29 的本地发布检查。"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-VERSION = "0.2.28"
+VERSION = "0.2.29"
 MAX_SOURCE_FILES = 25
 MAX_SOURCE_LINES = 12_000
 SOURCE_ROOTS = {"adapter", "core", "skill", "cli.py", "super_agent.py"}
@@ -55,6 +55,7 @@ REQUIRED_BUILTIN_SKILLS = {
     "common": set(),
     "session": {"conversation"},
     "audit": set(),
+    "policy": set(),
     "code": {"deep-optimization"},
     "evolution": {"freshness", "self-update"},
     "memory": set(),

@@ -16,7 +16,7 @@ class AuditPluginTests(unittest.TestCase):
         plugin = library.find_plugin("plugin:super-agent/audit")
 
         self.assertEqual((), plugin.skills)
-        self.assertEqual("0.2.28", plugin.version)
+        self.assertEqual("0.2.29", plugin.version)
 
         store = EventStore(MemoryStorage(), "alice", "agent")
         record = store.append(
