@@ -17,7 +17,6 @@ from types import MappingProxyType
 from uuid import uuid4
 
 from core import require_integer as _integer, require_text as _text
-from core.disclosure import DisclosureStore
 from core.model import Tool
 from core.resources import DisclosedContent, DisclosurePage, ResourceCenter
 from core.run import RunContext, ToolContext
@@ -177,20 +176,11 @@ class AgentLibrary:
             self._snapshot = self._build_snapshot()
         return self._snapshot
 
-    @property
-    def disclosures(self) -> DisclosureStore:
-        """Return the store for callers that inspect cache identity."""
-        return self.resources.store
-
-    def use_disclosure_store(
-        self, store: DisclosureStore | ResourceCenter
-    ) -> None:
-        if isinstance(store, ResourceCenter):
-            self.resources = store
-        elif isinstance(store, DisclosureStore):
-            self.resources = ResourceCenter(store)
-        else:
-            raise TypeError("library disclosure store must be a ResourceCenter")
+    def use_resource_center(self, resource_center: ResourceCenter) -> None:
+        """Use the explicit central resource service for this library scope."""
+        if not isinstance(resource_center, ResourceCenter):
+            raise TypeError("library resource center must be a ResourceCenter")
+        self.resources = resource_center
 
     def for_scope(
         self,

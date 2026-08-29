@@ -1,6 +1,6 @@
 schema = 1
 id = "local/custom"
-version = "0.2.45"
+version = "0.2.46"
 description = "A small local plugin that references one central Skill"
 entry_skill = "skill:local/custom"
 skills = []

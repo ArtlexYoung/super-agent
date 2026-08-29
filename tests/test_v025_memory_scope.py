@@ -37,7 +37,7 @@ class WorkingDirectoryMemoryTests(unittest.TestCase):
     def test_long_term_memory_is_created_inside_the_working_directory(self):
         with tempfile.TemporaryDirectory() as directory:
             agent = Agent(MockModel("answer"), working_directory=directory)
-            memory = agent._memory(
+            memory = agent.run_parts.memory(
                 RunIdentity(user_id="alice", agent_name=agent.name),
                 None,
                 agent.working_directory,

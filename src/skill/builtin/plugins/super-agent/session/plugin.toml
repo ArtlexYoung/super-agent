@@ -1,6 +1,6 @@
 schema = 1
 id = "super-agent/session"
-version = "0.2.45"
+version = "0.2.46"
 description = "Explicit conversation and session methods"
 entry_skill = "skill:super-agent/session"
 skills = ["skill:super-agent/session/conversation"]

@@ -9,7 +9,7 @@ from super_agent import Agent, AgentContext
 
 
 class TeamRunPlanTests(unittest.TestCase):
-    def test_tree_runtime_prepares_warnings_tools_and_disclosures_together(self):
+    def test_tree_runtime_prepares_warnings_tools_and_resources_together(self):
         agent = Agent(MockModel("answer"), name="root")
         runtime = TeamRuntime(team_node(agent).root())
         group_id = team_node(agent).group_id
@@ -17,7 +17,7 @@ class TeamRunPlanTests(unittest.TestCase):
         plan = runtime.prepare_run(group_id, 1)
 
         self.assertEqual(group_id, plan.group_id)
-        self.assertIs(runtime.disclosures, plan.disclosures)
+        self.assertIs(runtime.resources, plan.resources)
         self.assertIn("create_agent_task", {tool.name for tool in plan.tools})
 
     def test_run_builder_registers_the_prepared_tree_plan_once(self):

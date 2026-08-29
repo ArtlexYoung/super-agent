@@ -8,7 +8,6 @@ from dataclasses import dataclass, field, replace
 from threading import RLock
 from typing import Callable, Generator, Iterable, Mapping
 
-from core.disclosure import DisclosureStore
 from core.event import (
     CheckpointStore,
     ContextLedger,
@@ -273,7 +272,7 @@ class RunResources:
     """一次运行可使用的外部资源；空值表示宿主没有提供该资源。"""
 
     available_tools: Mapping[str, Tool] | None = None
-    disclosure_store: ResourceCenter | DisclosureStore | None = None
+    resource_center: ResourceCenter | None = None
     working_directory: object | None = None
     library_snapshot: Mapping[str, object] | None = None
     mcp_tools_by_server: Mapping[str, tuple[Tool, ...]] | None = None
@@ -290,16 +289,14 @@ class RunResources:
             ),
             exposure="after_skill",
         )
-        center = self.disclosure_store
+        center = self.resource_center
         if center is None:
             center = ResourceCenter()
-        elif isinstance(center, DisclosureStore):
-            center = ResourceCenter(center)
         elif not isinstance(center, ResourceCenter):
-            raise TypeError("run disclosure store must be a ResourceCenter")
+            raise TypeError("run resource center must be a ResourceCenter")
         return RunResources(
             available_tools=registry.available,
-            disclosure_store=center,
+            resource_center=center,
             working_directory=self.working_directory,
             library_snapshot=dict(self.library_snapshot or {}),
             mcp_tools_by_server={
@@ -319,10 +316,10 @@ class RunResources:
                 if override.available_tools is not None
                 else self.available_tools
             ),
-            disclosure_store=(
-                override.disclosure_store
-                if override.disclosure_store is not None
-                else self.disclosure_store
+            resource_center=(
+                override.resource_center
+                if override.resource_center is not None
+                else self.resource_center
             ),
             working_directory=(
                 override.working_directory
@@ -534,7 +531,7 @@ def build_run_instructions(
 
 def build_run_resources(
     available_tools: Mapping[str, Tool],
-    disclosure_store: object | None,
+    resource_center: ResourceCenter | None,
     working_directory: object | None = None,
     *,
     library_snapshot: Mapping[str, object] | None = None,
@@ -542,13 +539,11 @@ def build_run_resources(
     tool_registry: ToolRegistry | None = None,
 ) -> RunResources:
     """集中构造一次运行的资源，不创建文件、数据库或网络连接。"""
-    if disclosure_store is not None and not isinstance(
-        disclosure_store, (DisclosureStore, ResourceCenter)
-    ):
-        raise TypeError("run disclosure store must be a ResourceCenter")
+    if resource_center is not None and not isinstance(resource_center, ResourceCenter):
+        raise TypeError("run resource center must be a ResourceCenter")
     return RunResources(
         available_tools=available_tools,
-        disclosure_store=disclosure_store,
+        resource_center=resource_center,
         working_directory=working_directory,
         library_snapshot=library_snapshot,
         mcp_tools_by_server=mcp_tools_by_server,
@@ -1092,7 +1087,7 @@ def _prepare_tool_output(
         wrapper_characters = len(
             json.dumps({"progressive_disclosure": {}}, ensure_ascii=False, sort_keys=True)
         ) - 2
-        disclosed = context.session.resources.disclosure_store.disclose_resource(
+        disclosed = context.session.resources.resource_center.disclose_resource(
             reference,
             text,
             max_characters=min(maximum or MAX_PAGE_CHARACTERS, MAX_PAGE_CHARACTERS),
@@ -1100,7 +1095,7 @@ def _prepare_tool_output(
                 None if remaining is None else remaining - wrapper_characters
             ),
         )
-        reader = context.session.resources.disclosure_store.create_read_tool()
+        reader = context.session.resources.resource_center.create_read_tool()
         context.session.add_tool(reader)
         summary = {"progressive_disclosure": disclosed.to_dict()}
         context.emit(

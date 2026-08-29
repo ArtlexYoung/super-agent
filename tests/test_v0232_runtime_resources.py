@@ -14,7 +14,7 @@ class RuntimeResourcesTests(unittest.TestCase):
         session = RunSession(RunIdentity(), [], [], {}, resources=resources)
 
         self.assertIs(session.resources.available_tools["read"], tool)
-        self.assertIsNotNone(session.resources.disclosure_store)
+        self.assertIsNotNone(session.resources.resource_center)
         self.assertFalse(hasattr(session, "values"))
 
     def test_resource_defaults_are_memory_only_and_isolated_per_run(self):
@@ -22,7 +22,7 @@ class RuntimeResourcesTests(unittest.TestCase):
         second = RunSession(RunIdentity(), [], [], {})
 
         self.assertIsNot(first.resources, second.resources)
-        self.assertIsNot(first.resources.disclosure_store, second.resources.disclosure_store)
+        self.assertIsNot(first.resources.resource_center, second.resources.resource_center)
         self.assertEqual({}, first.resources.library_snapshot)
         self.assertEqual({}, first.resources.mcp_tools_by_server)
 

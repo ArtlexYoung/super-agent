@@ -1,8 +1,6 @@
 import unittest
-from types import SimpleNamespace
 
-from core.disclosure import DisclosureStore
-from skill.agent_builder import RunResourceCenter
+from core.resources import ResourceCenter
 from skill.library import AgentLibrary
 
 
@@ -15,16 +13,16 @@ class CentralResourceCenterTests(unittest.TestCase):
         self.assertEqual({"plugins", "skills", "mcp_servers"}, set(index))
         self.assertEqual(0, index["plugins"]["total"])
 
-    def test_tree_and_library_share_one_disclosure_store(self):
+    def test_library_uses_the_explicit_resource_center(self):
         library = AgentLibrary()
-        tree_store = DisclosureStore()
-        tree = SimpleNamespace(disclosures=tree_store)
+        center = ResourceCenter()
 
-        center = RunResourceCenter.create(library, tree)
+        library.use_resource_center(center)
 
-        self.assertIs(tree_store, center.disclosure_store)
-        self.assertIs(tree_store, library.disclosures)
-        self.assertEqual({}, center.snapshot()["skills"])
+        self.assertIs(center, library.resources)
+        self.assertEqual({}, library.snapshot().to_dict()["skills"])
+        with self.assertRaises(TypeError):
+            library.use_resource_center(object())
 
 
 if __name__ == "__main__":

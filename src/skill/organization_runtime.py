@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from core import require_text as _text
-from core.disclosure import DisclosureStore
 from core.event import RunIdentity
 from core.model import Tool
 from core.records import EventStore
@@ -50,11 +49,6 @@ class TeamRunPlan:
     tools: tuple[Tool, ...]
     resources: ResourceCenter
 
-    @property
-    def disclosures(self) -> DisclosureStore:
-        """Expose the underlying store for existing inspection callers."""
-        return self.resources.store
-
 
 class TeamRuntime(TaskQueue):
     """一个用户作用域内唯一的 Agent 树运行器。"""
@@ -66,25 +60,20 @@ class TeamRuntime(TaskQueue):
         *,
         user_id: str = "local",
         record_event: RecordEvent | None = None,
-        disclosures: DisclosureStore | ResourceCenter | None = None,
+        resource_center: ResourceCenter | None = None,
     ) -> None:
         super().__init__(root, settings or TeamSettings(), record_event)
         self.user_id = _text(user_id, "Agent tree user ID")
-        if disclosures is None:
+        if resource_center is None:
             self.resources = ResourceCenter()
-        elif isinstance(disclosures, ResourceCenter):
-            self.resources = disclosures
+        elif isinstance(resource_center, ResourceCenter):
+            self.resources = resource_center
         else:
-            self.resources = ResourceCenter(disclosures)
+            raise TypeError("team resource center must be a ResourceCenter")
         self._notes: dict[str, list[SharedNote]] = {}
         self._decisions: dict[str, TeamDecision] = {}
         self._validated_revision = -1
         self._warnings: tuple[str, ...] = ()
-
-    @property
-    def disclosures(self) -> DisclosureStore:
-        """Return the backing store for read-only cache inspection."""
-        return self.resources.store
 
     def tools(self, group_id: str) -> tuple[Tool, ...]:
         """为当前组创建工具，不暴露其他组的私有任务。"""
@@ -500,7 +489,7 @@ def get_or_create_team_runtime(
         owner.team_settings,
         user_id=user_id,
         record_event=_tree_event_recorder(store, root.group_id),
-        disclosures=(
+        resource_center=(
             library.resources if library is not None else ResourceCenter()
         ),
     )

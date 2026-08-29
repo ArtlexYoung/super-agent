@@ -88,7 +88,7 @@ class MemoryAndAgentTreeTests(unittest.TestCase):
             group_id=team_node(reviewer).group_id,
             board="parent",
         )
-        replayed = runtime.disclosures.read(note.cache_path)
+        replayed = runtime.resources.read_cached_resource(note.cache_path)
         self.assertEqual("shared_note_posted", wake["reason"])
         self.assertEqual(note.note_id, listed["notes"][0]["note_id"])
         self.assertEqual("measured result", replayed.content)

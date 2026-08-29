@@ -9,8 +9,6 @@ from collections.abc import Mapping
 
 from adapter.storage import EventMemoryStore, JsonlMemoryStore
 from core.context import AgentContext
-from core.disclosure import DisclosureStore
-from core.resources import ResourceCenter
 from core.event import RunCheckpoint, RunIdentity
 from core.records import EventStore, RecordScope
 
@@ -21,50 +19,6 @@ if TYPE_CHECKING:
     from core.run import RunRequest, RunSetup, ToolRegistry
     from skill.library import AgentLibrary
     from super_agent import Agent
-
-
-@dataclass(frozen=True)
-class RunResourceCenter:
-    """Choose one index and one disclosure store for a prepared run."""
-
-    library: AgentLibrary | None
-    disclosure_store: DisclosureStore | None
-    resource_center: ResourceCenter | None = None
-
-    @classmethod
-    def create(
-        cls, library: AgentLibrary | None, agent_tree: object | None
-    ) -> RunResourceCenter:
-        store = None
-        if agent_tree is not None:
-            store = getattr(agent_tree, "resources", None)
-            if store is None:
-                store = getattr(agent_tree, "disclosures", None)
-        elif library is not None:
-            store = library.resources
-        if isinstance(store, DisclosureStore):
-            center = ResourceCenter(store)
-        elif store is None or isinstance(store, ResourceCenter):
-            center = store
-        else:
-            raise TypeError("run resource center must be a ResourceCenter")
-        if library is not None and center is not None:
-            library.use_disclosure_store(center)
-        return cls(
-            library,
-            None if center is None else center.store,
-            center,
-        )
-
-    def index(self) -> dict[str, object] | None:
-        if self.library is None:
-            return None
-        return self.library.resource_index()
-
-    def snapshot(self) -> dict[str, object] | None:
-        if self.library is None:
-            return None
-        return self.library.snapshot().to_dict()
 
 
 class OptionalMechanisms:
@@ -336,7 +290,13 @@ class AgentRunBuilder:
             if agent_tree is None
             else agent_tree.prepare_run(group_id, identity.depth)
         )
-        resource_center = RunResourceCenter.create(library, tree_plan)
+        resource_center = (
+            tree_plan.resources
+            if tree_plan is not None
+            else None if library is None else library.resources
+        )
+        if library is not None and resource_center is not None:
+            library.use_resource_center(resource_center)
         warnings = () if tree_plan is None else tree_plan.warnings
         effective_context = replace(
             context,
@@ -368,7 +328,7 @@ class AgentRunBuilder:
                 )
         instructions = build_run_instructions(
             self.agent.instructions,
-            resource_center.index(),
+            None if library is None else library.resource_index(),
             effective_context.shared_context,
         )
         active_tools = registry.active
@@ -404,9 +364,11 @@ class AgentRunBuilder:
             active_tools=dict(active_tools),
             resources=build_run_resources(
                 registry.available,
-                resource_center.resource_center,
+                resource_center,
                 working_directory,
-                library_snapshot=resource_center.snapshot(),
+                library_snapshot=(
+                    None if library is None else library.snapshot().to_dict()
+                ),
                 mcp_tools_by_server=mcp_tools,
                 tool_registry=registry,
             ),

@@ -547,36 +547,6 @@ class Agent:
             )
         )
 
-    def _run_tools(
-        self,
-        identity: RunIdentity,
-        library: AgentLibrary | None,
-        store: EventStore | None,
-        working_directory: WorkingDirectory | None,
-    ) -> tuple[ToolRegistry, dict[str, tuple[Tool, ...]]]:
-        return self.run_parts.tools(identity, library, store, working_directory)
-
-    def _library(
-        self, identity: RunIdentity, store: EventStore | None
-    ) -> AgentLibrary | None:
-        return self.run_parts.library(identity, store)
-
-    def _memory(
-        self,
-        identity: RunIdentity,
-        store: EventStore | None,
-        working_directory: WorkingDirectory | None = None,
-    ) -> object:
-        return self.run_parts.memory(identity, store, working_directory)
-
-    def _evolution(
-        self, library: AgentLibrary, store: EventStore | None
-    ) -> object:
-        return self.run_parts.evolution(library, store)
-
-    def _event_store(self, identity: RunIdentity) -> EventStore | None:
-        return self.run_parts.event_store(identity)
-
     def get_record_store(
         self,
         user_id: str = "local",
@@ -649,12 +619,6 @@ def _get_team_node(agent: Agent) -> Any:
         node = team_node(agent)
         agent._team_node = node
     return node
-
-
-def _get_or_create_team_runtime(agent: Agent, user_id: str) -> Any:
-    from skill.organization_runtime import get_or_create_team_runtime
-
-    return get_or_create_team_runtime(agent, user_id)
 
 
 def _clear_team_runtimes(agent: Agent) -> None:
