@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 
 from adapter.storage import MemoryStorage
+from core import __version__
 from core.records import AuditPolicy, EventStore
 from skill.library import AgentLibrary
 
@@ -16,7 +17,7 @@ class AuditPluginTests(unittest.TestCase):
         plugin = library.find_plugin("plugin:super-agent/audit")
 
         self.assertEqual((), plugin.skills)
-        self.assertEqual("0.2.30", plugin.version)
+        self.assertEqual(__version__, plugin.version)
 
         store = EventStore(MemoryStorage(), "alice", "agent")
         record = store.append(
