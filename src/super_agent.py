@@ -25,25 +25,14 @@ from core.records import AuditPolicy, Conversations, EventStore, RecordBackend, 
 from core.run import (
     CancelCheck,
     EventListener,
-    RunRequest,
-    RunContext,
-    RunPlan,
-    RunSetup,
     RuntimeLifecycle,
     ToolDecision,
-    ToolContext,
     ToolRegistry,
-    build_run_instructions,
-    build_run_resources,
     collect_run,
     stream_run,
 )
-from core.user import (
-    AgentUser,
-    conversation_run_messages,
-    model_scope,
-    model_tracking_listener,
-)
+from core.user import AgentUser
+from skill.agent_builder import AgentRunBuilder
 from skill.library import AgentLibrary
 
 if TYPE_CHECKING:
@@ -520,7 +509,7 @@ class Agent:
         skill: str | None = None,
         working_directory: str | Path | WorkingDirectory | None = None,
     ) -> Iterator[RunEvent]:
-        """流式运行 Agent；生成器的返回值是完整 RunResult。"""
+        """Build one run and pass it to the single Runtime loop."""
         if context is not None and any(
             (
                 conversation_id is not None,
@@ -540,173 +529,18 @@ class Agent:
             skill=skill,
             working_directory=working_directory,
         )
-        selected_session = selected_context.session or self._session_record
-        checkpoint = selected_context.resume_checkpoint
-        selected_working_directory = _make_working_directory(
-            selected_context.working_directory or self.working_directory
-        )
-        model = self._require_model()
-        selected_prompt = _text(prompt, "Agent prompt")
-        identity = _build_run_identity(
-            selected_context,
-            self.name,
-            selected_session,
-            selected_working_directory,
-            checkpoint,
-        )
-        conversation_id = identity.conversation_id
-        store = self._event_store(identity)
-        selected_model_scope = model_scope(identity)
-        library = self._library(identity, store)
-        agent_tree = (
-            selected_context.agent_tree_runtime
-            or _get_or_create_agent_tree_runtime(self, identity.user_id)
-        )
-        runtime_lifecycle = selected_context.runtime_lifecycle or RuntimeLifecycle(
-            identity.run_id
-        )
-        group_id = selected_context.agent_group_id or _get_agent_group_node(self).group_id
-        if agent_tree is not None and library is not None:
-            library.use_disclosure_store(agent_tree.disclosures)
-        tree_settings = (
-            _get_tree_settings(self) if agent_tree is None else agent_tree.settings
-        )
-        if (
-            tree_settings.max_call_depth is not None
-            and identity.depth > tree_settings.max_call_depth
-        ):
-            raise RuntimeError(
-                f"Agent call depth {identity.depth} exceeds configured maximum "
-                f"{tree_settings.max_call_depth}"
-            )
-        warnings = (
-            ()
-            if agent_tree is None
-            else agent_tree.warning_messages(group_id, identity.depth)
-        )
-        effective_context = replace(
-            selected_context,
-            conversation_id=conversation_id,
-            identity=identity,
-            agent_tree_runtime=agent_tree,
-            agent_group_id=group_id,
-            runtime_lifecycle=runtime_lifecycle,
-        )
-        messages = conversation_run_messages(
-            effective_context.messages,
-            effective_context.conversation_id,
-            effective_context.save_conversation,
-            store,
-        )
-        tool_registry, mcp_tools_by_server = self._run_tools(
-            identity, library, store, agent_tree, group_id, selected_working_directory
-        )
-        active_tools = tool_registry.active
-        available_tools = tool_registry.available
-        plugin_index = (
-            None
-            if library is None
-            else {
-                "plugins": library.list_plugins(page=1, page_size=20).to_dict(),
-                "skills": library.list_skills(page=1, page_size=20).to_dict(),
-                "mcp_servers": library.list_mcp_servers(page=1, page_size=20).to_dict(),
-            }
-        )
-        instructions = build_run_instructions(
-            self.instructions, plugin_index, effective_context.shared_context
-        )
-        required_features = tuple(
-            dict.fromkeys(
-                (
-                    *selected_context.required_features,
-                    *(("tools",) if active_tools else ()),
-                )
-            )
-        )
-        request = RunRequest(
-            prompt=selected_prompt,
-            messages=messages,
-            instructions=(),
-            purpose=selected_context.purpose,
-            required_features=required_features,
-            limits=self.settings.limits,
-            metadata={
-                **dict(selected_context.metadata),
-                "_super_agent_model_scope": selected_model_scope,
-            },
-            warning_messages=warnings,
-        )
-        listeners = [*self._listeners, *selected_context.listeners]
-        if store is not None and selected_context.persist_run_events:
-            listeners.append(store.run_listener(identity))
-        tracking = model_tracking_listener(
-            self, model, store, identity, selected_context.purpose
-        )
-        if tracking is not None:
-            listeners.append(tracking)
-
-        plan = RunPlan(
-            instructions=list(instructions),
-            active_tools=dict(active_tools),
-            resources=build_run_resources(
-                available_tools,
-                agent_tree.disclosures
-                if agent_tree is not None
-                else None if library is None else library.disclosures,
-                selected_working_directory,
-                library_snapshot=(
-                    None if library is None else library.snapshot().to_dict()
-                ),
-                mcp_tools_by_server=mcp_tools_by_server,
-                tool_registry=tool_registry,
-            ),
-            listeners=listeners,
-        )
-
-        def prepare(session: RunContext, tool_context: ToolContext) -> None:
-            session.resources.available_tools = available_tools
-            if library is None:
-                return
-            if effective_context.plugin is not None:
-                activated = library.activate_plugin(effective_context.plugin, session)
-                key = library.find_plugin(effective_context.plugin).reference
-                tool_context.emit("plugin.activated", {"key": key, "skills": list(activated), "source": "explicit run plugin"})
-            if effective_context.skill is not None:
-                for key in library.activate_skill(effective_context.skill, session):
-                    tool_context.emit("skill.activated", {"key": key, "source": "explicit run skill"})
-            for reference in self._enabled_plugins:
-                activated = library.activate_plugin(reference, session)
-                key = library.find_plugin(reference).reference
-                tool_context.emit("plugin.activated", {"key": key, "skills": list(activated), "source": "Agent.enable_plugin"})
-            for reference in self._enabled_skills:
-                for key in library.activate_skill(reference, session):
-                    tool_context.emit("skill.activated", {"key": key, "source": "Agent.enable_skill"})
-
+        prepared = AgentRunBuilder(self).build(prompt, selected_context)
         result = yield from stream_run(
-            request,
-            model,
-            (),
-            setup=RunSetup(
-                identity=identity,
-                prepare=prepare,
-                session_record=selected_session,
-                tool_decider=effective_context.tool_decider,
-                tool_timeout_seconds=effective_context.tool_timeout_seconds,
-                cancel_check=effective_context.cancel_check,
-                checkpoint_store=effective_context.checkpoint_store,
-                resume_checkpoint=effective_context.resume_checkpoint,
-                interrupt_check=effective_context.interrupt_check,
-                runtime_lifecycle=runtime_lifecycle,
-                plan=plan,
-            ),
+            prepared.request, prepared.model, (), setup=prepared.setup
         )
-        if conversation_id and selected_context.save_conversation:
-            if store is None:
-                raise RuntimeError(
-                    "conversation persistence was requested without storage"
-                )
-            Conversations(store).add_turn(
-                conversation_id, selected_prompt, result.text, run_id=result.run_id
+        if prepared.conversation_id and prepared.save_conversation:
+            if prepared.store is None:
+                raise RuntimeError("conversation persistence was requested without storage")
+            Conversations(prepared.store).add_turn(
+                prepared.conversation_id,
+                prepared.prompt,
+                result.text,
+                run_id=result.run_id,
             )
         return result
 

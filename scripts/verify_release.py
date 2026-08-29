@@ -1,4 +1,4 @@
-"""运行 v0.2.34 的本地发布检查。"""
+"""运行 v0.2.35 的本地发布检查。"""
 
 from __future__ import annotations
 
@@ -11,14 +11,15 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-VERSION = "0.2.34"
-MAX_SOURCE_FILES = 25
+VERSION = "0.2.35"
+MAX_SOURCE_FILES = 26
 MAX_SOURCE_LINES = 12_000
 SOURCE_ROOTS = {"adapter", "core", "skill", "cli.py", "super_agent.py"}
 DOMAIN_FILES = {
     "adapter": {"cli.py", "database.py", "process.py", "storage.py", "tools.py"},
     "core": {"__init__.py", "config.py", "disclosure.py", "event.py", "model.py", "provider.py", "records.py", "run.py", "user.py"},
     "skill": {
+        "agent_builder.py",
         "builtin",
         "document.py",
         "evolution.py",
