@@ -11,7 +11,7 @@ PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
 python3.11 -m unittest discover -s tests -p 'test_*.py' -v
 
 PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
-python3.11 scripts/verify_release.py --version 0.2.37 --full
+python3.11 scripts/verify_release.py --version 0.2.38 --full
 ```
 
 发布检查验证版本、Python 最低版本、零默认依赖、源码布局、旧目录删除、构建范围、内置插件去重关系和离线评测资产。
@@ -24,9 +24,9 @@ Log writes never trigger retention cleanup. Run `super-agent data storage prune 
 
 ## 版本 / Version
 
-v0.2.37 统一资源索引和渐进式披露中心，让资源库与 Agent 树共享同一缓存、历史和运行快照。
+v0.2.38 收拢多 Agent 树的一次运行计划，让层级检查、树工具和共享披露由树运行器一次准备。
 
-v0.2.37 unifies the resource index and progressive disclosure center so the library and Agent tree share one cache, history, and run snapshot.
+v0.2.38 consolidates the Agent tree run plan so level checks, tree tools, and shared disclosure are prepared once by the tree runtime.
 
 检查通过后创建一个本地逻辑提交和标签；远程推送是单独的授权边界。
 

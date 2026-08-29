@@ -159,8 +159,6 @@ class AgentRunParts:
         identity: RunIdentity,
         library: AgentLibrary | None,
         store: EventStore | None,
-        agent_tree: object | None,
-        group_id: str,
         working_directory: WorkingDirectory | None,
     ) -> tuple[ToolRegistry, dict[str, tuple[Tool, ...]]]:
         """Build tools from explicitly selected optional parts."""
@@ -200,13 +198,6 @@ class AgentRunParts:
                 raise RuntimeError("Skill evolution requires an AgentLibrary")
             value = self.evolution(library, store)
             registry.register_many(value.tools(), exposure="after_skill")
-        if agent_tree is not None:
-            registry.register_many(
-                agent_tree.tools(group_id),
-                exposure="after_skill" if library is not None else "always",
-            )
-            if library is None:
-                registry.register(agent_tree.disclosures.tool(), exposure="always")
         return registry, mcp_by_server
 
 
@@ -266,12 +257,15 @@ class AgentRunBuilder:
         )
         lifecycle = context.runtime_lifecycle or RuntimeLifecycle(identity.run_id)
         group_id = context.agent_group_id or _agent_group_id(self.agent)
-        resource_center = RunResourceCenter.create(library, agent_tree)
         tree_settings = _tree_settings(self.agent, agent_tree)
         _check_call_depth(tree_settings, identity.depth)
-        warnings = () if agent_tree is None else agent_tree.warning_messages(
-            group_id, identity.depth
+        tree_plan = (
+            None
+            if agent_tree is None
+            else agent_tree.prepare_run(group_id, identity.depth)
         )
+        resource_center = RunResourceCenter.create(library, tree_plan)
+        warnings = () if tree_plan is None else tree_plan.warnings
         effective_context = replace(
             context,
             conversation_id=conversation_id,
@@ -287,8 +281,15 @@ class AgentRunBuilder:
             store,
         )
         registry, mcp_tools = parts.tools(
-            identity, library, store, agent_tree, group_id, working_directory
+            identity, library, store, working_directory
         )
+        if tree_plan is not None:
+            registry.register_many(
+                tree_plan.tools,
+                exposure="after_skill" if library is not None else "always",
+            )
+            if library is None:
+                registry.register(tree_plan.disclosures.tool(), exposure="always")
         instructions = build_run_instructions(
             self.agent.instructions,
             resource_center.index(),

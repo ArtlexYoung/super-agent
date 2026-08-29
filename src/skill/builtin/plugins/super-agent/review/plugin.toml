@@ -1,6 +1,6 @@
 schema = 1
 id = "super-agent/review"
-version = "0.2.37"
+version = "0.2.38"
 description = "Independent multi-Agent review methods"
 entry_skill = "skill:super-agent/review"
 skills = ["skill:super-agent/review/multi-agent"]
