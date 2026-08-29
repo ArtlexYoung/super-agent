@@ -1,0 +1,9 @@
+schema = 1
+id = "super-agent/session"
+version = "0.2.27"
+description = "Explicit conversation and session methods"
+entry_skill = "skill:super-agent/session"
+skills = ["skill:super-agent/session/conversation"]
+included_plugins = []
+required_mcp_servers = []
+optional_mcp_servers = []

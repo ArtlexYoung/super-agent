@@ -1,4 +1,4 @@
-"""运行 v0.2.26 的本地发布检查。"""
+"""运行 v0.2.27 的本地发布检查。"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-VERSION = "0.2.26"
+VERSION = "0.2.27"
 MAX_SOURCE_FILES = 25
 MAX_SOURCE_LINES = 12_000
 SOURCE_ROOTS = {"adapter", "core", "skill", "cli.py", "super_agent.py"}
@@ -52,9 +52,8 @@ EVALUATION_FILES = (
 WHEEL_ROOTS = ["src/adapter", "src/core", "src/skill", "src/cli.py", "src/super_agent.py"]
 SDIST_ROOTS = ["README.md", "README_cn.md", "README_en.md", "pyproject.toml", "docs", "scripts", "src", "tests", "examples"]
 REQUIRED_BUILTIN_SKILLS = {
-    "common": {
-        "conversation",
-    },
+    "common": set(),
+    "session": {"conversation"},
     "code": {"deep-optimization"},
     "evolution": {"freshness", "self-update"},
     "memory": set(),
@@ -185,7 +184,7 @@ def _check_build_config(project: dict[str, object], root: Path) -> list[str]:
     wheel = targets.get("wheel", {})
     sdist = targets.get("sdist", {})
     if wheel.get("only-include") != WHEEL_ROOTS or wheel.get("sources") != ["src"]:
-        errors.append("wheel must contain only the v0.2.26 source roots")
+        errors.append("wheel must contain only the current source roots")
     if sdist.get("only-include") != SDIST_ROOTS:
         errors.append("sdist source roots changed")
     expected_force = {path: path for path in EVALUATION_FILES}

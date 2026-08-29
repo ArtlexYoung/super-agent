@@ -32,7 +32,7 @@ metadata:
   super-agent-categories: '["research"]'
   super-agent-requires: '["search_documents"]'
   super-agent-optional-tools: '["open_browser"]'
-  super-agent-includes: '["skill:super-agent/common/conversation"]'
+  super-agent-includes: '["skill:super-agent/session/conversation"]'
 ---
 
 先澄清目标，再按证据组织结论。
