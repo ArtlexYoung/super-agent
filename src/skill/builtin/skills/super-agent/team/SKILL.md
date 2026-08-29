@@ -4,7 +4,7 @@ description: "Coordinate independent Agents through explicit tasks and shared re
 metadata:
   super-agent-categories: "[\"general/team\",\"coordination\"]"
   super-agent-type: "task"
-  super-agent-version: "0.2.42"
+  super-agent-version: "0.2.43"
 ---
 # Team method
 

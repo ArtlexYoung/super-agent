@@ -4,7 +4,7 @@ description: "Build precise citations and fact-check claims without hiding uncer
 metadata:
   super-agent-categories: "[\"research/citations\",\"fact-checking\"]"
   super-agent-type: "method"
-  super-agent-version: "0.2.42"
+  super-agent-version: "0.2.43"
 ---
 # Citation method
 

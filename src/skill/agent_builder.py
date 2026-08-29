@@ -67,6 +67,43 @@ class RunResourceCenter:
         return self.library.snapshot().to_dict()
 
 
+class OptionalMechanisms:
+    """集中保存可选机制的开关，并生成运行可审计的说明。"""
+
+    def __init__(self) -> None:
+        self.memory = False
+        self.evolution = False
+
+    def enable_memory(self) -> None:
+        self.memory = True
+
+    def enable_evolution(self) -> None:
+        self.evolution = True
+
+    def list_enabled(self, model: object | None = None) -> tuple[str, ...]:
+        from core.provider import ModelRouter
+
+        values = [
+            name
+            for name, enabled in (
+                ("memory", self.memory),
+                ("evolution", self.evolution),
+            )
+            if enabled
+        ]
+        if isinstance(model, ModelRouter):
+            values.append("model-routing")
+        return tuple(values)
+
+    def describe(self, model: object | None = None) -> dict[str, object]:
+        enabled = set(self.list_enabled(model))
+        return {
+            "memory": "memory" in enabled,
+            "evolution": "evolution" in enabled,
+            "model_routing": "model-routing" in enabled,
+        }
+
+
 class AgentRunParts:
     """Hold optional run parts without making the basic Agent stateful."""
 
@@ -197,7 +234,27 @@ class AgentRunParts:
                     effects,
                     declared_tools=definition.tools,
                 )
-        if self.agent.memory_enabled:
+        self._register_optional_tools(
+            registry,
+            identity=identity,
+            library=library,
+            store=store,
+            working_directory=working_directory,
+        )
+        return registry, mcp_by_server
+
+    def _register_optional_tools(
+        self,
+        registry: ToolRegistry,
+        *,
+        identity: RunIdentity,
+        library: AgentLibrary | None,
+        store: EventStore | None,
+        working_directory: WorkingDirectory | None,
+    ) -> None:
+        """只在明确打开对应机制时注册工具。"""
+        mechanisms = self.agent.optional_mechanisms
+        if mechanisms.memory:
             if "plugin:super-agent/memory" not in self.agent._enabled_plugins:
                 raise RuntimeError("memory requires the explicit Memory plugin")
             value = self.memory(identity, store, working_directory)
@@ -205,7 +262,7 @@ class AgentRunParts:
                 value.tools(),
                 exposure="after_skill" if library is not None else "always",
             )
-        if self.agent.evolution_enabled:
+        if mechanisms.evolution:
             if "plugin:super-agent/evolution" not in self.agent._enabled_plugins:
                 raise RuntimeError(
                     "Skill evolution requires the explicit Evolution plugin"
@@ -214,7 +271,6 @@ class AgentRunParts:
                 raise RuntimeError("Skill evolution requires an AgentLibrary")
             value = self.evolution(library, store)
             registry.register_many(value.tools(), exposure="after_skill")
-        return registry, mcp_by_server
 
 
 @dataclass(frozen=True)
@@ -329,6 +385,9 @@ class AgentRunBuilder:
                 **dict(effective_context.metadata),
                 "_super_agent_model_scope": model_scope(identity),
                 "_super_agent_run_scope": runtime_scope.to_dict(),
+                "_super_agent_optional_mechanisms": self.agent.optional_mechanisms.describe(
+                    model
+                ),
             },
             warning_messages=warnings,
         )

@@ -799,6 +799,9 @@ class _RunEngine:
                 "purpose": self.request.purpose,
                 "prompt": self.request.prompt,
                 "library_snapshot": self.session.resources.library_snapshot or {},
+                "optional_mechanisms": self.request.metadata.get(
+                    "_super_agent_optional_mechanisms", {}
+                ),
             },
         )
         for warning in self.request.warning_messages:
