@@ -1,6 +1,6 @@
 schema = 1
 id = "super-agent/common"
-version = "0.2.40"
+version = "0.2.41"
 description = "General task methods"
 entry_skill = "skill:super-agent/common"
 skills = []

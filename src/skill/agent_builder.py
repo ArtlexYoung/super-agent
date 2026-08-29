@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from adapter.storage import EventMemoryStore, JsonlMemoryStore
 from core.context import AgentContext
 from core.disclosure import DisclosureStore
+from core.resources import ResourceCenter
 from core.event import RunCheckpoint, RunIdentity
 from core.records import EventStore
 
@@ -28,6 +29,7 @@ class RunResourceCenter:
 
     library: AgentLibrary | None
     disclosure_store: DisclosureStore | None
+    resource_center: ResourceCenter | None = None
 
     @classmethod
     def create(
@@ -35,14 +37,24 @@ class RunResourceCenter:
     ) -> RunResourceCenter:
         store = None
         if agent_tree is not None:
-            store = agent_tree.disclosures
+            store = getattr(agent_tree, "resources", None)
+            if store is None:
+                store = getattr(agent_tree, "disclosures", None)
         elif library is not None:
-            store = library.disclosures
-        if store is not None and not isinstance(store, DisclosureStore):
-            raise TypeError("run disclosure store must be a DisclosureStore")
-        if library is not None and store is not None:
-            library.use_disclosure_store(store)
-        return cls(library, store)
+            store = library.resources
+        if isinstance(store, DisclosureStore):
+            center = ResourceCenter(store)
+        elif store is None or isinstance(store, ResourceCenter):
+            center = store
+        else:
+            raise TypeError("run resource center must be a ResourceCenter")
+        if library is not None and center is not None:
+            library.use_disclosure_store(center)
+        return cls(
+            library,
+            None if center is None else center.store,
+            center,
+        )
 
     def index(self) -> dict[str, object] | None:
         if self.library is None:
@@ -292,7 +304,9 @@ class AgentRunBuilder:
                 exposure="after_skill" if library is not None else "always",
             )
             if library is None:
-                registry.register(tree_plan.disclosures.tool(), exposure="always")
+                registry.register(
+                    tree_plan.resources.create_read_tool(), exposure="always"
+                )
         instructions = build_run_instructions(
             self.agent.instructions,
             resource_center.index(),
@@ -328,7 +342,7 @@ class AgentRunBuilder:
             active_tools=dict(active_tools),
             resources=build_run_resources(
                 registry.available,
-                resource_center.disclosure_store,
+                resource_center.resource_center,
                 working_directory,
                 library_snapshot=resource_center.snapshot(),
                 mcp_tools_by_server=mcp_tools,

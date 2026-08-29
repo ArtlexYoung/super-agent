@@ -13,6 +13,7 @@ from core.disclosure import DisclosureStore
 from core.event import RunIdentity
 from core.model import Tool
 from core.records import EventStore
+from core.resources import ResourceCenter
 from core.run import RuntimeLifecycle
 from skill.organization import (
     AgentDecision,
@@ -47,7 +48,12 @@ class AgentTreeRunPlan:
     group_id: str
     warnings: tuple[str, ...]
     tools: tuple[Tool, ...]
-    disclosures: DisclosureStore
+    resources: ResourceCenter
+
+    @property
+    def disclosures(self) -> DisclosureStore:
+        """Expose the underlying store for existing inspection callers."""
+        return self.resources.store
 
 
 class AgentTreeRuntime(AgentTaskRuntime):
@@ -60,15 +66,25 @@ class AgentTreeRuntime(AgentTaskRuntime):
         *,
         user_id: str = "local",
         record_event: RecordEvent | None = None,
-        disclosures: DisclosureStore | None = None,
+        disclosures: DisclosureStore | ResourceCenter | None = None,
     ) -> None:
         super().__init__(root, settings or AgentTreeSettings(), record_event)
         self.user_id = _text(user_id, "Agent tree user ID")
-        self.disclosures = disclosures or DisclosureStore()
+        if disclosures is None:
+            self.resources = ResourceCenter()
+        elif isinstance(disclosures, ResourceCenter):
+            self.resources = disclosures
+        else:
+            self.resources = ResourceCenter(disclosures)
         self._notes: dict[str, list[SharedNote]] = {}
         self._decisions: dict[str, AgentDecision] = {}
         self._validated_revision = -1
         self._warnings: tuple[str, ...] = ()
+
+    @property
+    def disclosures(self) -> DisclosureStore:
+        """Return the backing store for read-only cache inspection."""
+        return self.resources.store
 
     def tools(self, group_id: str) -> tuple[Tool, ...]:
         """为当前组创建工具，不暴露其他组的私有任务。"""
@@ -81,7 +97,7 @@ class AgentTreeRuntime(AgentTaskRuntime):
             group_id=group_id,
             warnings=self.warning_messages(group_id, call_depth),
             tools=self.tools(group_id),
-            disclosures=self.disclosures,
+            resources=self.resources,
         )
 
     def warning_messages(self, group_id: str, call_depth: int) -> tuple[str, ...]:
@@ -185,7 +201,7 @@ class AgentTreeRuntime(AgentTaskRuntime):
                 raise KeyError(f"superseded shared note not found: {supersedes}")
             note_id = f"note-{uuid4().hex}"
             reference = f"shared-note:{board_node.group_id}:{note_id}"
-            disclosed = self.disclosures.disclose(
+            disclosed = self.resources.disclose_resource(
                 reference,
                 selected_content,
                 max_characters=min(4_000, len(selected_content)),
@@ -484,7 +500,9 @@ def get_or_create_agent_tree_runtime(
         owner.agent_tree_settings,
         user_id=user_id,
         record_event=_tree_event_recorder(store, root.group_id),
-        disclosures=library.disclosures if library is not None else DisclosureStore(),
+        disclosures=(
+            library.resources if library is not None else ResourceCenter()
+        ),
     )
     owner._agent_tree_runtimes[user_id] = runtime
     return runtime

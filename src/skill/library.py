@@ -17,8 +17,9 @@ from types import MappingProxyType
 from uuid import uuid4
 
 from core import require_integer as _integer, require_text as _text
-from core.disclosure import DisclosedContent, DisclosurePage, DisclosureStore
+from core.disclosure import DisclosureStore
 from core.model import Tool
+from core.resources import DisclosedContent, DisclosurePage, ResourceCenter
 from core.run import RunContext, ToolContext
 from skill.document import (
     SKILL_FILE,
@@ -151,8 +152,8 @@ class AgentLibrary:
         self.cache_root = _path_or_none(cache_root)
         self.record_event = record_event
         self.cache_entries = _integer(cache_entries, "library cache entries", 1, 100_000)
-        self.disclosures = DisclosureStore(
-            self.cache_root,
+        self.resources = ResourceCenter(
+            cache_root=self.cache_root,
             max_entries=self.cache_entries,
             record_event=self._record,
         )
@@ -170,10 +171,20 @@ class AgentLibrary:
             self._snapshot = self._build_snapshot()
         return self._snapshot
 
-    def use_disclosure_store(self, store: DisclosureStore) -> None:
-        if not isinstance(store, DisclosureStore):
-            raise TypeError("library disclosure store must be a DisclosureStore")
-        self.disclosures = store
+    @property
+    def disclosures(self) -> DisclosureStore:
+        """Return the store for callers that inspect cache identity."""
+        return self.resources.store
+
+    def use_disclosure_store(
+        self, store: DisclosureStore | ResourceCenter
+    ) -> None:
+        if isinstance(store, ResourceCenter):
+            self.resources = store
+        elif isinstance(store, DisclosureStore):
+            self.resources = ResourceCenter(store)
+        else:
+            raise TypeError("library disclosure store must be a ResourceCenter")
 
     def for_scope(
         self,
@@ -300,10 +311,10 @@ class AgentLibrary:
         return self._read(self.find_skill(reference), "skill", page)
 
     def read_disclosed(self, cache_path: str, **page: int) -> DisclosedContent:
-        return self.disclosures.read(cache_path, **page)
+        return self.resources.read_cached_resource(cache_path, **page)
 
     def history(self) -> tuple[Mapping[str, object], ...]:
-        return self.disclosures.history()
+        return self.resources.read_history()
 
     def activate_plugin(self, reference: str, session: RunContext) -> tuple[str, ...]:
         plugin = self.find_plugin(reference)
@@ -354,7 +365,7 @@ class AgentLibrary:
             Tool("read_skill_resource", "Read one bounded text resource inside a Skill", self._resource_tool, _read_schema("skill", resource=True)),
             Tool("list_mcp_servers", "List passive MCP server definitions", partial(self._list_tool, "mcp"), _list_schema()),
             Tool("read_mcp_server", "Read one passive MCP server definition", partial(self._read_tool, "mcp"), _read_schema("mcp")),
-            self.disclosures.tool(),
+            self.resources.create_read_tool(),
             Tool("activate_skill", "Activate one disclosed Skill", partial(self._activate_tool, "skill"), _activate_schema("skill")),
         )
 
@@ -672,7 +683,11 @@ class AgentLibrary:
     def _read(self, skill: Skill | str, kind: str | None, page: Mapping[str, int]) -> DisclosedContent:
         if isinstance(skill, str):
             skill = self.find_skill(skill)
-        method = self.disclosures.disclose if kind else self.disclosures.preview
+        method = (
+            self.resources.disclose_resource
+            if kind
+            else self.resources.preview_resource
+        )
         value = method(skill.reference, skill.body, **page)
         if kind:
             self._record(f"{kind}.disclosed", {**_disclosure_event(value), "key": skill.reference})
@@ -735,7 +750,11 @@ class AgentLibrary:
     def _resource_tool(self, arguments: dict[str, object], context: ToolContext) -> dict[str, object]:
         skill = self.find_skill(_text(arguments.get("skill"), "skill"))
         relative, content = read_skill_resource_text(skill, _text(arguments.get("path"), "path"))
-        value = self.disclosures.disclose(f"{skill.reference}:resource:{relative}", content, **_tool_page(arguments))
+        value = self.resources.disclose_resource(
+            f"{skill.reference}:resource:{relative}",
+            content,
+            **_tool_page(arguments),
+        )
         event = {"key": skill.reference, "resource": relative, **_disclosure_event(value)}
         self._record("skill.resource_disclosed", event)
         context.emit("skill.resource_disclosed", event)

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field, replace
 from threading import RLock
 from typing import Callable, Generator, Iterable, Mapping
 
-from core.disclosure import MAX_PAGE_CHARACTERS, DisclosureStore
+from core.disclosure import DisclosureStore
 from core.event import (
     CheckpointStore,
     ContextLedger,
@@ -30,6 +30,7 @@ from core.model import (
     validate_tool_arguments,
 )
 from core.records import SessionRecord
+from core.resources import MAX_PAGE_CHARACTERS, ResourceCenter
 
 
 EventListener = Callable[[RunEvent], object]
@@ -272,7 +273,7 @@ class RunResources:
     """一次运行可使用的外部资源；空值表示宿主没有提供该资源。"""
 
     available_tools: Mapping[str, Tool] | None = None
-    disclosure_store: DisclosureStore | None = None
+    disclosure_store: ResourceCenter | DisclosureStore | None = None
     working_directory: object | None = None
     library_snapshot: Mapping[str, object] | None = None
     mcp_tools_by_server: Mapping[str, tuple[Tool, ...]] | None = None
@@ -289,9 +290,16 @@ class RunResources:
             ),
             exposure="after_skill",
         )
+        center = self.disclosure_store
+        if center is None:
+            center = ResourceCenter()
+        elif isinstance(center, DisclosureStore):
+            center = ResourceCenter(center)
+        elif not isinstance(center, ResourceCenter):
+            raise TypeError("run disclosure store must be a ResourceCenter")
         return RunResources(
             available_tools=registry.available,
-            disclosure_store=self.disclosure_store or DisclosureStore(),
+            disclosure_store=center,
             working_directory=self.working_directory,
             library_snapshot=dict(self.library_snapshot or {}),
             mcp_tools_by_server={
@@ -534,8 +542,10 @@ def build_run_resources(
     tool_registry: ToolRegistry | None = None,
 ) -> RunResources:
     """集中构造一次运行的资源，不创建文件、数据库或网络连接。"""
-    if disclosure_store is not None and not isinstance(disclosure_store, DisclosureStore):
-        raise TypeError("run disclosure_store must be a DisclosureStore")
+    if disclosure_store is not None and not isinstance(
+        disclosure_store, (DisclosureStore, ResourceCenter)
+    ):
+        raise TypeError("run disclosure store must be a ResourceCenter")
     return RunResources(
         available_tools=available_tools,
         disclosure_store=disclosure_store,
@@ -1079,7 +1089,7 @@ def _prepare_tool_output(
         wrapper_characters = len(
             json.dumps({"progressive_disclosure": {}}, ensure_ascii=False, sort_keys=True)
         ) - 2
-        disclosed = context.session.resources.disclosure_store.disclose(
+        disclosed = context.session.resources.disclosure_store.disclose_resource(
             reference,
             text,
             max_characters=min(maximum or MAX_PAGE_CHARACTERS, MAX_PAGE_CHARACTERS),
@@ -1087,7 +1097,7 @@ def _prepare_tool_output(
                 None if remaining is None else remaining - wrapper_characters
             ),
         )
-        reader = context.session.resources.disclosure_store.tool()
+        reader = context.session.resources.disclosure_store.create_read_tool()
         context.session.add_tool(reader)
         summary = {"progressive_disclosure": disclosed.to_dict()}
         context.emit(

@@ -5,7 +5,7 @@ metadata:
   super-agent-categories: "[\"general/multi-agent\",\"coordination/producer-consumer\"]"
   super-agent-requires: "[\"list_agent_tree\",\"create_agent_task\",\"dispatch_agent_task\",\"read_agent_tasks\",\"wait_for_agent_tasks\",\"cancel_agent_task\",\"post_shared_note\",\"read_shared_notes\",\"wait_for_shared_notes\",\"create_agent_decision\",\"wait_for_agent_decision\",\"read_agent_decisions\"]"
   super-agent-type: "task"
-  super-agent-version: "0.2.40"
+  super-agent-version: "0.2.41"
 ---
 # Multi-Agent producer-consumer method
 

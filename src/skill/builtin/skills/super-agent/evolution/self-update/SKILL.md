@@ -5,7 +5,7 @@ metadata:
   super-agent-categories: "[\"evolution/skill\"]"
   super-agent-requires: "[\"propose_skill_update\",\"test_skill_update\",\"apply_skill_update\",\"undo_skill_update\",\"read_skill_freshness\"]"
   super-agent-type: "evolution"
-  super-agent-version: "0.2.40"
+  super-agent-version: "0.2.41"
 ---
 # Skill self-update method
 
