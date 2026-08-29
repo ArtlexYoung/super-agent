@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from collections.abc import Mapping
 
 from adapter.storage import EventMemoryStore, JsonlMemoryStore
+from core.disclosure import DisclosureStore
 from core.event import RunCheckpoint, RunIdentity
 from core.records import EventStore
 
@@ -18,6 +19,39 @@ if TYPE_CHECKING:
     from core.run import RunRequest, RunSetup, ToolRegistry
     from skill.library import AgentLibrary
     from super_agent import Agent, AgentContext
+
+
+@dataclass(frozen=True)
+class RunResourceCenter:
+    """Choose one index and one disclosure store for a prepared run."""
+
+    library: AgentLibrary | None
+    disclosure_store: DisclosureStore | None
+
+    @classmethod
+    def create(
+        cls, library: AgentLibrary | None, agent_tree: object | None
+    ) -> RunResourceCenter:
+        store = None
+        if agent_tree is not None:
+            store = agent_tree.disclosures
+        elif library is not None:
+            store = library.disclosures
+        if store is not None and not isinstance(store, DisclosureStore):
+            raise TypeError("run disclosure store must be a DisclosureStore")
+        if library is not None and store is not None:
+            library.use_disclosure_store(store)
+        return cls(library, store)
+
+    def index(self) -> dict[str, object] | None:
+        if self.library is None:
+            return None
+        return self.library.resource_index()
+
+    def snapshot(self) -> dict[str, object] | None:
+        if self.library is None:
+            return None
+        return self.library.snapshot().to_dict()
 
 
 class AgentRunParts:
@@ -232,8 +266,7 @@ class AgentRunBuilder:
         )
         lifecycle = context.runtime_lifecycle or RuntimeLifecycle(identity.run_id)
         group_id = context.agent_group_id or _agent_group_id(self.agent)
-        if agent_tree is not None and library is not None:
-            library.use_disclosure_store(agent_tree.disclosures)
+        resource_center = RunResourceCenter.create(library, agent_tree)
         tree_settings = _tree_settings(self.agent, agent_tree)
         _check_call_depth(tree_settings, identity.depth)
         warnings = () if agent_tree is None else agent_tree.warning_messages(
@@ -258,7 +291,7 @@ class AgentRunBuilder:
         )
         instructions = build_run_instructions(
             self.agent.instructions,
-            _library_index(library),
+            resource_center.index(),
             effective_context.shared_context,
         )
         active_tools = registry.active
@@ -290,13 +323,9 @@ class AgentRunBuilder:
             active_tools=dict(active_tools),
             resources=build_run_resources(
                 registry.available,
-                agent_tree.disclosures
-                if agent_tree is not None
-                else None if library is None else library.disclosures,
+                resource_center.disclosure_store,
                 working_directory,
-                library_snapshot=(
-                    None if library is None else library.snapshot().to_dict()
-                ),
+                library_snapshot=resource_center.snapshot(),
                 mcp_tools_by_server=mcp_tools,
                 tool_registry=registry,
             ),
@@ -373,16 +402,6 @@ def _activate_requested_skills(
             tool_context.emit(
                 "skill.activated", {"key": key, "source": "Agent.enable_skill"}
             )
-
-
-def _library_index(library: object) -> dict[str, object] | None:
-    if library is None:
-        return None
-    return {
-        "plugins": library.list_plugins(page=1, page_size=20).to_dict(),
-        "skills": library.list_skills(page=1, page_size=20).to_dict(),
-        "mcp_servers": library.list_mcp_servers(page=1, page_size=20).to_dict(),
-    }
 
 
 def _required_features(features: tuple[str, ...], has_tools: bool) -> tuple[str, ...]:

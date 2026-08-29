@@ -215,6 +215,18 @@ class AgentLibrary:
         )
         return _page(values, page, page_size, lambda item: item.index_entry())
 
+    def resource_index(self, *, page_size: int = 20) -> dict[str, object]:
+        """Return one bounded index for every discoverable resource kind."""
+        if not 1 <= page_size <= 100:
+            raise ValueError("resource index page size must be between 1 and 100")
+        return {
+            "plugins": self.list_plugins(page=1, page_size=page_size).to_dict(),
+            "skills": self.list_skills(page=1, page_size=page_size).to_dict(),
+            "mcp_servers": self.list_mcp_servers(
+                page=1, page_size=page_size
+            ).to_dict(),
+        }
+
     def list_skills(
         self,
         *,
