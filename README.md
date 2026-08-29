@@ -238,5 +238,5 @@ Third-party projects retain their own copyrights and licenses; this project is l
 The full release gate checks Python tests, compilation, package contents, offline evaluation, and build.
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.35 --full
+python3.11 scripts/verify_release.py --version 0.2.36 --full
 ```

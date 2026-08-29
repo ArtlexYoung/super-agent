@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from core import require_text as _text
-from adapter.storage import EventMemoryStore, JsonlMemoryStore
 from core.config import Config, EvolutionConfig, WorkingDirectory, config_from_environment
 from core.event import (
     CheckpointStore,
@@ -32,12 +30,11 @@ from core.run import (
     stream_run,
 )
 from core.user import AgentUser
-from skill.agent_builder import AgentRunBuilder
+from skill.agent_builder import AgentRunBuilder, AgentRunParts
 from skill.library import AgentLibrary
 
 if TYPE_CHECKING:
-    from skill.evolution import CandidateRunner, SkillEvolution
-    from skill.memory import Memory
+    from skill.evolution import CandidateRunner
     from skill.organization import AgentGroup, AgentMemberSettings, AgentTreeSettings
     from skill.organization_runtime import AgentTreeRuntime
 
@@ -45,7 +42,6 @@ CandidateRunner = Callable[[str, str], str]
 AgentTreeRuntime = Any
 AgentMemberSettings = Any
 AgentTreeSettings = Any
-Memory = Any
 
 
 @dataclass(frozen=True)
@@ -111,6 +107,7 @@ class Agent:
         self.library: AgentLibrary | None = None
         self._mcp_servers: dict[str, tuple[object, Mapping[str, tuple[str, ...]]]] = {}
         self.storage: RecordBackend | None = None
+        self.run_parts = AgentRunParts(self)
         self.audit_policy = AuditPolicy()
         self.memory_enabled = False
         self.evolution_enabled = False
@@ -132,7 +129,6 @@ class Agent:
         else:
             self._model_profiles = [ModelProfile("default", model)]
         self._listeners: list[EventListener] = []
-        self._memories: dict[tuple[str, str, str], Memory] = {}
         self._agent_tree_runtimes: dict[str, AgentTreeRuntime] = {}
         self._loaded_model_scopes: set[str] = set()
         self._session_record: SessionRecord | None = None
@@ -371,7 +367,7 @@ class Agent:
     def use_storage(self, storage: RecordBackend) -> None:
         self.storage = storage
         self._loaded_model_scopes.clear()
-        self._memories.clear()
+        self.run_parts.clear_memory_cache()
         _clear_agent_tree_runtimes(self)
         for node in _get_agent_group_node(self).walk():
             child = node.coordinator
@@ -577,133 +573,30 @@ class Agent:
         group_id: str,
         working_directory: WorkingDirectory | None,
     ) -> tuple[ToolRegistry, dict[str, tuple[Tool, ...]]]:
-        registry = ToolRegistry(
-            active=self._tool_registry.active.values(),
-            available=self._tool_registry.available.values(),
+        return self.run_parts.tools(
+            identity, library, store, agent_tree, group_id, working_directory
         )
-        mcp_tools_by_server: dict[str, tuple[Tool, ...]] = {}
-        if library is not None:
-            registry.register_many(library.tools(), exposure="always")
-            if self._mcp_servers:
-                from adapter.tools import mcp_tools
-
-                for reference, (server, effects) in self._mcp_servers.items():
-                    definition = library.find_mcp_server(reference)
-                    mcp_tools_by_server[definition.reference] = mcp_tools(
-                        definition.mcp_id,
-                        server,
-                        effects,
-                        declared_tools=definition.tools,
-                    )
-        if self.memory_enabled:
-            if "plugin:super-agent/memory" not in self._enabled_plugins:
-                raise RuntimeError("memory requires the explicit Memory plugin")
-            memory = self._memory(identity, store, working_directory)
-            registry.register_many(
-                memory.tools(),
-                exposure="after_skill" if library is not None else "always",
-            )
-        if self.evolution_enabled:
-            if "plugin:super-agent/evolution" not in self._enabled_plugins:
-                raise RuntimeError("Skill evolution requires the explicit Evolution plugin")
-            if library is None:
-                raise RuntimeError("Skill evolution requires an AgentLibrary")
-            evolution = self._evolution(library, store)
-            registry.register_many(evolution.tools(), exposure="after_skill")
-        if agent_tree is not None:
-            registry.register_many(
-                agent_tree.tools(group_id),
-                exposure="after_skill" if library is not None else "always",
-            )
-            if library is None:
-                registry.register(agent_tree.disclosures.tool(), exposure="always")
-        return registry, mcp_tools_by_server
 
     def _library(
         self, identity: RunIdentity, store: EventStore | None
     ) -> AgentLibrary | None:
-        if self.library is None:
-            return None
-        library = self.library.for_scope(
-            identity.user_id,
-            identity.agent_name,
-            disabled_plugins=self._disabled_plugins,
-            disabled_skills=self._disabled_skills,
-            disabled_mcp_servers=self.library.disabled_mcp_servers,
-        )
-        if store is not None:
-
-            def record_catalog_event(
-                event: str, data: Mapping[str, object]
-            ) -> object:
-                stream = next(
-                    (
-                        name
-                        for name in ("plugin", "skill", "mcp")
-                        if event.startswith(f"{name}.")
-                    ),
-                    "disclosure",
-                )
-                stream_id = str(data.get("key", data.get("reference", "content")))
-                return store.append(stream, stream_id, event, data)
-
-            library.record_event = record_catalog_event
-        return library
+        return self.run_parts.library(identity, store)
 
     def _memory(
         self,
         identity: RunIdentity,
         store: EventStore | None,
         working_directory: WorkingDirectory | None = None,
-    ) -> Memory:
-        key = (
-            identity.user_id,
-            identity.agent_name,
-            "" if working_directory is None else working_directory.identity,
-        )
-        if key not in self._memories:
-            selected_store = store
-            if working_directory is not None:
-                scope = hashlib.sha256(
-                    f"{identity.user_id}\0{identity.agent_name}".encode("utf-8")
-                ).hexdigest()[:24]
-                path = (
-                    working_directory.path
-                    / ".super-agent"
-                    / "memory"
-                    / "users"
-                    / f"{scope}.jsonl"
-                )
-                selected_store = JsonlMemoryStore(
-                    path,
-                    identity.user_id,
-                    identity.agent_name,
-                )
-            elif store is not None:
-                selected_store = EventMemoryStore(store)
-            from skill.memory import Memory as MemoryClass
-
-            self._memories[key] = MemoryClass(selected_store)
-        return self._memories[key]
+    ) -> object:
+        return self.run_parts.memory(identity, store, working_directory)
 
     def _evolution(
         self, library: AgentLibrary, store: EventStore | None
-    ) -> SkillEvolution:
-        from skill.evolution import SkillEvolution
-
-        return SkillEvolution(
-            library,
-            policy=self.evolution_policy,
-            store=store,
-            runner=self.candidate_runner,
-        )
+    ) -> object:
+        return self.run_parts.evolution(library, store)
 
     def _event_store(self, identity: RunIdentity) -> EventStore | None:
-        return (
-            None
-            if self.storage is None
-            else EventStore(self.storage, identity.user_id, identity.agent_name)
-        )
+        return self.run_parts.event_store(identity)
 
     def _require_model(self) -> Model:
         if self.model is None:

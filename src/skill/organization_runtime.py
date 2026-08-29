@@ -458,8 +458,8 @@ def get_or_create_agent_tree_runtime(
     if existing is not None:
         return existing
     identity = RunIdentity(user_id=user_id, agent_name=owner.name)
-    store = owner._event_store(identity)
-    library = owner._library(identity, store)
+    store = owner.run_parts.event_store(identity)
+    library = owner.run_parts.library(identity, store)
     runtime = AgentTreeRuntime(
         root,
         owner.agent_tree_settings,

@@ -7,14 +7,173 @@ from typing import TYPE_CHECKING
 
 from collections.abc import Mapping
 
+from adapter.storage import EventMemoryStore, JsonlMemoryStore
 from core.event import RunCheckpoint, RunIdentity
+from core.records import EventStore
 
 if TYPE_CHECKING:
     from core.config import WorkingDirectory
-    from core.model import Model
-    from core.records import EventStore, SessionRecord
-    from core.run import RunSetup
+    from core.model import Model, Tool
+    from core.records import EventStore, RecordBackend, SessionRecord
+    from core.run import RunRequest, RunSetup, ToolRegistry
+    from skill.library import AgentLibrary
     from super_agent import Agent, AgentContext
+
+
+class AgentRunParts:
+    """Hold optional run parts without making the basic Agent stateful."""
+
+    def __init__(self, agent: Agent) -> None:
+        self.agent = agent
+        self._memories: dict[tuple[str, str, str], object] = {}
+
+    def clear_memory_cache(self) -> None:
+        """Drop only in-process memory objects after storage changes."""
+        self._memories.clear()
+
+    def event_store(self, identity: RunIdentity) -> EventStore | None:
+        storage = self.agent.storage
+        if storage is None:
+            return None
+        return EventStore(storage, identity.user_id, identity.agent_name)
+
+    def library(
+        self, identity: RunIdentity, store: EventStore | None
+    ) -> AgentLibrary | None:
+        base = self.agent.library
+        if base is None:
+            return None
+        library = base.for_scope(
+            identity.user_id,
+            identity.agent_name,
+            disabled_plugins=self.agent._disabled_plugins,
+            disabled_skills=self.agent._disabled_skills,
+            disabled_mcp_servers=base.disabled_mcp_servers,
+        )
+        if store is None:
+            return library
+
+        def record_catalog_event(
+            event: str, data: Mapping[str, object]
+        ) -> object:
+            stream = next(
+                (
+                    name
+                    for name in ("plugin", "skill", "mcp")
+                    if event.startswith(f"{name}.")
+                ),
+                "disclosure",
+            )
+            stream_id = str(data.get("key", data.get("reference", "content")))
+            return store.append(stream, stream_id, event, data)
+
+        library.record_event = record_catalog_event
+        return library
+
+    def memory(
+        self,
+        identity: RunIdentity,
+        store: EventStore | None,
+        working_directory: WorkingDirectory | None = None,
+    ) -> object:
+        key = (
+            identity.user_id,
+            identity.agent_name,
+            "" if working_directory is None else working_directory.identity,
+        )
+        if key in self._memories:
+            return self._memories[key]
+        selected_store: RecordBackend | EventStore | None = store
+        if working_directory is not None:
+            import hashlib
+
+            scope = hashlib.sha256(
+                f"{identity.user_id}\0{identity.agent_name}".encode("utf-8")
+            ).hexdigest()[:24]
+            path = (
+                working_directory.path
+                / ".super-agent"
+                / "memory"
+                / "users"
+                / f"{scope}.jsonl"
+            )
+            selected_store = JsonlMemoryStore(
+                path,
+                identity.user_id,
+                identity.agent_name,
+            )
+        elif store is not None:
+            selected_store = EventMemoryStore(store)
+        from skill.memory import Memory
+
+        value = Memory(selected_store)
+        self._memories[key] = value
+        return value
+
+    def evolution(self, library: AgentLibrary, store: EventStore | None) -> object:
+        from skill.evolution import SkillEvolution
+
+        return SkillEvolution(
+            library,
+            policy=self.agent.evolution_policy,
+            store=store,
+            runner=self.agent.candidate_runner,
+        )
+
+    def tools(
+        self,
+        identity: RunIdentity,
+        library: AgentLibrary | None,
+        store: EventStore | None,
+        agent_tree: object | None,
+        group_id: str,
+        working_directory: WorkingDirectory | None,
+    ) -> tuple[ToolRegistry, dict[str, tuple[Tool, ...]]]:
+        """Build tools from explicitly selected optional parts."""
+        from adapter.tools import mcp_tools
+        from core.model import Tool
+        from core.run import ToolRegistry
+
+        registry = ToolRegistry(
+            active=self.agent._tool_registry.active.values(),
+            available=self.agent._tool_registry.available.values(),
+        )
+        mcp_by_server: dict[str, tuple[Tool, ...]] = {}
+        if library is not None:
+            registry.register_many(library.tools(), exposure="always")
+            for reference, (server, effects) in self.agent._mcp_servers.items():
+                definition = library.find_mcp_server(reference)
+                mcp_by_server[definition.reference] = mcp_tools(
+                    definition.mcp_id,
+                    server,
+                    effects,
+                    declared_tools=definition.tools,
+                )
+        if self.agent.memory_enabled:
+            if "plugin:super-agent/memory" not in self.agent._enabled_plugins:
+                raise RuntimeError("memory requires the explicit Memory plugin")
+            value = self.memory(identity, store, working_directory)
+            registry.register_many(
+                value.tools(),
+                exposure="after_skill" if library is not None else "always",
+            )
+        if self.agent.evolution_enabled:
+            if "plugin:super-agent/evolution" not in self.agent._enabled_plugins:
+                raise RuntimeError(
+                    "Skill evolution requires the explicit Evolution plugin"
+                )
+            if library is None:
+                raise RuntimeError("Skill evolution requires an AgentLibrary")
+            value = self.evolution(library, store)
+            registry.register_many(value.tools(), exposure="after_skill")
+        if agent_tree is not None:
+            registry.register_many(
+                agent_tree.tools(group_id),
+                exposure="after_skill" if library is not None else "always",
+            )
+            if library is None:
+                registry.register(agent_tree.disclosures.tool(), exposure="always")
+        return registry, mcp_by_server
 
 
 @dataclass(frozen=True)
@@ -22,7 +181,7 @@ class AgentRun:
     """Everything needed to hand one prepared run to the Runtime."""
 
     model: Model
-    request: object
+    request: RunRequest
     setup: RunSetup
     prompt: str
     conversation_id: str | None
@@ -65,8 +224,9 @@ class AgentRunBuilder:
             checkpoint,
         )
         conversation_id = identity.conversation_id
-        store = self.agent._event_store(identity)
-        library = self.agent._library(identity, store)
+        parts = self.agent.run_parts
+        store = parts.event_store(identity)
+        library = parts.library(identity, store)
         agent_tree = context.agent_tree_runtime or _agent_tree_runtime(
             self.agent, identity.user_id
         )
@@ -93,7 +253,7 @@ class AgentRunBuilder:
             effective_context.save_conversation,
             store,
         )
-        registry, mcp_tools = self.agent._run_tools(
+        registry, mcp_tools = parts.tools(
             identity, library, store, agent_tree, group_id, working_directory
         )
         instructions = build_run_instructions(
