@@ -1,6 +1,6 @@
 schema = 1
 id = "super-agent/automation"
-version = "0.2.39"
+version = "0.2.40"
 description = "Explicit event-driven scheduling, waiting, waking, and worker methods"
 entry_skill = "skill:super-agent/automation"
 skills = ["skill:super-agent/automation/event-driven"]

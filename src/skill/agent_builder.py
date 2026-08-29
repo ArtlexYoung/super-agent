@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from collections.abc import Mapping
 
 from adapter.storage import EventMemoryStore, JsonlMemoryStore
+from core.context import AgentContext
 from core.disclosure import DisclosureStore
 from core.event import RunCheckpoint, RunIdentity
 from core.records import EventStore
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
     from core.records import EventStore, RecordBackend, SessionRecord
     from core.run import RunRequest, RunSetup, ToolRegistry
     from skill.library import AgentLibrary
-    from super_agent import Agent, AgentContext
+    from super_agent import Agent
 
 
 @dataclass(frozen=True)
@@ -274,10 +275,12 @@ class AgentRunBuilder:
             agent_group_id=group_id,
             runtime_lifecycle=lifecycle,
         )
+        runtime_scope = effective_context.scope(self.agent.name)
+        runtime_options = effective_context.options()
         messages = conversation_run_messages(
             effective_context.messages,
-            effective_context.conversation_id,
-            effective_context.save_conversation,
+            runtime_scope.conversation_id,
+            runtime_options.save_conversation,
             store,
         )
         registry, mcp_tools = parts.tools(
@@ -308,11 +311,12 @@ class AgentRunBuilder:
             metadata={
                 **dict(effective_context.metadata),
                 "_super_agent_model_scope": model_scope(identity),
+                "_super_agent_run_scope": runtime_scope.to_dict(),
             },
             warning_messages=warnings,
         )
-        listeners = [*self.agent._listeners, *effective_context.listeners]
-        if store is not None and effective_context.persist_run_events:
+        listeners = [*self.agent._listeners, *runtime_options.listeners]
+        if store is not None and runtime_options.persist_run_events:
             listeners.append(store.run_listener(identity))
         tracking = model_tracking_listener(
             self.agent, model, store, identity, effective_context.purpose
@@ -354,18 +358,18 @@ class AgentRunBuilder:
                 identity=identity,
                 prepare=prepare,
                 session_record=selected_session,
-                tool_decider=effective_context.tool_decider,
-                tool_timeout_seconds=effective_context.tool_timeout_seconds,
-                cancel_check=effective_context.cancel_check,
-                checkpoint_store=effective_context.checkpoint_store,
-                resume_checkpoint=effective_context.resume_checkpoint,
-                interrupt_check=effective_context.interrupt_check,
+                tool_decider=runtime_options.tool_decider,
+                tool_timeout_seconds=runtime_options.tool_timeout_seconds,
+                cancel_check=runtime_options.cancel_check,
+                checkpoint_store=runtime_options.checkpoint_store,
+                resume_checkpoint=runtime_options.resume_checkpoint,
+                interrupt_check=runtime_options.interrupt_check,
                 runtime_lifecycle=lifecycle,
                 plan=plan,
             ),
             prompt=selected_prompt,
-            conversation_id=conversation_id,
-            save_conversation=effective_context.save_conversation,
+            conversation_id=runtime_scope.conversation_id,
+            save_conversation=runtime_options.save_conversation,
             store=store,
         )
 

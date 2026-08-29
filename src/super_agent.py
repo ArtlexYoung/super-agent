@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from core import require_text as _text
 from core.config import Config, EvolutionConfig, WorkingDirectory, config_from_environment
+from core.context import AgentContext
 from core.event import (
     CheckpointStore,
     RunCheckpoint,
@@ -49,36 +50,6 @@ class AgentSettings:
     """只保留跨运行且无法从组合对象推导的 Agent 设置。"""
 
     limits: RunLimits = field(default_factory=RunLimits)
-
-
-@dataclass(frozen=True)
-class AgentContext:
-    """一次公开 Agent 调用的可选上下文。"""
-
-    user_id: str = "local"
-    conversation_id: str | None = None
-    messages: tuple[Message | Mapping[str, object], ...] = ()
-    purpose: str = "auto"
-    required_features: tuple[str, ...] = ("text",)
-    metadata: Mapping[str, object] = field(default_factory=dict)
-    plugin: str | None = None
-    skill: str | None = None
-    identity: RunIdentity | None = None
-    save_conversation: bool = True
-    persist_run_events: bool = True
-    shared_context: Mapping[str, object] | None = None
-    agent_tree_runtime: AgentTreeRuntime | None = None
-    runtime_lifecycle: RuntimeLifecycle | None = None
-    agent_group_id: str | None = None
-    listeners: tuple[EventListener, ...] = ()
-    session: SessionRecord | None = None
-    working_directory: str | Path | WorkingDirectory | None = None
-    tool_decider: ToolDecision | None = None
-    tool_timeout_seconds: float | None = None
-    cancel_check: CancelCheck | None = None
-    checkpoint_store: CheckpointStore | None = None
-    resume_checkpoint: RunCheckpoint | None = None
-    interrupt_check: CancelCheck | None = None
 
 
 class Agent:

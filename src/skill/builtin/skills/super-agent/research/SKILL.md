@@ -4,7 +4,7 @@ description: "A careful method for gathering, comparing, and verifying external 
 metadata:
   super-agent-categories: "[\"research\",\"sources\"]"
   super-agent-type: "method"
-  super-agent-version: "0.2.39"
+  super-agent-version: "0.2.40"
 ---
 # Research method
 
