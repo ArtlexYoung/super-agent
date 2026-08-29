@@ -34,7 +34,6 @@ class CoreRuntimeTests(unittest.TestCase):
         plan = RunPlan()
         plan.add_instruction("follow the plan")
         plan.add_tool(tool)
-        plan.add_value("marker", "value")
         result = collect_run(
             stream_run(
                 RunRequest("use plan"),

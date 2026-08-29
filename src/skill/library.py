@@ -629,7 +629,7 @@ class AgentLibrary:
             return
         if skill.reference in stack:
             raise ValueError(f"Skill include cycle: {' -> '.join((*stack, skill.reference))}")
-        available = session.values.get("available_tools", {})
+        available = session.resources.available_tools or {}
         if not isinstance(available, Mapping):
             raise TypeError("run available_tools must be an object")
         for name in (*skill.requires, *skill.optional_tools):
@@ -672,7 +672,7 @@ class AgentLibrary:
         session: RunContext,
         unavailable: list[tuple[str, str]],
     ) -> None:
-        bindings = session.values.get("mcp_tools_by_server", {})
+        bindings = session.resources.mcp_tools_by_server or {}
         if not isinstance(bindings, Mapping):
             raise TypeError("run MCP tools by server must be an object")
         required = tuple(f"mcp:{item}" for item in plugin.required_mcp_servers)

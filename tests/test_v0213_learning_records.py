@@ -55,13 +55,14 @@ class LearningRecordTests(unittest.TestCase):
                 encoding="utf-8",
             )
             agent = Agent(MockModel("answer"))
-            agent.use_agent_library(AgentLibrary((root,)))
+            builtin = Path(__file__).resolve().parents[1] / "src" / "skill" / "builtin"
+            agent.use_agent_library(AgentLibrary((builtin, root)))
             agent.enable_skill_evolution()
             agent.use_storage(MemoryStorage())
             result = agent.run("use it", skill="skill:self")
 
             self.assertEqual(
-                1, agent.for_user("local").runs.learn(result.run_id, score=0.8)
+                4, agent.for_user("local").runs.learn(result.run_id, score=0.8)
             )
             explanation = agent.for_user("local").runs.explain(result.run_id)
             self.assertEqual(

@@ -35,7 +35,7 @@ from core.run import (
     add_optional_tools,
     add_unique_tool,
     build_run_instructions,
-    build_run_values,
+    build_run_resources,
     collect_run,
     stream_run,
 )
@@ -164,14 +164,18 @@ class Agent:
             max_level=config.max_agent_level,
             max_call_depth=config.max_agent_call_depth,
         )
-        self.memory_enabled = config.memory
-        self.evolution_enabled = config.evolution is not None
+        self.memory_enabled = False
+        self.evolution_enabled = False
         self.evolution_policy = config.evolution or EvolutionConfig()
         self._enabled_plugins = list(config.enabled_plugins)
         self._enabled_skills = list(config.enabled_skills)
         self._disabled_plugins = list(config.disabled_plugins)
         self._disabled_skills = list(config.disabled_skills)
         self._enabled_mcp_servers = list(config.enabled_mcp_servers)
+        if config.memory:
+            self.enable_memory()
+        if config.evolution is not None:
+            self.enable_skill_evolution()
         self.audit_policy = AuditPolicy(
             config.storage.detailed_log_days,
             config.storage.critical_log_days,
@@ -443,10 +447,13 @@ class Agent:
         ))
 
     def enable_memory(self) -> None:
+        """显式选择 Memory 插件并启用其运行工具。"""
+        self.enable_plugin("plugin:super-agent/memory")
         self.memory_enabled = True
 
     def enable_skill_evolution(self, runner: CandidateRunner | None = None) -> None:
         """启用候选和保鲜度工具；更新目标仍需单独授权。"""
+        self.enable_plugin("plugin:super-agent/evolution")
         self.evolution_enabled = True
         self.candidate_runner = runner
 
@@ -474,6 +481,7 @@ class Agent:
         if auto_apply:
             automatic = tuple(dict.fromkeys((*automatic, reference)))
         self.evolution_policy = EvolutionConfig(allowed, automatic)
+        self.enable_plugin("plugin:super-agent/evolution")
         self.evolution_enabled = True
 
     def configure_agent_tree(self, settings: AgentTreeSettings | None = None) -> None:
@@ -641,28 +649,22 @@ class Agent:
         plan = RunPlan(
             instructions=list(instructions),
             active_tools=dict(active_tools),
-            values={
-                **build_run_values(
-                    available_tools,
-                    agent_tree.disclosures
-                    if agent_tree is not None
-                    else None if library is None else library.disclosures,
-                    selected_working_directory,
+            resources=build_run_resources(
+                available_tools,
+                agent_tree.disclosures
+                if agent_tree is not None
+                else None if library is None else library.disclosures,
+                selected_working_directory,
+                library_snapshot=(
+                    None if library is None else library.snapshot().to_dict()
                 ),
-                **(
-                    {}
-                    if library is None
-                    else {
-                        "library_snapshot": library.snapshot().to_dict(),
-                        "mcp_tools_by_server": mcp_tools_by_server,
-                    }
-                ),
-            },
+                mcp_tools_by_server=mcp_tools_by_server,
+            ),
             listeners=listeners,
         )
 
         def prepare(session: RunContext, tool_context: ToolContext) -> None:
-            session.values["available_tools"] = available_tools
+            session.resources.available_tools = available_tools
             if library is None:
                 return
             if effective_context.plugin is not None:
@@ -759,11 +761,15 @@ class Agent:
                         declared_tools=definition.tools,
                     )
         if self.memory_enabled:
+            if "plugin:super-agent/memory" not in self._enabled_plugins:
+                raise RuntimeError("memory requires the explicit Memory plugin")
             memory = self._memory(identity, store, working_directory)
             add_optional_tools(
                 active, available, memory.tools(), progressive=library is not None
             )
         if self.evolution_enabled:
+            if "plugin:super-agent/evolution" not in self._enabled_plugins:
+                raise RuntimeError("Skill evolution requires the explicit Evolution plugin")
             if library is None:
                 raise RuntimeError("Skill evolution requires an AgentLibrary")
             evolution = self._evolution(library, store)

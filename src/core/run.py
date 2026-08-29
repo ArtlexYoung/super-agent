@@ -171,13 +171,68 @@ class ToolExecutionCenter:
 
 
 @dataclass
+class RunResources:
+    """一次运行可使用的外部资源；空值表示宿主没有提供该资源。"""
+
+    available_tools: Mapping[str, Tool] | None = None
+    disclosure_store: DisclosureStore | None = None
+    working_directory: object | None = None
+    library_snapshot: Mapping[str, object] | None = None
+    mcp_tools_by_server: Mapping[str, tuple[Tool, ...]] | None = None
+
+    def ready(self) -> RunResources:
+        """创建运行期副本，并只为本轮补齐内存级默认值。"""
+        return RunResources(
+            available_tools=dict(self.available_tools or {}),
+            disclosure_store=self.disclosure_store or DisclosureStore(),
+            working_directory=self.working_directory,
+            library_snapshot=dict(self.library_snapshot or {}),
+            mcp_tools_by_server={
+                key: tuple(value)
+                for key, value in (self.mcp_tools_by_server or {}).items()
+            },
+        )
+
+    def merge(self, override: RunResources) -> RunResources:
+        """合并运行计划和宿主资源，宿主明确提供的字段优先。"""
+        if not isinstance(override, RunResources):
+            raise TypeError("run resource override must be RunResources")
+        return RunResources(
+            available_tools=(
+                override.available_tools
+                if override.available_tools is not None
+                else self.available_tools
+            ),
+            disclosure_store=(
+                override.disclosure_store
+                if override.disclosure_store is not None
+                else self.disclosure_store
+            ),
+            working_directory=(
+                override.working_directory
+                if override.working_directory is not None
+                else self.working_directory
+            ),
+            library_snapshot=(
+                override.library_snapshot
+                if override.library_snapshot is not None
+                else self.library_snapshot
+            ),
+            mcp_tools_by_server=(
+                override.mcp_tools_by_server
+                if override.mcp_tools_by_server is not None
+                else self.mcp_tools_by_server
+            ),
+        )
+
+
+@dataclass
 class RunContext:
     identity: RunIdentity
     messages: list[Message]
     instructions: list[str]
     tools: dict[str, Tool]
-    disclosures: DisclosureStore = field(default_factory=DisclosureStore)
-    values: dict[str, object] = field(default_factory=dict)
+    resources: RunResources = field(default_factory=RunResources)
     active_skills: list[str] = field(default_factory=list)
     workflow: str = "model-directed"
     context_limit: int | None = None
@@ -186,6 +241,9 @@ class RunContext:
     runtime_lifecycle: RuntimeLifecycle | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.resources, RunResources):
+            raise TypeError("run resources must be RunResources")
+        self.resources = self.resources.ready()
         if self.ledger is None:
             self.ledger = ContextLedger(
                 self.context_limit,
@@ -261,9 +319,6 @@ class ToolContext:
     session: RunContext
     emit: Callable[[str, Mapping[str, object]], RunEvent]
 
-    def value(self, name: str, default: object = None) -> object:
-        return self.session.values.get(name, default)
-
 
 @dataclass
 class RunPlan:
@@ -271,7 +326,7 @@ class RunPlan:
 
     instructions: list[str] = field(default_factory=list)
     active_tools: dict[str, Tool] = field(default_factory=dict)
-    values: dict[str, object] = field(default_factory=dict)
+    resources: RunResources = field(default_factory=RunResources)
     listeners: list[EventListener] = field(default_factory=list)
     prepare_hooks: list[RunPreparation] = field(default_factory=list)
 
@@ -282,13 +337,6 @@ class RunPlan:
 
     def add_tool(self, tool: Tool) -> None:
         add_unique_tool(self.active_tools, tool)
-
-    def add_value(self, name: str, value: object) -> None:
-        if not isinstance(name, str) or not name.strip():
-            raise ValueError("run plan value name cannot be empty")
-        if name in self.values and self.values[name] != value:
-            raise ValueError(f"run plan value is already registered: {name}")
-        self.values[name] = value
 
     def add_listener(self, listener: EventListener) -> None:
         if not callable(listener):
@@ -307,7 +355,7 @@ class RunSetup:
 
     identity: RunIdentity | None = None
     listeners: tuple[EventListener, ...] = ()
-    values: Mapping[str, object] = field(default_factory=dict)
+    resources: RunResources = field(default_factory=RunResources)
     prepare: RunPreparation | None = None
     session_record: SessionRecord | None = None
     tool_decider: ToolDecision | None = None
@@ -362,18 +410,24 @@ def build_run_instructions(
     return tuple(instructions)
 
 
-def build_run_values(
+def build_run_resources(
     available_tools: Mapping[str, Tool],
     disclosure_store: object | None,
     working_directory: object | None = None,
-) -> dict[str, object]:
-    """组合单轮运行可选机制，不创建任何状态。"""
-    values: dict[str, object] = {"available_tools": available_tools}
-    if disclosure_store is not None:
-        values["disclosure_store"] = disclosure_store
-    if working_directory is not None:
-        values["working_directory"] = working_directory
-    return values
+    *,
+    library_snapshot: Mapping[str, object] | None = None,
+    mcp_tools_by_server: Mapping[str, tuple[Tool, ...]] | None = None,
+) -> RunResources:
+    """集中构造一次运行的资源，不创建文件、数据库或网络连接。"""
+    if disclosure_store is not None and not isinstance(disclosure_store, DisclosureStore):
+        raise TypeError("run disclosure_store must be a DisclosureStore")
+    return RunResources(
+        available_tools=available_tools,
+        disclosure_store=disclosure_store,
+        working_directory=working_directory,
+        library_snapshot=library_snapshot,
+        mcp_tools_by_server=mcp_tools_by_server,
+    )
 
 
 def add_unique_tool(target: dict[str, Tool], tool: Tool) -> None:
@@ -438,7 +492,7 @@ def _apply_run_plan(
     selected = replace(
         setup,
         listeners=(*plan.listeners, *setup.listeners),
-        values={**plan.values, **dict(setup.values)},
+        resources=plan.resources.merge(setup.resources),
         prepare=selected_prepare,
         plan=None,
     )
@@ -477,10 +531,6 @@ def _create_session(
         registered[tool.name] = tool
     history = normalize_messages(request.messages)
     history.append(Message("user", request.prompt.strip()))
-    run_values = dict(setup.values)
-    disclosure_value = run_values.pop("disclosure_store", None)
-    if disclosure_value is not None and not isinstance(disclosure_value, DisclosureStore):
-        raise TypeError("run disclosure_store must be a DisclosureStore")
     identity = setup.identity or RunIdentity()
     if setup.session_record is not None:
         if identity.session_id not in {None, setup.session_record.session_id}:
@@ -496,8 +546,7 @@ def _create_session(
         messages=history,
         instructions=[item.strip() for item in request.instructions if item.strip()],
         tools=registered,
-        disclosures=disclosure_value or DisclosureStore(),
-        values=run_values,
+        resources=setup.resources,
         context_limit=request.limits.max_context_characters,
         runtime_lifecycle=setup.runtime_lifecycle,
     )
@@ -635,7 +684,7 @@ class _RunEngine:
                 "depth": identity.depth,
                 "purpose": self.request.purpose,
                 "prompt": self.request.prompt,
-                "library_snapshot": self.session.values.get("library_snapshot", {}),
+                "library_snapshot": self.session.resources.library_snapshot or {},
             },
         )
         for warning in self.request.warning_messages:
@@ -850,7 +899,7 @@ class _RunEngine:
                 "workflow": self.session.workflow,
                 "context_ledger": self.session.context_snapshot(),
                 "runtime_lifecycle": self.session.runtime_lifecycle.snapshot(),
-                "library_snapshot": self.session.values.get("library_snapshot", {}),
+                "library_snapshot": self.session.resources.library_snapshot or {},
             },
             created_at=event.created_at,
         )
@@ -876,7 +925,7 @@ class _RunEngine:
                 "usage": dict(self.usage),
                 "context_ledger": self.session.context_snapshot(),
                 "runtime_lifecycle": self.session.runtime_lifecycle.snapshot(),
-                "library_snapshot": self.session.values.get("library_snapshot", {}),
+                "library_snapshot": self.session.resources.library_snapshot or {},
             },
         )
         return RunResult(
@@ -895,9 +944,7 @@ class _RunEngine:
             context_ledger=self.session.context_snapshot(),
             runtime_lifecycle=self.session.runtime_lifecycle.snapshot(),
             library_snapshot=(
-                self.session.values.get("library_snapshot", {})
-                if isinstance(self.session.values.get("library_snapshot", {}), Mapping)
-                else {}
+                self.session.resources.library_snapshot or {}
             ),
         )
 
@@ -928,7 +975,7 @@ def _prepare_tool_output(
         wrapper_characters = len(
             json.dumps({"progressive_disclosure": {}}, ensure_ascii=False, sort_keys=True)
         ) - 2
-        disclosed = context.session.disclosures.disclose(
+        disclosed = context.session.resources.disclosure_store.disclose(
             reference,
             text,
             max_characters=min(maximum or MAX_PAGE_CHARACTERS, MAX_PAGE_CHARACTERS),
@@ -936,7 +983,7 @@ def _prepare_tool_output(
                 None if remaining is None else remaining - wrapper_characters
             ),
         )
-        reader = context.session.disclosures.tool()
+        reader = context.session.resources.disclosure_store.tool()
         context.session.add_tool(reader)
         summary = {"progressive_disclosure": disclosed.to_dict()}
         context.emit(

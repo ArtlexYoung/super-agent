@@ -4,7 +4,7 @@ from pathlib import Path
 
 from core.event import RunIdentity
 from core.provider import MockModel
-from core.run import RunSession, ToolContext
+from core.run import RunResources, RunSession, ToolContext
 from skill.library import AgentLibrary
 from skill.organization import AgentMemberSettings, AgentTreeSettings, agent_group_node
 from skill.organization_runtime import AgentTreeRuntime
@@ -26,7 +26,7 @@ class MultiAgentReviewTests(unittest.TestCase):
             [],
             [],
             {},
-            values={"available_tools": tools},
+            resources=RunResources(available_tools=tools),
         )
 
         activated = library.activate_skill(

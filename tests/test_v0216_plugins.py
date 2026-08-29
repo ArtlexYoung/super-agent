@@ -11,7 +11,7 @@ from core.event import RunIdentity
 from core.model import ModelEvent, Tool
 from core.provider import MockModel
 from core.records import EventStore
-from core.run import RunSession, ToolContext
+from core.run import RunResources, RunSession, ToolContext
 from skill.document import format_skill, parse_skill_text, read_skill_package
 from skill.evolution import (
     SkillEvidence,
@@ -217,7 +217,7 @@ class AgentLibraryTests(unittest.TestCase):
             self.assertEqual((10, first.content), (len(first.content), cached.content))
             self.assertEqual(2, len(library.history()))
             session = RunSession(
-                RunIdentity(), [], [], {}, values={"available_tools": {}}
+                RunIdentity(), [], [], {}, resources=RunResources(available_tools={})
             )
             self.assertEqual(
                 ("skill:demo",), library.activate_skill("skill:demo", session)
@@ -259,7 +259,7 @@ class AgentLibraryTests(unittest.TestCase):
                 [],
                 ["existing"],
                 {},
-                values={"available_tools": {"available": available}},
+                resources=RunResources(available_tools={"available": available}),
                 context_characters=8,
             )
             with self.assertRaises(RuntimeError):
@@ -287,7 +287,9 @@ class AgentLibraryTests(unittest.TestCase):
                 [],
                 [],
                 {},
-                values={"available_tools": {"required": required, "optional": optional}},
+                resources=RunResources(
+                    available_tools={"required": required, "optional": optional}
+                ),
             )
             library = AgentLibrary((root,))
             library.activate_skill("skill:optional", session)
@@ -341,7 +343,9 @@ class AgentLibraryTests(unittest.TestCase):
             library = AgentLibrary((root,))
             self.assertEqual(("search",), library.find_mcp_server("mcp:example/search").tools)
             session = RunSession(
-                RunIdentity(), [], [], {}, values={"available_tools": {}, "mcp_tools_by_server": {}}
+                RunIdentity(), [], [], {}, resources=RunResources(
+                    available_tools={}, mcp_tools_by_server={}
+                )
             )
             with self.assertRaisesRegex(RuntimeError, "explicitly connected"):
                 library.activate_plugin("plugin:example/task", session)
@@ -402,10 +406,10 @@ class AgentLibraryTests(unittest.TestCase):
                 [],
                 [],
                 {},
-                values={
-                    "available_tools": {},
-                    "mcp_tools_by_server": {"mcp:example/search": (tool,)},
-                },
+                resources=RunResources(
+                    available_tools={},
+                    mcp_tools_by_server={"mcp:example/search": (tool,)},
+                ),
             )
             library.activate_plugin("plugin:example/task", session)
             self.assertIn("search", session.tools)
@@ -499,7 +503,9 @@ class AgentLibraryTests(unittest.TestCase):
         library = AgentLibrary((root,))
         self.assertEqual(23, library.list_skills().total)
         session = RunSession(
-                RunIdentity(), [], [], {}, values={"available_tools": {"calculate_numbers": object()}}
+                RunIdentity(), [], [], {}, resources=RunResources(
+                    available_tools={"calculate_numbers": object()}
+                )
         )
         with self.assertRaises(RuntimeError):
             library.activate_plugin("plugin:super-agent/common", session)
