@@ -21,7 +21,7 @@ from adapter.process import ProcessSettings, ProcessTools
 from adapter.storage import create_storage, verify_storage
 from adapter.tools import CodeWorkspace, ToolPolicy, WorkspaceSettings, general_tools
 from core.config import Config, config_from_environment
-from core.records import AuditPolicy, Conversations, EventStore
+from core.records import AuditPolicy, Conversations, EventStore, RecordBackend
 from skill.library import AgentLibrary
 from super_agent import Agent, AgentContext
 
@@ -139,13 +139,7 @@ def _check_command(arguments: list[str]) -> int:
     config = _load_general(parsed.config or cli.general_config)
     if config.models:
         config.create_model_profiles()
-    roots = _library_roots(config)
-    library = AgentLibrary(
-        roots,
-        disabled_plugins=config.disabled_plugins,
-        disabled_skills=config.disabled_skills,
-        disabled_mcp_servers=config.disabled_mcp_servers,
-    )
+    library = _library_from_config(config)
     model_ready = _models_ready(config)
     result = {
         "config": "ok",
@@ -238,11 +232,7 @@ def _data_command(arguments: list[str]) -> int:
     config = _load_general(parsed.config)
     if config.storage.backend == "none":
         raise RuntimeError("data commands require storage in general configuration")
-    backend = create_storage(
-        config.storage.backend,
-        config.resolve_path(config.storage.path) or Path(config.storage.path),
-        database_url=_database_url(config),
-    )
+    backend = _storage_from_config(config)
     if parsed.resource == "storage":
         if parsed.action == "verify":
             value = verify_storage(backend)
@@ -375,47 +365,13 @@ def _build_agent(
             config.create_model_profiles(api_keys=model_api_keys),
             router_settings=config.router,
         )
-    agent.set_instructions(*config.instructions)
-    roots = _library_roots(config)
-    writable = config.resolve_path(
-        config.writable_library_path
-        or (config.storage.path + "/library" if cli.save else None)
-    )
-    cache = config.resolve_path(
-        config.library_cache_path
-        or (config.storage.path + "/cache" if cli.save else None)
-    )
-    library = AgentLibrary(
-        roots,
-        writable_root=writable,
-        cache_root=cache,
-        disabled_mcp_servers=config.disabled_mcp_servers,
-    )
-    agent.use_agent_library(library)
-    for reference in config.enabled_plugins:
-        agent.enable_plugin(reference)
-    for reference in config.enabled_skills:
-        agent.enable_skill(reference)
+    agent.use_agent_library(_library_from_config(config, save=cli.save))
     policy = ToolPolicy(confirm=_confirm_action)
     agent.add_tools_for_skills(policy.protect_all(general_tools()))
     _attach_code_tools(agent, code_path or cli.code_config)
-    if config.memory:
-        agent.enable_memory()
-    if config.evolution:
-        agent.enable_skill_evolution()
     backend = None
     if cli.save:
-        backend_name = (
-            config.storage.backend if config.storage.backend != "none" else "jsonl"
-        )
-        policy = AuditPolicy(
-            config.storage.detailed_log_days, config.storage.critical_log_days
-        )
-        backend = create_storage(
-            backend_name,
-            config.resolve_path(config.storage.path) or Path(config.storage.path),
-            database_url=database_url if database_url is not None else _database_url(config),
-        )
+        backend = _storage_from_config(config, database_url=database_url)
         agent.use_storage(backend)
     return agent, backend
 
@@ -599,14 +555,34 @@ def _library_roots(config: Config) -> tuple[Path, ...]:
     return tuple(path for path in roots if path is not None)
 
 
-def _library_from_config(config: Config) -> AgentLibrary:
+def _library_from_config(config: Config, *, save: bool = False) -> AgentLibrary:
+    writable_path = config.writable_library_path
+    cache_path = config.library_cache_path
+    if save and writable_path is None:
+        writable_path = config.storage.path + "/library"
+    if save and cache_path is None:
+        cache_path = config.storage.path + "/cache"
     return AgentLibrary(
         _library_roots(config),
-        writable_root=config.resolve_path(config.writable_library_path),
-        cache_root=config.resolve_path(config.library_cache_path),
+        writable_root=config.resolve_path(writable_path),
+        cache_root=config.resolve_path(cache_path),
         disabled_plugins=config.disabled_plugins,
         disabled_skills=config.disabled_skills,
         disabled_mcp_servers=config.disabled_mcp_servers,
+    )
+
+
+def _storage_from_config(
+    config: Config, *, database_url: str | None = None
+) -> RecordBackend:
+    backend = config.storage.backend
+    if backend == "none":
+        backend = "jsonl"
+    path = config.resolve_path(config.storage.path) or Path(config.storage.path)
+    return create_storage(
+        backend,
+        path,
+        database_url=database_url if database_url is not None else _database_url(config),
     )
 
 

@@ -4,7 +4,7 @@ description: "Organize durable project context without treating remembered facts
 metadata:
   super-agent-categories: "[\"knowledge\",\"project\"]"
   super-agent-type: "method"
-  super-agent-version: "0.2.30"
+  super-agent-version: "0.2.39"
 ---
 # Project knowledge method
 

@@ -14,7 +14,7 @@ from threading import Lock, Thread
 from time import monotonic, sleep
 from uuid import uuid4
 
-from core import require_text as _text
+from core import __version__, require_text as _text
 from core.model import Tool
 
 
@@ -62,6 +62,26 @@ class ProcessTools:
             Tool("stop_process", "Stop a process started by these tools", self._stop, _stop_schema(), ("execute",)),
             Tool("run_check", "Run one declared command to completion with bounded output", self._run_check, _command_schema(), ("execute",)),
         )
+
+    def close(self) -> None:
+        """Explicitly stop every process owned by this adapter instance."""
+        with self._lock:
+            processes = tuple(self._processes.values())
+        for item in processes:
+            if item.process.poll() is not None:
+                continue
+            _signal_group(item.process, signal.SIGTERM)
+            try:
+                item.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                _signal_group(item.process, signal.SIGKILL)
+                item.process.wait(timeout=5)
+
+    def __enter__(self) -> ProcessTools:
+        return self
+
+    def __exit__(self, _type: object, _value: object, _traceback: object) -> None:
+        self.close()
 
     def _list_commands(self, _arguments: dict[str, object], _context: object) -> dict[str, object]:
         return {
@@ -245,7 +265,7 @@ class StdioMcpServer:
     def _initialize(self, process: subprocess.Popen[str]) -> None:
         self._request_id += 1
         request_id = self._request_id
-        payload = {"jsonrpc": "2.0", "id": request_id, "method": "initialize", "params": {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "super-agent", "version": "0.2.26"}}}
+        payload = {"jsonrpc": "2.0", "id": request_id, "method": "initialize", "params": {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "super-agent", "version": __version__}}}
         if process.stdin is None or process.stdout is None:
             raise RuntimeError("MCP process pipes are unavailable")
         process.stdin.write(json.dumps(payload) + "\n")

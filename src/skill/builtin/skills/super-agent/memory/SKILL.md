@@ -5,7 +5,7 @@ metadata:
   super-agent-categories: "[\"memory/general\"]"
   super-agent-requires: "[\"remember_temporary\",\"remember_long_term\",\"recall_memory\",\"promote_temporary_memory\",\"organize_long_term_memory\"]"
   super-agent-type: "memory"
-  super-agent-version: "0.2.26"
+  super-agent-version: "0.2.39"
 ---
 # Memory method
 

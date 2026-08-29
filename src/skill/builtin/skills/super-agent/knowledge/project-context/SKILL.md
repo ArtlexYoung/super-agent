@@ -4,7 +4,7 @@ description: "Maintain a compact, current project background, goal, status, and 
 metadata:
   super-agent-categories: "[\"knowledge/project\",\"planning\"]"
   super-agent-type: "method"
-  super-agent-version: "0.2.30"
+  super-agent-version: "0.2.39"
 ---
 # Project context method
 
