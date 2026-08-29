@@ -4,7 +4,7 @@ description: "Methods for compact, redacted, and time-bounded Agent run auditing
 metadata:
   super-agent-categories: "[\"audit\",\"observability\"]"
   super-agent-type: "method"
-  super-agent-version: "0.2.41"
+  super-agent-version: "0.2.42"
 ---
 # Audit method
 

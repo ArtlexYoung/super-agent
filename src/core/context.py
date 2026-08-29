@@ -125,10 +125,14 @@ class AgentContext:
         """Return the stable scope visible to Runtime and plugins."""
         if self.identity is not None:
             return RunScope.from_identity(self.identity)
+        session_id = None if self.session is None else self.session.session_id
+        working_directory_id = getattr(self.working_directory, "identity", None)
         return RunScope(
             user_id=self.user_id,
             agent_name=agent_name,
             conversation_id=self.conversation_id,
+            session_id=session_id,
+            working_directory_id=working_directory_id,
         )
 
     def options(self) -> RunOptions:

@@ -1,6 +1,6 @@
 schema = 1
 id = "super-agent/model-routing"
-version = "0.2.41"
+version = "0.2.42"
 description = "Explicit model selection and rotation methods"
 entry_skill = "skill:super-agent/model-routing"
 skills = []

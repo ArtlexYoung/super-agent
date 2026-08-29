@@ -12,7 +12,7 @@ from core.context import AgentContext
 from core.disclosure import DisclosureStore
 from core.resources import ResourceCenter
 from core.event import RunCheckpoint, RunIdentity
-from core.records import EventStore
+from core.records import EventStore, RecordScope
 
 if TYPE_CHECKING:
     from core.config import WorkingDirectory
@@ -82,7 +82,10 @@ class AgentRunParts:
         storage = self.agent.storage
         if storage is None:
             return None
-        return EventStore(storage, identity.user_id, identity.agent_name)
+        return EventStore(
+            storage,
+            scope=RecordScope.from_identity(identity),
+        )
 
     def library(
         self, identity: RunIdentity, store: EventStore | None

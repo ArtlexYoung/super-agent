@@ -11,7 +11,7 @@ from core import require_text as _text
 from core.event import RunEvent, RunIdentity, RunResult
 from core.model import Message, Model, ModelPerformance
 from core.provider import ModelRouter
-from core.records import Conversations, EventStore, Record
+from core.records import Conversations, EventStore, Record, RecordScope
 from core.run import EventListener, collect_run
 
 if TYPE_CHECKING:
@@ -173,9 +173,7 @@ class UserModels:
         identity = RunIdentity(
             user_id=self.user.user_id, agent_name=completed.agent_name
         )
-        store = target.run_parts.event_store(identity)
-        if store is None:
-            raise RuntimeError("model evaluation requires explicitly configured storage")
+        store = _require_store(target, self.user.user_id)
         router = target.model
         if not isinstance(router, ModelRouter):
             raise RuntimeError("run did not use a selectable model profile")
@@ -580,7 +578,17 @@ def _find_run_agent(agent: Agent, agent_name: str) -> Agent:
 def _require_store(agent: Agent, user_id: str) -> EventStore:
     if agent.storage is None:
         raise RuntimeError("this operation requires explicitly configured storage")
-    return EventStore(agent.storage, user_id, agent.name)
+    working_directory = agent.working_directory
+    return EventStore(
+        agent.storage,
+        scope=RecordScope(
+            user_id=user_id,
+            agent_name=agent.name,
+            working_directory_id=(
+                None if working_directory is None else working_directory.identity
+            ),
+        ),
+    )
 
 
 def _model_evaluation_result(

@@ -20,7 +20,14 @@ from core.event import (
 )
 from core.model import Message, Model, Tool, next_model_profile_name
 from core.provider import ModelPricing, ModelProfile, ModelRouter, RouterSettings
-from core.records import AuditPolicy, Conversations, EventStore, RecordBackend, SessionRecord
+from core.records import (
+    AuditPolicy,
+    Conversations,
+    EventStore,
+    RecordBackend,
+    RecordScope,
+    SessionRecord,
+)
 from core.run import (
     CancelCheck,
     EventListener,
@@ -568,6 +575,28 @@ class Agent:
 
     def _event_store(self, identity: RunIdentity) -> EventStore | None:
         return self.run_parts.event_store(identity)
+
+    def get_record_store(
+        self,
+        user_id: str = "local",
+        *,
+        agent_name: str | None = None,
+    ) -> EventStore:
+        """返回固定用户和 Agent 的记录入口，不创建存储。"""
+        if self.storage is None:
+            raise RuntimeError("this operation requires explicitly configured storage")
+        return EventStore(
+            self.storage,
+            scope=RecordScope(
+                user_id=user_id,
+                agent_name=self.name if agent_name is None else agent_name,
+                working_directory_id=(
+                    None
+                    if self.working_directory is None
+                    else self.working_directory.identity
+                ),
+            ),
+        )
 
     def _require_model(self) -> Model:
         if self.model is None:

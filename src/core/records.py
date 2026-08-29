@@ -77,9 +77,19 @@ class SessionRecordEntry:
 class SessionRecord:
     """显式创建的内存会话记录，不负责文件、数据库或记忆。"""
 
-    def __init__(self, session_id: str | None = None) -> None:
+    def __init__(
+        self,
+        session_id: str | None = None,
+        *,
+        scope: RecordScope | None = None,
+    ) -> None:
         self.session_id = session_id or f"session-{uuid4().hex}"
         _text(self.session_id, "session_id")
+        if scope is not None and not isinstance(scope, RecordScope):
+            raise TypeError("session scope must be a RecordScope")
+        if scope is not None and scope.session_id not in {None, self.session_id}:
+            raise ValueError("session ID does not match session scope")
+        self.scope = scope
         self._entries: list[SessionRecordEntry] = []
         self._status = "running"
         self._lock = RLock()
@@ -148,6 +158,64 @@ class SessionRecord:
             self._entries.append(entry)
             self._status = selected
             return entry
+
+
+@dataclass(frozen=True)
+class RecordScope:
+    """统一描述记录所属的用户、Agent、工作目录、会话和运行。"""
+
+    user_id: str = "local"
+    agent_name: str = "super-agent"
+    working_directory_id: str | None = None
+    conversation_id: str | None = None
+    session_id: str | None = None
+    run_id: str | None = None
+
+    def __post_init__(self) -> None:
+        _text(self.user_id, "record scope user_id")
+        _text(self.agent_name, "record scope agent_name")
+        for name in (
+            "working_directory_id",
+            "conversation_id",
+            "session_id",
+            "run_id",
+        ):
+            value = getattr(self, name)
+            if value is not None:
+                _text(value, f"record scope {name}")
+
+    @classmethod
+    def from_identity(cls, identity: RunIdentity) -> RecordScope:
+        """从运行身份创建完整记录边界。"""
+        return cls(
+            user_id=identity.user_id,
+            agent_name=identity.agent_name,
+            working_directory_id=identity.working_directory_id,
+            conversation_id=identity.conversation_id,
+            session_id=identity.session_id,
+            run_id=identity.run_id,
+        )
+
+    def for_agent(self, agent_name: str) -> RecordScope:
+        """保留用户及其他上下文，只切换记录所属 Agent。"""
+        return RecordScope(
+            user_id=self.user_id,
+            agent_name=_text(agent_name, "record scope agent_name"),
+            working_directory_id=self.working_directory_id,
+            conversation_id=self.conversation_id,
+            session_id=self.session_id,
+            run_id=self.run_id,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "user_id": self.user_id,
+            "agent_name": self.agent_name,
+            "working_directory_id": self.working_directory_id,
+            "conversation_id": self.conversation_id,
+            "session_id": self.session_id,
+            "run_id": self.run_id,
+        }
 
 
 @dataclass(frozen=True)
@@ -239,10 +307,31 @@ class MemoryStore(Protocol):
 class EventStore:
     """把可信用户和 Agent 作用域固定在所有存储操作上。"""
 
-    def __init__(self, backend: RecordBackend, user_id: str = "local", agent_name: str = "super-agent") -> None:
+    def __init__(
+        self,
+        backend: RecordBackend,
+        user_id: str | None = None,
+        agent_name: str | None = None,
+        *,
+        scope: RecordScope | None = None,
+    ) -> None:
         self.backend = backend
-        self.user_id = _text(user_id, "store user_id")
-        self.agent_name = _text(agent_name, "store agent_name")
+        if scope is not None and not isinstance(scope, RecordScope):
+            raise TypeError("event store scope must be a RecordScope")
+        if scope is not None:
+            if user_id is not None and _text(user_id, "store user_id") != scope.user_id:
+                raise ValueError("event store user_id does not match scope")
+            if agent_name is not None and _text(agent_name, "store agent_name") != scope.agent_name:
+                raise ValueError("event store agent_name does not match scope")
+            selected = scope
+        else:
+            selected = RecordScope(
+                user_id="local" if user_id is None else user_id,
+                agent_name="super-agent" if agent_name is None else agent_name,
+            )
+        self.scope = selected
+        self.user_id = selected.user_id
+        self.agent_name = selected.agent_name
 
     def append(
         self,
@@ -254,6 +343,8 @@ class EventStore:
         event_id: str | None = None,
         created_at: str | None = None,
     ) -> Record:
+        if self.scope.run_id is not None and stream == "run" and stream_id != self.scope.run_id:
+            raise ValueError("run record ID does not match event store scope")
         record = Record(
             event_id=event_id or f"event-{uuid4().hex}",
             user_id=self.user_id,
@@ -316,11 +407,20 @@ class EventStore:
         return stored
 
     def for_agent(self, agent_name: str) -> EventStore:
-        return EventStore(self.backend, self.user_id, agent_name)
+        return EventStore(self.backend, scope=self.scope.for_agent(agent_name))
+
+    def for_identity(self, identity: RunIdentity) -> EventStore:
+        """为一个运行创建完整边界的记录视图。"""
+        selected = RecordScope.from_identity(identity)
+        if selected.user_id != self.user_id:
+            raise ValueError("run identity user does not match event store scope")
+        return EventStore(self.backend, scope=selected)
 
     def run_listener(self, identity: RunIdentity) -> Callable[[RunEvent], Record]:
         if identity.user_id != self.user_id or identity.agent_name != self.agent_name:
             raise ValueError("run identity does not match event store scope")
+        if self.scope.run_id is not None and identity.run_id != self.scope.run_id:
+            raise ValueError("run identity run ID does not match event store scope")
 
         def record(event: RunEvent) -> Record:
             return self.append("run", identity.run_id, event.event_type, event.data, created_at=event.created_at)

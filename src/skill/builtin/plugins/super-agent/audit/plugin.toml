@@ -1,6 +1,6 @@
 schema = 1
 id = "super-agent/audit"
-version = "0.2.41"
+version = "0.2.42"
 description = "Explicit run tracing, redaction, retention, and audit queries"
 entry_skill = "skill:super-agent/audit"
 skills = []

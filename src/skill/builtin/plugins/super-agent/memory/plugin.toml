@@ -1,6 +1,6 @@
 schema = 1
 id = "super-agent/memory"
-version = "0.2.41"
+version = "0.2.42"
 description = "Explicit temporary and long-term memory methods"
 entry_skill = "skill:super-agent/memory"
 skills = []
