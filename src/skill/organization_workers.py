@@ -9,10 +9,10 @@ from threading import Lock
 from time import monotonic
 
 from skill.organization import (
-    AgentGroupNode,
-    AgentMember,
-    AgentTask,
-    AgentTreeSettings,
+    TeamNode,
+    TeamMember,
+    Task,
+    TeamSettings,
 )
 
 RecordEvent = Callable[[str, Mapping[str, object]], object]
@@ -35,7 +35,7 @@ class AgentWorkerPool:
 
     def __init__(
         self,
-        settings: AgentTreeSettings,
+        settings: TeamSettings,
         record_event: RecordEvent | None = None,
     ) -> None:
         self.settings = settings
@@ -44,18 +44,18 @@ class AgentWorkerPool:
         self._locks: dict[int, Lock] = {}
         self._rotation = 0
 
-    def lock_for(self, worker: AgentMember) -> Lock:
+    def lock_for(self, worker: TeamMember) -> Lock:
         return self._locks.setdefault(id(worker.agent), Lock())
 
     def choose(
         self,
-        task: AgentTask,
-        candidates: Iterable[AgentMember],
+        task: Task,
+        candidates: Iterable[TeamMember],
         *,
         active: Mapping[str, int],
         requested: str | None = None,
         excluded: Iterable[str] = (),
-    ) -> AgentMember:
+    ) -> TeamMember:
         ranked = self._rank(task, candidates, active, frozenset(excluded))
         if requested is not None:
             if self.settings.selection == "rotate":
@@ -88,14 +88,14 @@ class AgentWorkerPool:
 
     def choose_many(
         self,
-        task: AgentTask,
-        candidates: Iterable[AgentMember],
+        task: Task,
+        candidates: Iterable[TeamMember],
         count: int,
         *,
         active: Mapping[str, int],
         different_models: bool,
-    ) -> list[AgentMember]:
-        chosen: list[AgentMember] = []
+    ) -> list[TeamMember]:
+        chosen: list[TeamMember] = []
         models: set[str] = set()
         for worker in self._rank(task, candidates, active, frozenset()):
             if different_models and worker.model_name in models:
@@ -106,13 +106,13 @@ class AgentWorkerPool:
                 break
         return chosen
 
-    def mark_success(self, worker: AgentMember) -> None:
+    def mark_success(self, worker: TeamMember) -> None:
         health = self._health.setdefault(id(worker.agent), _WorkerHealth())
         health.successes += 1
         health.circuit_failures = 0
         health.retry_at = 0.0
 
-    def mark_failure(self, worker: AgentMember, error: Exception) -> bool:
+    def mark_failure(self, worker: TeamMember, error: Exception) -> bool:
         health = self._health.setdefault(id(worker.agent), _WorkerHealth())
         health.failures += 1
         if not temporary_agent_error(error):
@@ -129,17 +129,17 @@ class AgentWorkerPool:
             )
         return True
 
-    def retry_delay(self, worker: AgentMember) -> float:
+    def retry_delay(self, worker: TeamMember) -> float:
         health = self._health.setdefault(id(worker.agent), _WorkerHealth())
         return max(0.0, health.retry_at - monotonic())
 
     def _rank(
         self,
-        task: AgentTask,
-        candidates: Iterable[AgentMember],
+        task: Task,
+        candidates: Iterable[TeamMember],
         active: Mapping[str, int],
         excluded: frozenset[str],
-    ) -> list[AgentMember]:
+    ) -> list[TeamMember]:
         now = monotonic()
         available = [
             worker
@@ -150,7 +150,7 @@ class AgentWorkerPool:
             <= now
         ]
 
-        def score(worker: AgentMember) -> tuple[float, float]:
+        def score(worker: TeamMember) -> tuple[float, float]:
             health = self._health[id(worker.agent)]
             exact = float(task.purpose != "auto" and worker.purpose == task.purpose)
             value = (
@@ -173,16 +173,16 @@ class AgentWorkerPool:
 
 
 def candidate_members(
-    target: AgentGroupNode, source: AgentGroupNode
-) -> list[AgentMember]:
+    target: TeamNode, source: TeamNode
+) -> list[TeamMember]:
     """按树中配置顺序返回目标组可执行的 Agent。"""
-    members: list[AgentMember] = []
+    members: list[TeamMember] = []
     for node in _candidate_nodes(target, source):
         if node.member is not None:
             members.append(node.member)
         elif node.coordinator is not None:
             members.append(
-                AgentMember(
+                TeamMember(
                     name=node.name,
                     agent=node.coordinator,
                     group_id=node.group_id,
@@ -192,7 +192,7 @@ def candidate_members(
             )
     if target is source:
         members.extend(target.links)
-    unique: list[AgentMember] = []
+    unique: list[TeamMember] = []
     seen: set[int] = set()
     for member in members:
         marker = id(member.agent)
@@ -203,11 +203,11 @@ def candidate_members(
 
 
 def _candidate_nodes(
-    target: AgentGroupNode, source: AgentGroupNode
-) -> list[AgentGroupNode]:
+    target: TeamNode, source: TeamNode
+) -> list[TeamNode]:
     if target is not source and target.coordinator is not None:
         return [target]
-    values: list[AgentGroupNode] = []
+    values: list[TeamNode] = []
     for child in target.children:
         if child.coordinator is not None:
             values.append(child)
@@ -216,8 +216,8 @@ def _candidate_nodes(
     return values
 
 
-def _first_agent_groups(group: AgentGroupNode) -> list[AgentGroupNode]:
-    values: list[AgentGroupNode] = []
+def _first_agent_groups(group: TeamNode) -> list[TeamNode]:
+    values: list[TeamNode] = []
     for child in group.children:
         if child.coordinator is not None:
             values.append(child)

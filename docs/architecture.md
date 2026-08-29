@@ -54,13 +54,13 @@ A user-Agent writable Skill overlay must declare the shared content's `base_hash
 
 ## Agent 树 / Agent Tree
 
-`Agent.add_group` 创建不调用模型的结构组，`Agent.add_subagent` 或 `AgentGroup.add_subagent` 挂入可执行 Agent。每个 Agent 可以选择自己的插件和 Skill，因此同一棵树可以自然形成专业分工。
+`Agent.add_group` 创建不调用模型的结构组，`Agent.add_subagent` 或 `Team.add_subagent` 挂入可执行 Agent。每个 Agent 可以选择自己的插件和 Skill，因此同一棵树可以自然形成专业分工。
 
-`Agent.add_group` creates a model-free structural group, while `Agent.add_subagent` and `AgentGroup.add_subagent` attach executable Agents. Every Agent chooses its own plugins and Skills, allowing specialization within one tree.
+`Agent.add_group` creates a model-free structural group, while `Agent.add_subagent` and `Team.add_subagent` attach executable Agents. Every Agent chooses its own plugins and Skills, allowing specialization within one tree.
 
-每个用户和根 Agent 只有一个 `AgentTreeRuntime`。它统一保存任务、等待唤醒、共享板、分阶段决策、价格与权重选择、轮换、断路重试和动态记录压缩；没有子 Agent 时不会创建这些状态。
+每个用户和根 Agent 只有一个 `TeamRuntime`。它统一保存任务、等待唤醒、共享板、分阶段决策、价格与权重选择、轮换、断路重试和动态记录压缩；没有子 Agent 时不会创建这些状态。
 
-Each user and root Agent has one `AgentTreeRuntime`. It owns tasks, sleep and wake events, shared boards, staged decisions, price and weight selection, rotation, circuit retries, and adaptive record compression; none of this state exists without subagents.
+Each user and root Agent has one `TeamRuntime`. It owns tasks, sleep and wake events, shared boards, staged decisions, price and weight selection, rotation, circuit retries, and adaptive record compression; none of this state exists without subagents.
 
 结构循环和多父挂载会成为带警告的委派链接。`max_agent_level` 限制结构，`max_agent_call_depth` 限制实际递归调用；省略时均为无限。
 

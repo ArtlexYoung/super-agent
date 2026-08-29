@@ -4,7 +4,7 @@ description: "Methods for explicit conversation history and lightweight run sess
 metadata:
   super-agent-categories: "[\"session\",\"conversation\"]"
   super-agent-type: "method"
-  super-agent-version: "0.2.43"
+  super-agent-version: "0.2.44"
 ---
 # Explicit session method
 

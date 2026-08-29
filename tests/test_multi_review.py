@@ -6,8 +6,8 @@ from core.event import RunIdentity
 from core.provider import MockModel
 from core.run import RunResources, RunSession, ToolContext
 from skill.library import AgentLibrary
-from skill.organization import AgentMemberSettings, AgentTreeSettings, agent_group_node
-from skill.organization_runtime import AgentTreeRuntime
+from skill.organization import TeamMemberSettings, TeamSettings, team_node
+from skill.organization_runtime import TeamRuntime
 from super_agent import Agent
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,8 +19,8 @@ class MultiAgentReviewTests(unittest.TestCase):
         root = Agent(MockModel("root"), name="root")
         root.add_subagent(Agent(MockModel("first")), name="reviewer-a")
         root.add_subagent(Agent(MockModel("second")), name="reviewer-b")
-        runtime = AgentTreeRuntime(agent_group_node(root).root())
-        tools = {tool.name: tool for tool in runtime.tools(agent_group_node(root).group_id)}
+        runtime = TeamRuntime(team_node(root).root())
+        tools = {tool.name: tool for tool in runtime.tools(team_node(root).group_id)}
         session = RunSession(
             RunIdentity(),
             [],
@@ -58,16 +58,16 @@ class MultiAgentReviewTests(unittest.TestCase):
             root.add_subagent(
                 Agent(MockModel(json.dumps(response))),
                 name=f"reviewer-{index + 1}",
-                settings=AgentMemberSettings(
+                settings=TeamMemberSettings(
                     purpose="review",
                     model_name="model-a" if index < 2 else "model-b",
                 ),
             )
-        runtime = AgentTreeRuntime(
-            agent_group_node(root).root(),
-            AgentTreeSettings(max_wait_seconds=2),
+        runtime = TeamRuntime(
+            team_node(root).root(),
+            TeamSettings(max_wait_seconds=2),
         )
-        group_id = agent_group_node(root).group_id
+        group_id = team_node(root).group_id
         tasks = tuple(
             runtime.create_task(
                 f"independent review focus {index}",

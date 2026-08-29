@@ -6,7 +6,7 @@ metadata:
   super-agent-optional-tools: "[\"git_status\",\"git_diff\",\"write_file\",\"replace_in_file\",\"delete_file\",\"list_process_commands\",\"start_process\",\"poll_process\",\"stop_process\",\"run_check\"]"
   super-agent-requires: "[\"list_files\",\"read_file\",\"search_files\",\"repository_map\"]"
   super-agent-type: "task"
-  super-agent-version: "0.2.43"
+  super-agent-version: "0.2.44"
 ---
 # Repository coding method
 

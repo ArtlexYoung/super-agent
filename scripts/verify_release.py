@@ -1,4 +1,4 @@
-"""Run the local release checks for v0.2.43."""
+"""Run the local release checks for v0.2.44."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-VERSION = "0.2.43"
+VERSION = "0.2.44"
 MAX_SOURCE_FILES = 28
 MAX_SOURCE_LINES = 12_000
 SOURCE_ROOTS = {"adapter", "core", "skill", "cli.py", "super_agent.py"}

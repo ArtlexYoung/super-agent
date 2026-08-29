@@ -14,8 +14,8 @@ from core.provider import MockModel, ModelPricing
 from core.records import compact_child_result
 from core.run import FatalToolError
 from skill.memory import Memory
-from skill.organization import AgentMemberSettings, AgentTreeSettings, agent_group_node
-from skill.organization_runtime import AgentTreeRuntime
+from skill.organization import TeamMemberSettings, TeamSettings, team_node
+from skill.organization_runtime import TeamRuntime
 from super_agent import Agent
 
 
@@ -71,21 +71,21 @@ class MemoryAndAgentTreeTests(unittest.TestCase):
         reviewer = Agent(MockModel("reviewer"), name="reviewer")
         team.add_subagent(writer, name="writer")
         team.add_subagent(reviewer, name="reviewer")
-        runtime = AgentTreeRuntime(agent_group_node(root).root())
+        runtime = TeamRuntime(team_node(root).root())
 
         note = runtime.post_note(
-            group_id=agent_group_node(writer).group_id,
+            group_id=team_node(writer).group_id,
             title="result",
             content="measured result",
             board="parent",
         )
         wake = runtime.wait_for_notes(
-            group_id=agent_group_node(reviewer).group_id,
+            group_id=team_node(reviewer).group_id,
             board="parent",
             timeout_seconds=0,
         )
         listed = runtime.list_notes(
-            group_id=agent_group_node(reviewer).group_id,
+            group_id=team_node(reviewer).group_id,
             board="parent",
         )
         replayed = runtime.disclosures.read(note.cache_path)
@@ -97,18 +97,18 @@ class MemoryAndAgentTreeTests(unittest.TestCase):
         root = Agent(MockModel("root"), name="root")
         root.add_subagent(Agent(MockModel("alpha result")), name="alpha")
         root.add_subagent(Agent(MockModel("zulu result")), name="zulu")
-        runtime = AgentTreeRuntime(
-            agent_group_node(root).root(), AgentTreeSettings(max_wait_seconds=2)
+        runtime = TeamRuntime(
+            team_node(root).root(), TeamSettings(max_wait_seconds=2)
         )
         task = runtime.create_task(
-            "one", source_group_id=agent_group_node(root).group_id
+            "one", source_group_id=team_node(root).group_id
         )
         dispatched = runtime.dispatch_task(
-            task.task_id, source_group_id=agent_group_node(root).group_id
+            task.task_id, source_group_id=team_node(root).group_id
         )
         wake = runtime.wait_for_tasks(
             "all_tasks_finished",
-            group_id=agent_group_node(root).group_id,
+            group_id=team_node(root).group_id,
             timeout_seconds=2,
         )
         self.assertEqual("alpha", dispatched.agent_name)
@@ -121,7 +121,7 @@ class MemoryAndAgentTreeTests(unittest.TestCase):
         beta = root.add_group("beta")
         alpha.add_subagent(Agent(MockModel("alpha result")), name="worker-alpha")
         beta.add_subagent(Agent(MockModel("beta result")), name="worker-beta")
-        runtime = AgentTreeRuntime(agent_group_node(root).root())
+        runtime = TeamRuntime(team_node(root).root())
         task = runtime.create_task("private", source_group_id=alpha.group_id)
 
         self.assertEqual([], runtime.list_tasks(beta.group_id))
@@ -137,11 +137,11 @@ class MemoryAndAgentTreeTests(unittest.TestCase):
 
     def test_weight_and_price_select_the_cheaper_stronger_agent(self):
         root = Agent(MockModel("root"), name="root")
-        expensive = AgentMemberSettings(
+        expensive = TeamMemberSettings(
             weight=1,
             pricing=ModelPricing(100, 100, 100, 100),
         )
-        preferred = AgentMemberSettings(
+        preferred = TeamMemberSettings(
             weight=2,
             pricing=ModelPricing(0, 0, 0, 0),
         )
@@ -151,21 +151,21 @@ class MemoryAndAgentTreeTests(unittest.TestCase):
         root.add_subagent(
             Agent(MockModel("preferred")), name="preferred", settings=preferred
         )
-        runtime = AgentTreeRuntime(agent_group_node(root).root())
+        runtime = TeamRuntime(team_node(root).root())
         task = runtime.create_task(
-            "choose", source_group_id=agent_group_node(root).group_id
+            "choose", source_group_id=team_node(root).group_id
         )
         dispatched = runtime.dispatch_task(
-            task.task_id, source_group_id=agent_group_node(root).group_id
+            task.task_id, source_group_id=team_node(root).group_id
         )
         self.assertEqual("preferred", dispatched.agent_name)
 
     def test_adaptive_records_compress_later_child_runs(self):
         root = Agent(MockModel("root"), name="root")
         root.add_subagent(Agent(MockModel("result")), name="worker")
-        runtime = AgentTreeRuntime(
-            agent_group_node(root).root(),
-            AgentTreeSettings(
+        runtime = TeamRuntime(
+            team_node(root).root(),
+            TeamSettings(
                 max_wait_seconds=2,
                 compress_after_tasks=1,
                 summary_characters=20,
@@ -173,18 +173,18 @@ class MemoryAndAgentTreeTests(unittest.TestCase):
         )
         for prompt in ("first", "second"):
             task = runtime.create_task(
-                prompt, source_group_id=agent_group_node(root).group_id
+                prompt, source_group_id=team_node(root).group_id
             )
             runtime.dispatch_task(
-                task.task_id, source_group_id=agent_group_node(root).group_id
+                task.task_id, source_group_id=team_node(root).group_id
             )
             runtime.wait_for_tasks(
                 "selected_tasks_finished",
-                group_id=agent_group_node(root).group_id,
+                group_id=team_node(root).group_id,
                 timeout_seconds=2,
                 task_ids=(task.task_id,),
             )
-        results = [item["result"] for item in runtime.list_tasks(agent_group_node(root).group_id)]
+        results = [item["result"] for item in runtime.list_tasks(team_node(root).group_id)]
         self.assertIn("events", results[0])
         self.assertNotIn("events", results[1])
         self.assertGreater(results[1]["event_count"], 0)
@@ -193,26 +193,26 @@ class MemoryAndAgentTreeTests(unittest.TestCase):
         root = Agent(MockModel("root"), name="root")
         worker_model = MockModel(responses=(URLError("offline"), "recovered"))
         root.add_subagent(Agent(worker_model), name="worker")
-        runtime = AgentTreeRuntime(
-            agent_group_node(root).root(),
-            AgentTreeSettings(
+        runtime = TeamRuntime(
+            team_node(root).root(),
+            TeamSettings(
                 max_wait_seconds=2,
                 circuit_wait_seconds=0,
                 retry_unavailable_times=1,
             ),
         )
         task = runtime.create_task(
-            "retry", source_group_id=agent_group_node(root).group_id
+            "retry", source_group_id=team_node(root).group_id
         )
         runtime.dispatch_task(
-            task.task_id, source_group_id=agent_group_node(root).group_id
+            task.task_id, source_group_id=team_node(root).group_id
         )
         runtime.wait_for_tasks(
             "all_tasks_finished",
-            group_id=agent_group_node(root).group_id,
+            group_id=team_node(root).group_id,
             timeout_seconds=2,
         )
-        completed = runtime.list_tasks(agent_group_node(root).group_id)[0]
+        completed = runtime.list_tasks(team_node(root).group_id)[0]
         self.assertEqual("completed", completed["status"])
         self.assertEqual((2, 1), (completed["attempts"], completed["fallback_count"]))
 
@@ -223,26 +223,26 @@ class MemoryAndAgentTreeTests(unittest.TestCase):
             root.add_subagent(
                 Agent(MockModel(response)),
                 name=f"worker{index}",
-                settings=AgentMemberSettings(
+                settings=TeamMemberSettings(
                     purpose="optimize", model_name=f"model{index}"
                 ),
             )
-        runtime = AgentTreeRuntime(
-            agent_group_node(root).root(),
-            AgentTreeSettings(max_wait_seconds=2),
+        runtime = TeamRuntime(
+            team_node(root).root(),
+            TeamSettings(max_wait_seconds=2),
         )
         decision = runtime.create_decision(
             "find an optimization",
-            group_id=agent_group_node(root).group_id,
+            group_id=team_node(root).group_id,
             purpose="optimize",
         )
-        queued_tasks = runtime.list_tasks(agent_group_node(root).group_id)
+        queued_tasks = runtime.list_tasks(team_node(root).group_id)
         self.assertEqual(
             set(decision.task_ids), {str(task["task_id"]) for task in queued_tasks}
         )
         completed = runtime.wait_for_decision(
             decision.decision_id,
-            group_id=agent_group_node(root).group_id,
+            group_id=team_node(root).group_id,
             timeout_seconds=2,
         )
         self.assertEqual("completed", completed.status)
@@ -251,7 +251,7 @@ class MemoryAndAgentTreeTests(unittest.TestCase):
         self.assertEqual(3, len(set(completed.worker_names)))
         task_statuses = {
             str(task["task_id"]): task["status"]
-            for task in runtime.list_tasks(agent_group_node(root).group_id)
+            for task in runtime.list_tasks(team_node(root).group_id)
         }
         self.assertEqual(
             ["completed", "completed", "cancelled"],
@@ -280,8 +280,8 @@ class MemoryAndAgentTreeTests(unittest.TestCase):
         root = Agent(MockModel("root"), name="root")
         group = root.add_group("department")
         group.add_subagent(Agent(MockModel("worker")), name="worker")
-        root.configure_agent_tree(
-            AgentTreeSettings(warn_level=2, max_level=2)
+        root.configure_team(
+            TeamSettings(warn_level=2, max_level=2)
         )
         with self.assertRaisesRegex(RuntimeError, "level 3"):
             root.run("blocked")

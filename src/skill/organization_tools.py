@@ -15,16 +15,16 @@ from core import (
 )
 from core.model import Tool, estimate_tokens
 from core.run import ToolContext
-from skill.organization import AgentMember
+from skill.organization import TeamMember
 
 if TYPE_CHECKING:
-    from skill.organization_runtime import AgentTreeRuntime
+    from skill.organization_runtime import TeamRuntime
 
 Arguments = dict[str, object]
 ToolDefinition = tuple[str, str, object, str, tuple[str, ...]]
 
 
-def agent_tree_tools(runtime: AgentTreeRuntime, group_id: str) -> tuple[Tool, ...]:
+def team_tools(runtime: TeamRuntime, group_id: str) -> tuple[Tool, ...]:
     """创建绑定当前组作用域的 Agent 树工具。"""
     schemas = _schemas()
     return tuple(
@@ -53,7 +53,7 @@ def _tool_definitions() -> tuple[ToolDefinition, ...]:
 
 
 def estimated_cost(
-    prompt: str, output_tokens: int, workers: Iterable[AgentMember]
+    prompt: str, output_tokens: int, workers: Iterable[TeamMember]
 ) -> float:
     input_tokens = estimate_tokens(prompt)
     return sum(
@@ -121,11 +121,11 @@ def quorum_result(decisions: Iterable[Mapping[str, object]], quorum: int) -> str
     return None
 
 
-def _list_tree(runtime: AgentTreeRuntime, group_id: str, _arguments: Arguments, _context: ToolContext) -> dict[str, object]:
+def _list_tree(runtime: TeamRuntime, group_id: str, _arguments: Arguments, _context: ToolContext) -> dict[str, object]:
     return runtime.list_tree(group_id)
 
 
-def _create_task(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, context: ToolContext) -> dict[str, object]:
+def _create_task(runtime: TeamRuntime, group_id: str, arguments: Arguments, context: ToolContext) -> dict[str, object]:
     task = runtime.create_task(
         text(arguments.get("prompt"), "Agent task prompt"),
         source_group_id=group_id,
@@ -139,7 +139,7 @@ def _create_task(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments,
     return task.to_dict()
 
 
-def _dispatch_task(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, context: ToolContext) -> dict[str, object]:
+def _dispatch_task(runtime: TeamRuntime, group_id: str, arguments: Arguments, context: ToolContext) -> dict[str, object]:
     task = runtime.dispatch_task(
         text(arguments.get("task_id"), "Agent task ID"),
         source_group_id=group_id,
@@ -150,7 +150,7 @@ def _dispatch_task(runtime: AgentTreeRuntime, group_id: str, arguments: Argument
     return task.to_dict()
 
 
-def _dispatch_tasks(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, context: ToolContext) -> dict[str, object]:
+def _dispatch_tasks(runtime: TeamRuntime, group_id: str, arguments: Arguments, context: ToolContext) -> dict[str, object]:
     tasks = runtime.dispatch_tasks(
         strings(arguments.get("task_ids", []), "Agent task IDs"),
         source_group_id=group_id,
@@ -163,11 +163,11 @@ def _dispatch_tasks(runtime: AgentTreeRuntime, group_id: str, arguments: Argumen
     return {"tasks": [task.to_dict() for task in tasks]}
 
 
-def _read_tasks(runtime: AgentTreeRuntime, group_id: str, _arguments: Arguments, _context: ToolContext) -> dict[str, object]:
+def _read_tasks(runtime: TeamRuntime, group_id: str, _arguments: Arguments, _context: ToolContext) -> dict[str, object]:
     return {"version": runtime.version, "tasks": runtime.list_tasks(group_id)}
 
 
-def _wait_tasks(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, _context: ToolContext) -> dict[str, object]:
+def _wait_tasks(runtime: TeamRuntime, group_id: str, arguments: Arguments, _context: ToolContext) -> dict[str, object]:
     return runtime.wait_for_tasks(
         text(arguments.get("trigger"), "Agent task trigger"),
         group_id=group_id,
@@ -181,14 +181,14 @@ def _wait_tasks(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, 
     )
 
 
-def _cancel_task(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, _context: ToolContext) -> dict[str, object]:
+def _cancel_task(runtime: TeamRuntime, group_id: str, arguments: Arguments, _context: ToolContext) -> dict[str, object]:
     return runtime.cancel_task(
         text(arguments.get("task_id"), "Agent task ID"),
         source_group_id=group_id,
     ).to_dict()
 
 
-def _post_note(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, _context: ToolContext) -> dict[str, object]:
+def _post_note(runtime: TeamRuntime, group_id: str, arguments: Arguments, _context: ToolContext) -> dict[str, object]:
     return runtime.post_note(
         group_id=group_id,
         title=text(arguments.get("title"), "shared note title"),
@@ -198,7 +198,7 @@ def _post_note(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, _
     ).to_dict()
 
 
-def _read_notes(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, _context: ToolContext) -> dict[str, object]:
+def _read_notes(runtime: TeamRuntime, group_id: str, arguments: Arguments, _context: ToolContext) -> dict[str, object]:
     return runtime.list_notes(
         group_id=group_id,
         board=text(arguments.get("board", "current"), "shared board"),
@@ -207,7 +207,7 @@ def _read_notes(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, 
     )
 
 
-def _wait_notes(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, _context: ToolContext) -> dict[str, object]:
+def _wait_notes(runtime: TeamRuntime, group_id: str, arguments: Arguments, _context: ToolContext) -> dict[str, object]:
     return runtime.wait_for_notes(
         group_id=group_id,
         board=text(arguments.get("board", "current"), "shared board"),
@@ -220,7 +220,7 @@ def _wait_notes(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, 
     )
 
 
-def _create_decision(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, context: ToolContext) -> dict[str, object]:
+def _create_decision(runtime: TeamRuntime, group_id: str, arguments: Arguments, context: ToolContext) -> dict[str, object]:
     decision = runtime.create_decision(
         text(arguments.get("prompt"), "Agent decision prompt"),
         group_id=group_id,
@@ -244,7 +244,7 @@ def _create_decision(runtime: AgentTreeRuntime, group_id: str, arguments: Argume
     return decision.to_dict()
 
 
-def _wait_decision(runtime: AgentTreeRuntime, group_id: str, arguments: Arguments, context: ToolContext) -> dict[str, object]:
+def _wait_decision(runtime: TeamRuntime, group_id: str, arguments: Arguments, context: ToolContext) -> dict[str, object]:
     return runtime.wait_for_decision(
         text(arguments.get("decision_id"), "Agent decision ID"),
         group_id=group_id,
@@ -257,7 +257,7 @@ def _wait_decision(runtime: AgentTreeRuntime, group_id: str, arguments: Argument
     ).to_dict()
 
 
-def _read_decisions(runtime: AgentTreeRuntime, group_id: str, _arguments: Arguments, _context: ToolContext) -> dict[str, object]:
+def _read_decisions(runtime: TeamRuntime, group_id: str, _arguments: Arguments, _context: ToolContext) -> dict[str, object]:
     return {"decisions": runtime.list_decisions(group_id)}
 
 
@@ -309,7 +309,7 @@ def _object_schema(properties: Mapping[str, object], *required: str) -> dict[str
 
 
 __all__ = [
-    "agent_tree_tools",
+    "team_tools",
     "boolean",
     "estimated_cost",
     "find_task",

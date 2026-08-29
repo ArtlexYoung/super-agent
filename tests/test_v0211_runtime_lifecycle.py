@@ -3,8 +3,8 @@ import unittest
 from core.event import RunIdentity
 from core.provider import MockModel
 from core.run import RunSession, RuntimeLifecycle, ToolContext
-from skill.organization import AgentTreeSettings, agent_group_node
-from skill.organization_runtime import AgentTreeRuntime
+from skill.organization import TeamSettings, team_node
+from skill.organization_runtime import TeamRuntime
 from super_agent import Agent
 
 
@@ -21,8 +21,8 @@ class RuntimeLifecycleTests(unittest.TestCase):
 
     def test_create_task_tool_uses_the_calling_runtime_lifecycle(self):
         root = Agent(MockModel("root"), name="root")
-        runtime = AgentTreeRuntime(agent_group_node(root).root())
-        group_id = agent_group_node(root).group_id
+        runtime = TeamRuntime(team_node(root).root())
+        group_id = team_node(root).group_id
         identity = RunIdentity(agent_name="root", run_id="parent-run")
         lifecycle = RuntimeLifecycle(identity.run_id)
         session = RunSession(
@@ -46,10 +46,10 @@ class RuntimeLifecycleTests(unittest.TestCase):
     def test_child_task_and_run_share_the_parent_lifecycle(self):
         root = Agent(MockModel("root"), name="root")
         root.add_subagent(Agent(MockModel("child result")), name="child")
-        runtime = AgentTreeRuntime(
-            agent_group_node(root).root(), AgentTreeSettings(max_wait_seconds=2)
+        runtime = TeamRuntime(
+            team_node(root).root(), TeamSettings(max_wait_seconds=2)
         )
-        group_id = agent_group_node(root).group_id
+        group_id = team_node(root).group_id
         parent = RunIdentity(agent_name="root", run_id="parent-run")
         lifecycle = RuntimeLifecycle(parent.run_id)
         lifecycle.record_run_event(parent, "run.started")

@@ -5,8 +5,8 @@ from core.config import config_from_dict
 from core.model import Message, ModelPerformance, ModelRequest
 from core.provider import MockModel, ModelProfile, ModelRouter
 from core.records import AuditPolicy, EventStore
-from skill.organization import agent_group_node
-from skill.organization_runtime import AgentTreeRuntime
+from skill.organization import team_node
+from skill.organization_runtime import TeamRuntime
 from super_agent import Agent
 
 
@@ -125,11 +125,11 @@ class ModelProfileTests(unittest.TestCase):
         root = Agent(MockModel("root"), name="root")
         child = model_agent(name="child-runtime")
         root.add_subagent(child, name="coder")
-        runtime = AgentTreeRuntime(
-            agent_group_node(root).root(), user_id="alice"
+        runtime = TeamRuntime(
+            team_node(root).root(), user_id="alice"
         )
 
-        tree = runtime.list_tree(agent_group_node(root).group_id)
+        tree = runtime.list_tree(team_node(root).group_id)
         child_group = next(item for item in tree["groups"] if item["name"] == "coder")
         profiles = child_group["member"]["model_profiles"]
         self.assertEqual(["alpha", "beta"], [item["name"] for item in profiles])

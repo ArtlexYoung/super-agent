@@ -1,7 +1,7 @@
 """在代码中组合组、Agent 和已有子树。"""
 
 from core.provider import MockModel
-from skill.organization import AgentMemberSettings
+from skill.organization import TeamMemberSettings
 from super_agent import Agent
 
 master = Agent(MockModel("The team is ready."), name="master")
@@ -14,13 +14,13 @@ engineering.add_subagent(
     coder,
     name="coder",
     description="writes and verifies code",
-    settings=AgentMemberSettings(purpose="code"),
+    settings=TeamMemberSettings(purpose="code"),
 )
 quality.add_subagent(
     reviewer,
     name="reviewer",
     description="reviews risks",
-    settings=AgentMemberSettings(purpose="review"),
+    settings=TeamMemberSettings(purpose="review"),
 )
 print(master.list_agent_tree())
 print(master.run("Prepare the team").text)

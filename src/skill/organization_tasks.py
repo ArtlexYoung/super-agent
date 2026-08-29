@@ -13,10 +13,10 @@ from core.event import RunIdentity, RunResult, utc_now
 from core.records import compact_child_result
 from core.run import RuntimeLifecycle
 from skill.organization import (
-    AgentGroupNode,
-    AgentMember,
-    AgentTask,
-    AgentTreeSettings,
+    TeamNode,
+    TeamMember,
+    Task,
+    TeamSettings,
 )
 from skill.organization_tools import strings
 from skill.organization_workers import AgentWorkerPool, candidate_members
@@ -25,19 +25,19 @@ TERMINAL = frozenset({"completed", "failed", "cancelled"})
 RecordEvent = Callable[[str, Mapping[str, object]], object]
 
 
-class AgentTaskRuntime:
+class TaskQueue:
     """保存整棵树共用的任务状态；具体运行器在其上增加共享板和决策。"""
 
     def __init__(
         self,
-        root: AgentGroupNode,
-        settings: AgentTreeSettings,
+        root: TeamNode,
+        settings: TeamSettings,
         record_event: RecordEvent | None,
     ) -> None:
         self.root = root
         self.settings = settings
         self.record_event = record_event
-        self._tasks: dict[str, AgentTask] = {}
+        self._tasks: dict[str, Task] = {}
         self._version = 0
         self._condition = Condition(RLock())
         self._workers = AgentWorkerPool(settings, self._record)
@@ -57,7 +57,7 @@ class AgentTaskRuntime:
         required_features: Iterable[str] = ("text",),
         shared_context: Mapping[str, object] | None = None,
         runtime_lifecycle: RuntimeLifecycle | None = None,
-    ) -> AgentTask:
+    ) -> Task:
         with self._condition:
             source = self._require_group(source_group_id)
             target = self._target_group(source, target_group_id)
@@ -65,7 +65,7 @@ class AgentTaskRuntime:
                 raise RuntimeError(
                     f"Agent task limit reached: {self.settings.max_tasks}"
                 )
-            task = AgentTask(
+            task = Task(
                 task_id=f"task-{uuid4().hex}",
                 prompt=_text(prompt, "Agent task prompt"),
                 source_group_id=source.group_id,
@@ -89,7 +89,7 @@ class AgentTaskRuntime:
         agent_name: str | None = None,
         parent_identity: RunIdentity | None = None,
         runtime_lifecycle: RuntimeLifecycle | None = None,
-    ) -> AgentTask:
+    ) -> Task:
         with self._condition:
             task = self._require_task(task_id)
             if runtime_lifecycle is not None:
@@ -120,7 +120,7 @@ class AgentTaskRuntime:
         different_models: bool = False,
         parent_identity: RunIdentity | None = None,
         runtime_lifecycle: RuntimeLifecycle | None = None,
-    ) -> tuple[AgentTask, ...]:
+    ) -> tuple[Task, ...]:
         """原子选择不同 Agent，再并行派发一组路由条件相同的任务。"""
         selected_ids = tuple(dict.fromkeys(task_ids))
         if len(selected_ids) < 2:
@@ -151,7 +151,7 @@ class AgentTaskRuntime:
                 raise RuntimeError(
                     f"not enough distinct Agents{diversity} for batch dispatch"
                 )
-            queued: list[AgentTask] = []
+            queued: list[Task] = []
             for task, worker in zip(tasks, workers, strict=True):
                 self._record(
                     "agent_task.dispatched",
@@ -248,7 +248,7 @@ class AgentTaskRuntime:
             )
             return value
 
-    def cancel_task(self, task_id: str, *, source_group_id: str) -> AgentTask:
+    def cancel_task(self, task_id: str, *, source_group_id: str) -> Task:
         with self._condition:
             task = self._require_task(task_id)
             if task.source_group_id != source_group_id:
@@ -259,7 +259,7 @@ class AgentTaskRuntime:
                 )
             return self._change(task, "agent_task.cancelled", status="cancelled")
 
-    def _consume(self, task_id: str, worker: AgentMember) -> None:
+    def _consume(self, task_id: str, worker: TeamMember) -> None:
         with self._workers.lock_for(worker):
             with self._condition:
                 task = self._require_task(task_id)
@@ -298,8 +298,8 @@ class AgentTaskRuntime:
 
     def _run_worker(
         self,
-        worker: AgentMember,
-        task: AgentTask,
+        worker: TeamMember,
+        task: Task,
         shared: Mapping[str, object],
     ) -> RunResult:
         from super_agent import AgentContext
@@ -321,14 +321,14 @@ class AgentTaskRuntime:
             save_conversation=False,
             persist_run_events=shared.get("record_mode") != "summary",
             shared_context=shared,
-            agent_tree_runtime=self,
+            team_runtime=self,
             agent_group_id=worker.group_id,
             runtime_lifecycle=lifecycle,
         )
         return worker.agent.run(task.prompt, context=context)
 
     def _handle_failure(
-        self, task_id: str, worker: AgentMember, error: Exception
+        self, task_id: str, worker: TeamMember, error: Exception
     ) -> None:
         with self._condition:
             temporary = self._workers.mark_failure(worker, error)
@@ -365,8 +365,8 @@ class AgentTaskRuntime:
             )
 
     def _choose(
-        self, task: AgentTask, requested: str | None, excluded: set[str]
-    ) -> AgentMember:
+        self, task: Task, requested: str | None, excluded: set[str]
+    ) -> TeamMember:
         candidates = self._candidates(task)
         return self._workers.choose(
             task,
@@ -377,8 +377,8 @@ class AgentTaskRuntime:
         )
 
     def _choose_many(
-        self, task: AgentTask, count: int, different_models: bool
-    ) -> list[AgentMember]:
+        self, task: Task, count: int, different_models: bool
+    ) -> list[TeamMember]:
         candidates = self._candidates(task)
         return self._workers.choose_many(
             task,
@@ -388,12 +388,12 @@ class AgentTaskRuntime:
             different_models=different_models,
         )
 
-    def _candidates(self, task: AgentTask) -> list[AgentMember]:
+    def _candidates(self, task: Task) -> list[TeamMember]:
         source = self._require_group(task.source_group_id)
         target = self._require_group(task.target_group_id)
         return candidate_members(target, source)
 
-    def _active_counts(self, candidates: Iterable[AgentMember]) -> dict[str, int]:
+    def _active_counts(self, candidates: Iterable[TeamMember]) -> dict[str, int]:
         active = {worker.link_id: 0 for worker in candidates}
         for task in self._tasks.values():
             if task.worker_link_id in active and task.status in {
@@ -403,7 +403,7 @@ class AgentTaskRuntime:
                 active[task.worker_link_id] += 1
         return active
 
-    def _start(self, task_id: str, worker: AgentMember) -> None:
+    def _start(self, task_id: str, worker: TeamMember) -> None:
         Thread(
             target=self._consume,
             args=(task_id, worker),
@@ -412,7 +412,7 @@ class AgentTaskRuntime:
         ).start()
 
     def _start_after(
-        self, task_id: str, worker: AgentMember, delay_seconds: float
+        self, task_id: str, worker: TeamMember, delay_seconds: float
     ) -> None:
         if delay_seconds <= 0:
             self._start(task_id, worker)
@@ -433,7 +433,7 @@ class AgentTaskRuntime:
             daemon=True,
         ).start()
 
-    def _change(self, task: AgentTask, event_type: str, **changes: object) -> AgentTask:
+    def _change(self, task: Task, event_type: str, **changes: object) -> Task:
         with self._condition:
             self._version += 1
             updated = replace(
@@ -502,8 +502,8 @@ class AgentTaskRuntime:
         return "full", "adaptive_within_limits"
 
     def _target_group(
-        self, source: AgentGroupNode, target_group_id: str | None
-    ) -> AgentGroupNode:
+        self, source: TeamNode, target_group_id: str | None
+    ) -> TeamNode:
         target = (
             source if target_group_id is None else self._require_group(target_group_id)
         )
@@ -511,10 +511,10 @@ class AgentTaskRuntime:
             raise PermissionError("a group can assign only within its own subtree")
         return target
 
-    def _require_group(self, group_id: str) -> AgentGroupNode:
+    def _require_group(self, group_id: str) -> TeamNode:
         return self.root.find(group_id)
 
-    def _require_task(self, task_id: str) -> AgentTask:
+    def _require_task(self, task_id: str) -> Task:
         try:
             return self._tasks[task_id]
         except KeyError as error:
@@ -527,4 +527,4 @@ class AgentTaskRuntime:
 
 
 
-__all__ = ["TERMINAL", "AgentTaskRuntime", "RecordEvent"]
+__all__ = ["TERMINAL", "TaskQueue", "RecordEvent"]

@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class AgentTreeSettings:
+class TeamSettings:
     """整个 Agent 树共用的任务、记录、等待和决策设置。"""
 
     max_tasks: int = 32
@@ -84,7 +84,7 @@ class AgentTreeSettings:
 
 
 @dataclass(frozen=True)
-class AgentTask:
+class Task:
     """一条跨组可追踪的工作单。"""
 
     task_id: str
@@ -154,7 +154,7 @@ class SharedNote:
 
 
 @dataclass(frozen=True)
-class AgentDecision:
+class TeamDecision:
     """由同一组任务逐步形成的多模型决策。"""
 
     decision_id: str
@@ -177,7 +177,7 @@ class AgentDecision:
 
 
 @dataclass(frozen=True)
-class AgentMemberSettings:
+class TeamMemberSettings:
     """描述一个子 Agent 接受工作的范围和选择成本。"""
 
     purpose: str = "auto"
@@ -212,14 +212,14 @@ class AgentMemberSettings:
 
 
 @dataclass(frozen=True)
-class AgentMember:
+class TeamMember:
     """描述一条 Agent 组成员关系，不拥有运行状态。"""
 
     name: str
     agent: Agent
     group_id: str
     description: str = ""
-    settings: AgentMemberSettings = field(default_factory=AgentMemberSettings)
+    settings: TeamMemberSettings = field(default_factory=TeamMemberSettings)
     link_id: str = field(default_factory=lambda: f"link-{uuid4().hex}")
 
     def __post_init__(self) -> None:
@@ -274,17 +274,17 @@ class AgentMember:
 
 
 @dataclass
-class AgentGroupNode:
+class TeamNode:
     """树中的一个组；根组和 Agent 组都使用同一个节点类型。"""
 
     group_id: str
     name: str
     description: str = ""
     coordinator: Agent | None = None
-    parent: AgentGroupNode | None = field(default=None, repr=False)
-    member: AgentMember | None = field(default=None, repr=False)
-    children: list[AgentGroupNode] = field(default_factory=list, repr=False)
-    links: list[AgentMember] = field(default_factory=list, repr=False)
+    parent: TeamNode | None = field(default=None, repr=False)
+    member: TeamMember | None = field(default=None, repr=False)
+    children: list[TeamNode] = field(default_factory=list, repr=False)
+    links: list[TeamMember] = field(default_factory=list, repr=False)
     revision: int = field(default=0, repr=False)
     warnings: list[str] = field(default_factory=list, repr=False)
 
@@ -300,7 +300,7 @@ class AgentGroupNode:
     @property
     def path(self) -> tuple[str, ...]:
         values: list[str] = []
-        current: AgentGroupNode | None = self
+        current: TeamNode | None = self
         while current is not None:
             values.append(current.name)
             current = current.parent
@@ -314,14 +314,14 @@ class AgentGroupNode:
     def is_agent_group(self) -> bool:
         return self.coordinator is not None
 
-    def root(self) -> AgentGroupNode:
+    def root(self) -> TeamNode:
         current = self
         while current.parent is not None:
             current = current.parent
         return current
 
-    def contains(self, candidate: AgentGroupNode) -> bool:
-        current: AgentGroupNode | None = candidate
+    def contains(self, candidate: TeamNode) -> bool:
+        current: TeamNode | None = candidate
         while current is not None:
             if current is self:
                 return True
@@ -333,7 +333,7 @@ class AgentGroupNode:
             link.name for link in self.links
         }
 
-    def find(self, group_id: str) -> AgentGroupNode:
+    def find(self, group_id: str) -> TeamNode:
         if self.group_id == group_id:
             return self
         for child in self.children:
@@ -343,10 +343,10 @@ class AgentGroupNode:
                 continue
         raise KeyError(f"Agent group not found: {group_id}")
 
-    def direct_agent_groups(self) -> tuple[AgentGroupNode, ...]:
+    def direct_agent_groups(self) -> tuple[TeamNode, ...]:
         return tuple(child for child in self.children if child.coordinator is not None)
 
-    def walk(self) -> Iterable[AgentGroupNode]:
+    def walk(self) -> Iterable[TeamNode]:
         yield self
         for child in self.children:
             yield from child.walk()
@@ -384,10 +384,10 @@ class AgentGroupNode:
         return value
 
 
-class AgentGroup:
+class Team:
     """面向用户的组句柄；任务执行由统一组织运行器负责。"""
 
-    def __init__(self, node: AgentGroupNode) -> None:
+    def __init__(self, node: TeamNode) -> None:
         self._node = node
 
     @property
@@ -406,16 +406,16 @@ class AgentGroup:
     def path(self) -> tuple[str, ...]:
         return self._node.path
 
-    def add_group(self, name: str, *, description: str = "") -> AgentGroup:
+    def add_group(self, name: str, *, description: str = "") -> Team:
         selected = _text(name, "Agent group name")
         if selected in self._node.child_names():
             raise ValueError(f"Agent group name already exists: {selected}")
-        child = AgentGroupNode(
+        child = TeamNode(
             f"group-{uuid4().hex}", selected, description.strip(), parent=self._node
         )
         self._node.children.append(child)
         self._node.touch()
-        return AgentGroup(child)
+        return Team(child)
 
     def add_subagent(
         self,
@@ -423,7 +423,7 @@ class AgentGroup:
         *,
         name: str | None = None,
         description: str = "",
-        settings: AgentMemberSettings | None = None,
+        settings: TeamMemberSettings | None = None,
     ) -> str:
         if not callable(getattr(agent, "run", None)):
             raise TypeError("subagent must provide run")
@@ -434,7 +434,7 @@ class AgentGroup:
         )
         if selected in self._node.child_names():
             raise ValueError(f"subagent name already exists: {selected}")
-        selected_settings = settings or AgentMemberSettings()
+        selected_settings = settings or TeamMemberSettings()
         features = tuple(
             dict.fromkeys(
                 _text(item, "subagent feature")
@@ -451,21 +451,21 @@ class AgentGroup:
             model_name=selected_model,
             pricing=selected_pricing,
         )
-        member = AgentMember(
+        member = TeamMember(
             name=selected,
             agent=agent,
             group_id=getattr(
-                getattr(agent, "_agent_group_node", None),
+                getattr(agent, "_team_node", None),
                 "group_id",
                 f"group-{uuid4().hex}",
             ),
             description=description.strip(),
             settings=normalized_settings,
         )
-        child = getattr(agent, "_agent_group_node", None)
-        if not isinstance(child, AgentGroupNode):
-            child = AgentGroupNode(member.group_id, selected, coordinator=agent)
-            agent._agent_group_node = child
+        child = getattr(agent, "_team_node", None)
+        if not isinstance(child, TeamNode):
+            child = TeamNode(member.group_id, selected, coordinator=agent)
+            agent._team_node = child
         if child is self._node or child.contains(self._node):
             self._node.links.append(member)
             self._node.warnings.append(
@@ -502,19 +502,19 @@ class AgentGroup:
         return self._node.to_dict()
 
 
-def agent_group_node(agent: Agent) -> AgentGroupNode:
+def team_node(agent: Agent) -> TeamNode:
     """返回这个 Agent 在组织树中的组节点。"""
-    node = getattr(agent, "_agent_group_node", None)
-    if not isinstance(node, AgentGroupNode):
-        node = AgentGroupNode(
+    node = getattr(agent, "_team_node", None)
+    if not isinstance(node, TeamNode):
+        node = TeamNode(
             f"group-{uuid4().hex}", getattr(agent, "name", "agent"), coordinator=agent
         )
-        agent._agent_group_node = node
+        agent._team_node = node
     return node
 
 
 def validate_tree(
-    root: AgentGroupNode, *, warn_level: int, max_level: int | None
+    root: TeamNode, *, warn_level: int, max_level: int | None
 ) -> tuple[str, ...]:
     """在一次运行开始前检查树，运行中不重复遍历结构。"""
     warnings: list[str] = []
@@ -566,14 +566,14 @@ def _next_name(used: set[str]) -> str:
 
 
 __all__ = [
-    "AgentDecision",
-    "AgentGroup",
-    "AgentGroupNode",
-    "AgentMember",
-    "AgentMemberSettings",
-    "AgentTask",
-    "AgentTreeSettings",
+    "TeamDecision",
+    "Team",
+    "TeamNode",
+    "TeamMember",
+    "TeamMemberSettings",
+    "Task",
+    "TeamSettings",
     "SharedNote",
-    "agent_group_node",
+    "team_node",
     "validate_tree",
 ]

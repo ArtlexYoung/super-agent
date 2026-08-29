@@ -557,10 +557,10 @@ def _save_model_performance(
 
 def _find_run_agent(agent: Agent, agent_name: str) -> Agent:
     """按运行身份查找实际 Agent，避免把子 Agent 评价写给根 Agent。"""
-    from skill.organization import agent_group_node
+    from skill.organization import team_node
 
     selected = _text(agent_name, "run Agent name")
-    current = agent_group_node(agent)
+    current = team_node(agent)
     if current.name == selected or agent.name == selected:
         return agent
     candidates: list[Agent] = []

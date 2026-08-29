@@ -16,17 +16,17 @@ from core.records import EventStore
 from core.resources import ResourceCenter
 from core.run import RuntimeLifecycle
 from skill.organization import (
-    AgentDecision,
-    AgentGroupNode,
-    AgentTask,
-    AgentTreeSettings,
+    TeamDecision,
+    TeamNode,
+    Task,
+    TeamSettings,
     SharedNote,
-    agent_group_node,
+    team_node,
     validate_tree,
 )
-from skill.organization_tasks import TERMINAL, AgentTaskRuntime, RecordEvent
+from skill.organization_tasks import TERMINAL, TaskQueue, RecordEvent
 from skill.organization_tools import (
-    agent_tree_tools,
+    team_tools,
     find_task,
     member_prompt,
     quorum_result,
@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class AgentTreeRunPlan:
+class TeamRunPlan:
     """The complete tree contribution for one prepared Agent run."""
 
     group_id: str
@@ -56,19 +56,19 @@ class AgentTreeRunPlan:
         return self.resources.store
 
 
-class AgentTreeRuntime(AgentTaskRuntime):
+class TeamRuntime(TaskQueue):
     """一个用户作用域内唯一的 Agent 树运行器。"""
 
     def __init__(
         self,
-        root: AgentGroupNode,
-        settings: AgentTreeSettings | None = None,
+        root: TeamNode,
+        settings: TeamSettings | None = None,
         *,
         user_id: str = "local",
         record_event: RecordEvent | None = None,
         disclosures: DisclosureStore | ResourceCenter | None = None,
     ) -> None:
-        super().__init__(root, settings or AgentTreeSettings(), record_event)
+        super().__init__(root, settings or TeamSettings(), record_event)
         self.user_id = _text(user_id, "Agent tree user ID")
         if disclosures is None:
             self.resources = ResourceCenter()
@@ -77,7 +77,7 @@ class AgentTreeRuntime(AgentTaskRuntime):
         else:
             self.resources = ResourceCenter(disclosures)
         self._notes: dict[str, list[SharedNote]] = {}
-        self._decisions: dict[str, AgentDecision] = {}
+        self._decisions: dict[str, TeamDecision] = {}
         self._validated_revision = -1
         self._warnings: tuple[str, ...] = ()
 
@@ -89,11 +89,11 @@ class AgentTreeRuntime(AgentTaskRuntime):
     def tools(self, group_id: str) -> tuple[Tool, ...]:
         """为当前组创建工具，不暴露其他组的私有任务。"""
         self._require_group(group_id)
-        return agent_tree_tools(self, group_id)
+        return team_tools(self, group_id)
 
-    def prepare_run(self, group_id: str, call_depth: int) -> AgentTreeRunPlan:
+    def prepare_run(self, group_id: str, call_depth: int) -> TeamRunPlan:
         """Prepare all tree contributions once before the Runtime loop starts."""
-        return AgentTreeRunPlan(
+        return TeamRunPlan(
             group_id=group_id,
             warnings=self.warning_messages(group_id, call_depth),
             tools=self.tools(group_id),
@@ -263,7 +263,7 @@ class AgentTreeRuntime(AgentTaskRuntime):
         parent_identity: RunIdentity | None = None,
         estimated_output_tokens: int = 1_000,
         runtime_lifecycle: RuntimeLifecycle | None = None,
-    ) -> AgentDecision:
+    ) -> TeamDecision:
         with self._condition:
             if len(self._decisions) >= self.settings.max_decisions:
                 raise RuntimeError(
@@ -277,7 +277,7 @@ class AgentTreeRuntime(AgentTaskRuntime):
             desired = min(len(selected_roles), self.settings.default_decision_members)
             features = strings(required_features, "decision features")
             target = self._target_group(self._require_group(group_id), target_group_id)
-            probe = AgentTask(
+            probe = Task(
                 "preview",
                 "preview",
                 group_id,
@@ -333,7 +333,7 @@ class AgentTreeRuntime(AgentTaskRuntime):
                 )
                 for role in selected_roles[: len(workers)]
             ]
-            decision = AgentDecision(
+            decision = TeamDecision(
                 decision_id=f"decision-{uuid4().hex}",
                 source_group_id=group_id,
                 shared_note_id=packet.note_id,
@@ -356,7 +356,7 @@ class AgentTreeRuntime(AgentTaskRuntime):
         group_id: str,
         timeout_seconds: float,
         parent_identity: RunIdentity | None = None,
-    ) -> AgentDecision:
+    ) -> TeamDecision:
         decision = self._require_decision(decision_id)
         if decision.source_group_id != group_id:
             raise PermissionError("a group can wait only for its own decisions")
@@ -415,7 +415,7 @@ class AgentTreeRuntime(AgentTaskRuntime):
 
     def _dispatch_decision_member(
         self,
-        decision: AgentDecision,
+        decision: TeamDecision,
         index: int,
         parent_identity: RunIdentity | None,
     ) -> None:
@@ -456,13 +456,13 @@ class AgentTreeRuntime(AgentTaskRuntime):
             },
         )
 
-    def _cancel_unused_decision_tasks(self, decision: AgentDecision) -> None:
+    def _cancel_unused_decision_tasks(self, decision: TeamDecision) -> None:
         for task_id in decision.task_ids:
             task = self._require_task(task_id)
             if task.status == "created":
                 self._change(task, "agent_task.cancelled", status="cancelled")
 
-    def _board_group(self, source: AgentGroupNode, board: str) -> AgentGroupNode:
+    def _board_group(self, source: TeamNode, board: str) -> TeamNode:
         if board == "current":
             return source
         if board == "parent":
@@ -471,51 +471,51 @@ class AgentTreeRuntime(AgentTaskRuntime):
             return source.parent
         raise ValueError("shared board must be current or parent")
 
-    def _require_decision(self, decision_id: str) -> AgentDecision:
+    def _require_decision(self, decision_id: str) -> TeamDecision:
         try:
             return self._decisions[decision_id]
         except KeyError as error:
             raise KeyError(f"Agent decision not found: {decision_id}") from error
 
 
-def get_or_create_agent_tree_runtime(
+def get_or_create_team_runtime(
     agent: Agent, user_id: str
-) -> AgentTreeRuntime | None:
+) -> TeamRuntime | None:
     """按根 Agent 和用户返回唯一树运行时；空树不创建状态。"""
-    current = agent_group_node(agent)
+    current = team_node(agent)
     root = current.root()
     if not root.children and not root.links:
         return None
     owner = root.coordinator
     if owner is None:
         raise RuntimeError("Agent tree root requires a coordinating Agent")
-    existing = owner._agent_tree_runtimes.get(user_id)
+    existing = owner._team_runtimes.get(user_id)
     if existing is not None:
         return existing
     identity = RunIdentity(user_id=user_id, agent_name=owner.name)
     store = owner.run_parts.event_store(identity)
     library = owner.run_parts.library(identity, store)
-    runtime = AgentTreeRuntime(
+    runtime = TeamRuntime(
         root,
-        owner.agent_tree_settings,
+        owner.team_settings,
         user_id=user_id,
         record_event=_tree_event_recorder(store, root.group_id),
         disclosures=(
             library.resources if library is not None else ResourceCenter()
         ),
     )
-    owner._agent_tree_runtimes[user_id] = runtime
+    owner._team_runtimes[user_id] = runtime
     return runtime
 
 
-def clear_agent_tree_runtimes(agent: Agent) -> None:
+def clear_team_runtimes(agent: Agent) -> None:
     """清除根 Agent 拥有的全部用户树运行状态。"""
-    node = getattr(agent, "_agent_group_node", None)
-    if not isinstance(node, AgentGroupNode):
+    node = getattr(agent, "_team_node", None)
+    if not isinstance(node, TeamNode):
         return
     owner = node.root().coordinator
     if owner is not None:
-        owner._agent_tree_runtimes.clear()
+        owner._team_runtimes.clear()
 
 
 def _tree_event_recorder(
@@ -538,11 +538,11 @@ def _tree_event_recorder(
 
 __all__ = [
     "TERMINAL",
-    "AgentDecision",
-    "AgentTask",
-    "AgentTreeRunPlan",
-    "AgentTreeRuntime",
+    "TeamDecision",
+    "Task",
+    "TeamRunPlan",
+    "TeamRuntime",
     "SharedNote",
-    "clear_agent_tree_runtimes",
-    "get_or_create_agent_tree_runtime",
+    "clear_team_runtimes",
+    "get_or_create_team_runtime",
 ]

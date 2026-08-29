@@ -3,16 +3,16 @@ import unittest
 from core.event import RunIdentity
 from core.provider import MockModel
 from skill.agent_builder import AgentRunBuilder
-from skill.organization import agent_group_node
-from skill.organization_runtime import AgentTreeRuntime
+from skill.organization import team_node
+from skill.organization_runtime import TeamRuntime
 from super_agent import Agent, AgentContext
 
 
-class AgentTreeRunPlanTests(unittest.TestCase):
+class TeamRunPlanTests(unittest.TestCase):
     def test_tree_runtime_prepares_warnings_tools_and_disclosures_together(self):
         agent = Agent(MockModel("answer"), name="root")
-        runtime = AgentTreeRuntime(agent_group_node(agent).root())
-        group_id = agent_group_node(agent).group_id
+        runtime = TeamRuntime(team_node(agent).root())
+        group_id = team_node(agent).group_id
 
         plan = runtime.prepare_run(group_id, 1)
 
@@ -25,7 +25,7 @@ class AgentTreeRunPlanTests(unittest.TestCase):
         child = Agent(MockModel("child"), name="child")
         root.add_subagent(child)
         context = AgentContext(
-            agent_tree_runtime=AgentTreeRuntime(agent_group_node(root).root())
+            team_runtime=TeamRuntime(team_node(root).root())
         )
 
         prepared = AgentRunBuilder(root).build("hello", context)

@@ -324,7 +324,7 @@ class AgentRunBuilder:
         parts = self.agent.run_parts
         store = parts.event_store(identity)
         library = parts.library(identity, store)
-        agent_tree = context.agent_tree_runtime or _agent_tree_runtime(
+        agent_tree = context.team_runtime or _team_runtime(
             self.agent, identity.user_id
         )
         lifecycle = context.runtime_lifecycle or RuntimeLifecycle(identity.run_id)
@@ -342,7 +342,7 @@ class AgentRunBuilder:
             context,
             conversation_id=conversation_id,
             identity=identity,
-            agent_tree_runtime=agent_tree,
+            team_runtime=agent_tree,
             agent_group_id=group_id,
             runtime_lifecycle=lifecycle,
         )
@@ -490,31 +490,31 @@ def _required_features(features: tuple[str, ...], has_tools: bool) -> tuple[str,
 
 
 def _agent_group_id(agent: Agent) -> str:
-    from skill.organization import agent_group_node
+    from skill.organization import team_node
 
-    node = getattr(agent, "_agent_group_node", None)
+    node = getattr(agent, "_team_node", None)
     if node is None:
-        node = agent_group_node(agent)
-        agent._agent_group_node = node
+        node = team_node(agent)
+        agent._team_node = node
     return node.group_id
 
 
-def _agent_tree_runtime(agent: Agent, user_id: str) -> object | None:
-    from skill.organization_runtime import get_or_create_agent_tree_runtime
+def _team_runtime(agent: Agent, user_id: str) -> object | None:
+    from skill.organization_runtime import get_or_create_team_runtime
 
-    return get_or_create_agent_tree_runtime(agent, user_id)
+    return get_or_create_team_runtime(agent, user_id)
 
 
 def _tree_settings(agent: Agent, tree: object | None) -> object:
     if tree is not None:
         return tree.settings
-    settings = getattr(agent, "agent_tree_settings", None)
+    settings = getattr(agent, "team_settings", None)
     if settings is not None:
         return settings
-    from skill.organization import AgentTreeSettings
+    from skill.organization import TeamSettings
 
-    settings = AgentTreeSettings()
-    agent.agent_tree_settings = settings
+    settings = TeamSettings()
+    agent.team_settings = settings
     return settings
 
 

@@ -116,9 +116,9 @@ result = main.run(
 )
 ```
 
-同级组通过父组共享板交换带缓存路径的明确记录。任务队列、等待唤醒、价格和权重路由、断路重试、动态压缩及多模型决策都由同一个 `AgentTreeRuntime` 管理；不添加组或子 Agent 时不会创建这些状态。
+同级组通过父组共享板交换带缓存路径的明确记录。任务队列、等待唤醒、价格和权重路由、断路重试、动态压缩及多模型决策都由同一个 `TeamRuntime` 管理；不添加组或子 Agent 时不会创建这些状态。
 
-Sibling groups exchange explicit records with cache paths through their parent board. One `AgentTreeRuntime` owns queues, sleep and wake events, price and weight routing, circuit retries, adaptive compression, and multi-model decisions; none of this state is created when no group or subagent is added.
+Sibling groups exchange explicit records with cache paths through their parent board. One `TeamRuntime` owns queues, sleep and wake events, price and weight routing, circuit retries, adaptive compression, and multi-model decisions; none of this state is created when no group or subagent is added.
 
 模型可以带有用户填写的初始 `description`；系统保留这份先验，并把按用户、Agent 和任务类型学习出的可靠性与显式质量评价作为独立画像附加，而不是覆盖原文。
 

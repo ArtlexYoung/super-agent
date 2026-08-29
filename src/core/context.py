@@ -108,7 +108,7 @@ class AgentContext:
     save_conversation: bool = True
     persist_run_events: bool = True
     shared_context: Mapping[str, object] | None = None
-    agent_tree_runtime: Any | None = None
+    team_runtime: Any | None = None
     runtime_lifecycle: RuntimeLifecycle | None = None
     agent_group_id: str | None = None
     listeners: tuple[EventListener, ...] = ()
