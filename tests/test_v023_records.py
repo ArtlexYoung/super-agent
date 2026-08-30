@@ -35,6 +35,8 @@ class UnifiedSessionRecordTests(unittest.TestCase):
         session.append_record("custom.event", {"run_id": "run-1"})
         finished = session.finish("stopped", {"run_id": "run-1"})
 
+        self.assertEqual("session", finished.stream)
+        self.assertEqual("session-manual", finished.stream_id)
         self.assertEqual("session-manual", finished.session_id)
         self.assertEqual("run-1", finished.run_id)
         self.assertEqual("stopped", finished.data["status"])

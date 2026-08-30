@@ -50,32 +50,8 @@ CONTENT_FIELDS = frozenset(
 SESSION_OMITTED_EVENTS = frozenset({"model.text.delta"})
 
 
-@dataclass(frozen=True)
-class SessionRecordEntry:
-    """一条只存在内存中的轻量运行记录。"""
-
-    session_id: str
-    run_id: str | None
-    sequence: int
-    event_type: str
-    data: Mapping[str, object]
-    created_at: str
-
-    def __post_init__(self) -> None:
-        _text(self.session_id, "session_id")
-        if self.run_id is not None:
-            _text(self.run_id, "run_id")
-        _text(self.event_type, "session event_type")
-        _integer(self.sequence, "session sequence", 1)
-        _parse_time(self.created_at)
-        object.__setattr__(self, "data", MappingProxyType(_json_copy(self.data)))
-
-    def to_dict(self) -> dict[str, object]:
-        return dataclass_data(self)
-
-
 class SessionRecord:
-    """显式创建的内存会话记录，不负责文件、数据库或记忆。"""
+    """显式创建的内存会话记录，使用与持久化事件相同的 Record 形状。"""
 
     def __init__(
         self,
@@ -90,7 +66,7 @@ class SessionRecord:
         if scope is not None and scope.session_id not in {None, self.session_id}:
             raise ValueError("session ID does not match session scope")
         self.scope = scope
-        self._entries: list[SessionRecordEntry] = []
+        self._entries: list[Record] = []
         self._status = "running"
         self._lock = RLock()
 
@@ -106,23 +82,31 @@ class SessionRecord:
         *,
         created_at: str | None = None,
         run_id: str | None = None,
-    ) -> SessionRecordEntry:
+    ) -> Record:
         """追加一条记录；结束后拒绝继续写入。"""
         with self._lock:
             if self._status != "running":
                 raise RuntimeError("session record is already finished")
-            entry = SessionRecordEntry(
-                self.session_id,
-                run_id or _run_id(data),
-                len(self._entries) + 1,
-                _text(event_type, "session event_type"),
-                data or {},
-                created_at or utc_now(),
+            selected = dict(data or {})
+            selected_run_id = run_id or _run_id(selected)
+            if selected_run_id is not None:
+                selected["run_id"] = selected_run_id
+            scope = self.scope or RecordScope(session_id=self.session_id)
+            entry = Record(
+                event_id=f"session-{uuid4().hex}",
+                user_id=scope.user_id,
+                agent_name=scope.agent_name,
+                stream="session",
+                stream_id=self.session_id,
+                event_type=_text(event_type, "session event_type"),
+                data=compact_session_data(selected),
+                created_at=created_at or utc_now(),
+                position=len(self._entries) + 1,
             )
             self._entries.append(entry)
             return entry
 
-    def append_event(self, event: RunEvent) -> SessionRecordEntry | None:
+    def append_event(self, event: RunEvent) -> Record | None:
         """追加统一格式的运行事件，并省略高频文本增量。"""
         if event.event_type in SESSION_OMITTED_EVENTS:
             return None
@@ -133,7 +117,7 @@ class SessionRecord:
             run_id=event.run_id,
         )
 
-    def read_records(self) -> tuple[SessionRecordEntry, ...]:
+    def read_records(self) -> tuple[Record, ...]:
         with self._lock:
             return tuple(self._entries)
 
@@ -141,21 +125,17 @@ class SessionRecord:
         self,
         status: str = "completed",
         data: Mapping[str, object] | None = None,
-    ) -> SessionRecordEntry:
+    ) -> Record:
         """显式结束会话，并记录最终状态。"""
         selected = _text(status, "session status")
         with self._lock:
             if self._status != "running":
                 raise RuntimeError("session record is already finished")
-            entry = SessionRecordEntry(
-                self.session_id,
-                _run_id(data),
-                len(self._entries) + 1,
+            entry = self.append_record(
                 "session.finished",
-                {"status": selected, **compact_session_data(data or {})},
-                utc_now(),
+                {"status": selected, **dict(data or {})},
+                created_at=utc_now(),
             )
-            self._entries.append(entry)
             self._status = selected
             return entry
 
@@ -241,6 +221,21 @@ class Record:
 
     def to_dict(self) -> dict[str, object]:
         return dataclass_data(self)
+
+    @property
+    def sequence(self) -> int:
+        """Return the order within the owning record stream."""
+        return self.position
+
+    @property
+    def session_id(self) -> str | None:
+        """Return a session ID only for the in-memory session stream."""
+        return self.stream_id if self.stream == "session" else None
+
+    @property
+    def run_id(self) -> str | None:
+        value = self.data.get("run_id")
+        return value if isinstance(value, str) and value.strip() else None
 
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> Record:
