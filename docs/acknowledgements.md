@@ -17,7 +17,7 @@ The notes below describe the public repository state used for Super Agent `v0.2.
 | [OpenAI Codex](https://github.com/openai/codex) | `codex-rs/core`、`exec`、`execpolicy`、`apply-patch`、`skills` | turn 循环、工具路由、受控副作用、结构化文件修改、渐进式 Skill 披露 |
 | [Hermes Agent](https://github.com/NousResearch/hermes-agent) | `conversation_loop.py`、`tool_executor.py`、`tool_guardrails.py`、`memory_manager.py`、`skill_*`、`subagent_lifecycle.py` | 通用任务循环、工具边界、记忆整理、Skill 组织、子 Agent 委派 |
 | [OpenClaw](https://github.com/openclaw/openclaw) | `src/agents`、`src/memory`、`src/sessions`、配置层、`skills` | 代码式 Agent 组合、用户和 Agent 状态隔离、会话与 Skill 目录 |
-| [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | `agent-loop`、`session`、`tools`、`scope`、bundle/profile、事件流水线 | 可选机制挂载、运行事件事实源、运行范围资源所有权、可替换边界 |
+| [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | `agent-loop`、`session`、`tools`、`scope`、bundle/profile、事件流水线 | 插件选择、运行事件事实源、运行范围资源所有权、可替换边界 |
 | [Claude Code](https://github.com/anthropics/claude-code) | 公开插件、SDK 和文档；`feature-dev`、`code-review`、`pr-review-toolkit`、`plugin-dev`、`security-guidance` | 代码任务分阶段执行、多视角复核、Skill 结构、操作前提醒 |
 | [Agent Skills](https://github.com/agentskills/agentskills) | `SKILL.md` 规范、YAML front matter、标准资源目录、渐进披露 | Skill 的可移植目录格式、标准字段和资源边界 |
 | [《A Programming Paradigm for Spatiotemporal Composability》](https://github.com/cordiverse/paper) | 可逆副作用、响应式共作用、统一上下文 | 原子 Skill 激活、逆序清理、显式 Runtime 需求、组合约束 |
@@ -48,9 +48,9 @@ OpenClaw showed how Agents, memory, sessions, configuration, and a Skill tree ca
 
 ### DeepSeek Harness
 
-DeepSeek Harness 的 agent loop、session、tools、scope、bundle/profile 和事件流水线启发了“可选机制由 Skill 声明，Runtime 只负责调度”的边界。运行事件作为事实来源，使等待、重试、审计和结果压缩可以共享同一条记录路径。
+DeepSeek Harness 的 agent loop、session、tools、scope、bundle/profile 和事件流水线启发了“插件选择方法，Runtime 只负责调度”的边界。运行事件作为事实来源，使等待、重试、审计和结果压缩可以共享同一条记录路径。
 
-DeepSeek Harness informed the boundary in which Skills declare optional mechanisms while the Runtime schedules them. Treating run events as facts allows waiting, retries, audit records, and result compression to share one event path.
+DeepSeek Harness informed the boundary in which plugins select methods while Runtime schedules them. Treating run events as facts allows waiting, retries, audit records, and result compression to share one event path.
 
 ### Claude Code
 

@@ -26,15 +26,15 @@ A `Plugin` is a passive reference list, not an executable extension. Skills and 
 
 ## 一条运行路径 / One Run Path
 
-1. `Agent` 固定用户、Agent、工作目录和父运行身份，构造 `RunRequest`。
+1. `AgentContext` 固定用户、Agent、工作目录和父运行身份，运行装配器构造唯一的 `RunInput`。
 2. `AgentLibrary` 为该作用域建立不可变快照，并提供有界插件、Skill 与 MCP 索引。
-3. 模型按语义选择内容，通过同一个 `DisclosureStore` 分页读取，再显式激活插件或 Skill。
+3. 模型按语义选择内容，通过同一个 `ResourceCenter` 分页读取，再显式激活插件或 Skill。
 4. `Provider` 流式返回文本、工具调用、用量和状态，`Runtime` 只执行已注册工具。
 5. 结果和事件可以写入任意 `RecordBackend`；失败保留原始语义。
 
-1. `Agent` fixes user, Agent, working-directory, and parent-run identity, then builds a `RunRequest`.
+1. `AgentContext` fixes the user, Agent, working directory, and parent-run identity; the run builder creates the only `RunInput`.
 2. `AgentLibrary` creates an immutable scoped snapshot and bounded plugin, Skill, and MCP indexes.
-3. The model selects content semantically, pages it through the shared `DisclosureStore`, and explicitly activates a plugin or Skill.
+3. The model selects content semantically, pages it through the shared `ResourceCenter`, and explicitly activates a plugin or Skill.
 4. The Provider streams text, tool calls, usage, and status while Runtime executes only registered tools.
 5. Results and events may be written to any `RecordBackend`; failures retain their original meaning.
 

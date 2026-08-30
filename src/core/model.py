@@ -40,7 +40,7 @@ def selection_score(
     price: float,
     active: int = 0,
 ) -> tuple[float, float]:
-    """Score model and Agent candidates with the same deterministic formula."""
+    """使用同一确定性公式评价模型和 Agent 候选。"""
     return (
         float(exact),
         weight * reliability * quality / (1.0 + price) / (1.0 + active),
@@ -53,7 +53,7 @@ def rank_candidates(
     *,
     rotation: int = 0,
 ) -> list[Candidate]:
-    """Sort candidates and optionally rotate equally configured choices."""
+    """排序候选，并按需轮换配置相同的选择。"""
     ordered = sorted(values, key=score, reverse=True)
     if ordered and rotation:
         offset = rotation % len(ordered)

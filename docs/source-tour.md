@@ -4,25 +4,21 @@
 
 Start at the public entry point instead of beginning with adapters or builtin Skill files.
 
-1. `src/super_agent.py`：查看 `Agent` 如何组合配置、模型、中央资源库、存储、组和子 Agent。
-2. `src/core/run.py`：查看唯一的流式模型与工具循环。
-3. `src/core/model.py`：查看中立消息、工具和模型事件。
-4. `src/core/provider.py`：查看 Mock、OpenAI-compatible、Anthropic 和模型路由。
-5. `src/core/disclosure.py`：查看所有大内容共用的分页、缓存路径和历史。
-6. `src/skill/document.py` 与 `src/skill/library.py`：查看标准 Skill 格式、中央 Skill/MCP/插件去重、运行快照、索引和原子激活。
-7. `src/skill/organization.py` 与 `organization_runtime.py`：查看树结构、共享板和统一运行器；任务、工具和选择细节位于同名前缀文件。
-8. `src/core/records.py` 与 `src/core/user.py`：查看记录契约、用户作用域、审计脱敏和保留策略。
-9. `src/adapter/`：最后查看 CLI、存储、数据库、工作区和进程适配器。
+1. `src/super_agent.py`：先看公开 `Agent` 如何组合模型、插件、存储、组和子 Agent。
+2. `src/skill/agent_builder.py`：跟踪一次公开调用如何装配成唯一的 `RunInput`。
+3. `src/core/run.py`：查看唯一的流式模型与工具循环；数据类型在 `core/model.py`，供应商转换在 `core/provider.py`。
+4. `src/core/resources.py`：查看统一分页、缓存路径、历史和每轮预算；标准 Skill 解析、去重与快照位于 `skill/document.py` 和 `skill/library.py`。
+5. `src/skill/organization.py` 与 `organization_runtime.py`：查看 Agent 树、共享板和团队运行；任务、工具和选择细节位于同名前缀文件。
+6. `src/core/records.py` 与 `core/user.py`：查看统一记录、用户作用域、审计脱敏和保留策略。
+7. `src/adapter/`：最后阅读 CLI、存储、数据库、代码工作区和进程适配器。
 
-1. `src/super_agent.py`: how `Agent` composes configuration, models, the central library, storage, groups, and subagents.
-2. `src/core/run.py`: the single streaming model/tool loop.
-3. `src/core/model.py`: neutral messages, tools, and model events.
-4. `src/core/provider.py`: Mock, OpenAI-compatible, Anthropic, and model routing.
-5. `src/core/disclosure.py`: shared paging, cache paths, and history for all large content.
-6. `src/skill/document.py` and `src/skill/library.py`: the standard Skill format, central Skill/MCP/plugin deduplication, run snapshots, indexes, and atomic activation.
-7. `src/skill/organization.py` and `organization_runtime.py`: tree structure, shared boards, and the unified runtime; task, tool, and selection details use the same file prefix.
-8. `src/core/records.py` and `src/core/user.py`: record contracts, user scope, audit redaction, and retention.
-9. `src/adapter/`: CLI, storage, database, workspace, and process adapters last.
+1. `src/super_agent.py`: start with how public `Agent` composes models, plugins, storage, groups, and subagents.
+2. `src/skill/agent_builder.py`: follow one public call as it becomes the only `RunInput`.
+3. `src/core/run.py`: inspect the single streaming model/tool loop; neutral types live in `core/model.py`, and provider conversion lives in `core/provider.py`.
+4. `src/core/resources.py`: inspect shared paging, cache paths, history, and per-run budgets; standard Skill parsing, deduplication, and snapshots live in `skill/document.py` and `skill/library.py`.
+5. `src/skill/organization.py` and `organization_runtime.py`: inspect the Agent tree, shared boards, and team runtime; task, tool, and selection details use the same file prefix.
+6. `src/core/records.py` and `core/user.py`: inspect unified records, user scope, audit redaction, and retention.
+7. `src/adapter/`: read CLI, storage, database, code workspace, and process adapters last.
 
 ## 调试一轮运行 / Inspect One Run
 

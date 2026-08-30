@@ -14,7 +14,6 @@ from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
 from types import MappingProxyType
-from uuid import uuid4
 
 from core import require_integer as _integer, require_text as _text
 from core.model import Tool
@@ -177,7 +176,7 @@ class AgentLibrary:
         return self._snapshot
 
     def use_resource_center(self, resource_center: ResourceCenter) -> None:
-        """Use the explicit central resource service for this library scope."""
+        """为当前资源库作用域使用显式中央资源服务。"""
         if not isinstance(resource_center, ResourceCenter):
             raise TypeError("library resource center must be a ResourceCenter")
         self.resources = resource_center
@@ -223,7 +222,7 @@ class AgentLibrary:
         return _page(values, page, page_size, lambda item: item.index_entry())
 
     def resource_index(self, *, page_size: int = 20) -> dict[str, object]:
-        """Return one bounded index for every discoverable resource kind."""
+        """返回包含全部可发现资源类型的有界索引。"""
         if not 1 <= page_size <= 100:
             raise ValueError("resource index page size must be between 1 and 100")
         return {

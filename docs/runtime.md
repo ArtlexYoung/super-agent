@@ -29,17 +29,17 @@ run.started
   -> run.completed or run.failed
 ```
 
-同步和流式 API 不允许各自维护一套模型调用逻辑。工具输出、Skill 正文、记忆和子 Agent 摘要都进入同一 `RunContext` 上下文预算。
+同步和流式 API 不各自维护模型调用逻辑。工具输出、Skill 正文、记忆和子 Agent 摘要都进入同一个 `ContextLedger` 预算。
 
-Synchronous and streaming APIs do not maintain separate model-call logic. Tool output, Skill bodies, memory, and subagent summaries share one `RunContext` context budget.
+Synchronous and streaming APIs do not maintain separate model-call logic. Tool output, Skill bodies, memory, and subagent summaries share one `ContextLedger` budget.
 
 运行开始时，`AgentLibrary` 将 Skill、MCP 和插件引用图的版本与内容哈希固定为 `library_snapshot`，并写入运行开始、完成和结果元数据。运行中的更新不会改变这个快照，新内容只在下一次顶层运行读取。
 
 At run start, `AgentLibrary` freezes Skill, MCP, and plugin-reference versions and content hashes as `library_snapshot`, recorded in start, completion, and result metadata. An update during the run cannot alter that snapshot; new content is read only by the next top-level run.
 
-`RuntimeLifecycle` 位于核心运行循环中，记录父子运行、任务状态、深度和活动数量。多 Agent Skill 只把任务挂到当前 `RunContext` 的生命周期；子 Agent 继续使用同一对象，因此运行事件、任务等待和恢复元数据可以对齐，而不会保存模型正文。
+`RuntimeLifecycle` 位于核心运行循环中，记录父子运行、任务状态、深度和活动数量。多 Agent Skill 把任务挂到当前生命周期；子 Agent 继续使用同一对象，因此运行事件、任务等待和恢复元数据可以对齐，而不会保存模型正文。
 
-`RuntimeLifecycle` lives in the core execution loop and records parent-child runs, task states, depth, and active counts. Multi-Agent Skills attach tasks to the current `RunContext` lifecycle; child Agents keep using that object, so run events, task waits, and recovery metadata stay aligned without storing model text.
+`RuntimeLifecycle` lives in the core execution loop and records parent-child runs, task states, depth, and active counts. Multi-Agent Skills attach tasks to the current lifecycle; child Agents keep using that object, so run events, task waits, and recovery metadata stay aligned without storing model text.
 
 自适应记录模式会先按任务位置给出计划，再检查实际子结果的字符数和事件数。超过 `max_full_result_characters` 或 `max_full_result_events` 时才压缩，并在结果中标明原因；`full` 和 `summary` 配置仍是明确的强制选择。
 
@@ -73,6 +73,6 @@ agent.add_event_listener(events.append)
 result = agent.run("任务")
 ```
 
-监听器错误默认终止运行并保留原始错误；需要隔离观察器时，可在 `RunRequest` 中显式允许监听器错误。
+监听器错误默认终止运行并保留原始错误；直接调用 Runtime 且需要隔离观察器时，可在 `RunInput` 中显式设置 `allow_listener_failures=True`。
 
-Listener errors stop the run by default and preserve the original error; an observer can be isolated only by explicitly allowing listener failures in `RunRequest`.
+Listener errors stop the run by default and preserve the original error. Direct Runtime callers can isolate observers explicitly with `RunInput(allow_listener_failures=True)`.

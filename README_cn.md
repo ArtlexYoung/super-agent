@@ -77,7 +77,7 @@ optional_mcp_servers = []
 
 ## Python 用法
 
-常用模块只导出一个类：
+常用入口只需要一个类：
 
 ```python
 from super_agent import Agent, model_from_environment
@@ -88,7 +88,7 @@ print(result.text)
 ```
 
 `Agent` 常用的直白操作是 `run`、`for_user`、`add_group`、`add_subagent`、
-`add_library_path`、`enable_plugin`、`enable_skill`、`add_tool` 和 `add_model`。高级类型从其所属模块导入。
+`add_library_path`、`enable_plugin`、`enable_skill`、`list_enabled_features`、`add_tool` 和 `add_model`。高级类型从其所属模块导入。
 
 专用 Agent 在代码中组合。任务 Skill 只属于本次运行，不会偷偷改变后续运行：
 
@@ -130,6 +130,8 @@ alice.memory.remember_long_term("用户偏好简洁回答", labels=("preference"
 result = alice.run("继续分析项目", conversation_id=conversation.conversation_id)
 print(alice.runs.explain(result.run_id))
 ```
+
+`enable_memory()` 是选择 `plugin:super-agent/memory` 的直白便捷方法；插件引用是唯一启用状态，不再维护第二份布尔开关。
 
 对话消息是短期上下文。长期记忆只保存持久事实、偏好和抽象信息，并可显式整理或遗忘。
 用户与 Agent 范围会隔离对话、记忆、运行记录、Skill 覆盖层和披露缓存。

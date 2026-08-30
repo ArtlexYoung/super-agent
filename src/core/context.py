@@ -1,4 +1,4 @@
-"""Describe the caller scope and options for one Agent run."""
+"""描述一次 Agent 调用的作用域与选项。"""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any
 from core.event import (
     CheckpointStore,
     RunCheckpoint,
-    RunEvent,
     RunIdentity,
 )
 from core.model import Message
@@ -28,7 +27,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class RunScope:
-    """Identify the user, Agent, workspace, and parent run."""
+    """固定用户、Agent、工作目录和父运行范围。"""
 
     user_id: str = "local"
     agent_name: str = "super-agent"
@@ -64,7 +63,7 @@ class RunScope:
 
 @dataclass(frozen=True)
 class RunOptions:
-    """Control persistence, cancellation, checkpoints, and listeners."""
+    """集中保存持久化、取消、检查点和监听选项。"""
 
     save_conversation: bool = True
     persist_run_events: bool = True
@@ -90,10 +89,10 @@ class RunOptions:
 
 @dataclass(frozen=True)
 class AgentContext:
-    """Optional input for one public Agent call.
+    """一次公开 Agent 调用的可选输入。
 
-    The flat fields keep the public API easy to construct.  ``scope`` and
-    ``options`` expose the two concepts used by the Runtime internally.
+    扁平字段保持公开 API 易于构造，``scope`` 和 ``options`` 提供 Runtime
+    内部使用的两个明确视图。
     """
 
     user_id: str = "local"
@@ -122,7 +121,7 @@ class AgentContext:
     interrupt_check: CancelCheck | None = None
 
     def scope(self, agent_name: str = "super-agent") -> RunScope:
-        """Return the stable scope visible to Runtime and plugins."""
+        """返回 Runtime 和插件可见的稳定作用域。"""
         if self.identity is not None:
             return RunScope.from_identity(self.identity)
         session_id = None if self.session is None else self.session.session_id
@@ -136,7 +135,7 @@ class AgentContext:
         )
 
     def options(self) -> RunOptions:
-        """Return persistence and execution options as one value."""
+        """返回单一的持久化与执行选项值。"""
         return RunOptions(
             save_conversation=self.save_conversation,
             persist_run_events=self.persist_run_events,

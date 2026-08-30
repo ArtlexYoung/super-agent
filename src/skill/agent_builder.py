@@ -1,4 +1,4 @@
-"""Build one explicit run from an Agent's configured resources."""
+"""从 Agent 的显式配置资源构造一次运行。"""
 
 from __future__ import annotations
 
@@ -26,8 +26,8 @@ MEMORY_PLUGIN = "plugin:super-agent/memory"
 EVOLUTION_PLUGIN = "plugin:super-agent/evolution"
 
 
-def agent_mechanisms(agent: Agent) -> tuple[str, ...]:
-    """从已选插件和模型直接推导机制，不维护第二份开关状态。"""
+def agent_features(agent: Agent) -> tuple[str, ...]:
+    """从已选插件和模型直接推导功能，不维护第二份开关状态。"""
     from core.provider import ModelRouter
 
     values = [
@@ -43,8 +43,8 @@ def agent_mechanisms(agent: Agent) -> tuple[str, ...]:
     return tuple(values)
 
 
-def agent_mechanism_status(agent: Agent) -> dict[str, bool]:
-    enabled = set(agent_mechanisms(agent))
+def agent_feature_status(agent: Agent) -> dict[str, bool]:
+    enabled = set(agent_features(agent))
     return {
         "memory": "memory" in enabled,
         "evolution": "evolution" in enabled,
@@ -143,7 +143,7 @@ def agent_tools(
 
 
 def stream_agent(agent: Agent, prompt: str, context: AgentContext):
-    """Build and execute one Agent run through the only Runtime entry point."""
+    """通过唯一 Runtime 入口构造并执行一次 Agent 运行。"""
     from core import require_text
     from core.run import RunInput, RuntimeLifecycle, ToolContext, build_run_instructions, stream_run
     from core.user import conversation_run_messages, model_scope, model_tracking_listener
@@ -258,7 +258,7 @@ def stream_agent(agent: Agent, prompt: str, context: AgentContext):
             **dict(effective_context.metadata),
             "_super_agent_model_scope": model_scope(identity),
             "_super_agent_run_scope": runtime_scope.to_dict(),
-            "_super_agent_optional_mechanisms": agent_mechanism_status(agent),
+            "_super_agent_enabled_features": agent_feature_status(agent),
         },
         warning_messages=warnings,
     )

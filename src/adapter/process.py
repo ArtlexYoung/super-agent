@@ -64,7 +64,7 @@ class ProcessTools:
         )
 
     def close(self) -> None:
-        """Explicitly stop every process owned by this adapter instance."""
+        """显式停止当前适配器实例启动的全部进程。"""
         with self._lock:
             processes = tuple(self._processes.values())
         for item in processes:

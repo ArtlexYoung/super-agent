@@ -4,9 +4,9 @@ v0.2.0 先固定最小边界：一个 Runtime、一条披露路径、一个事�
 
 v0.2.0 first fixes the minimum boundaries: one Runtime, one disclosure path, one event contract, and explicit optional adapters.
 
-v0.2.1 将多 Agent 收成一棵代码定义的组树：同一个运行器管理任务、共享板、等待唤醒、决策、价格路由、断路和动态压缩，并移除旧队列与决策组实现。
+到 v0.2.56，多 Agent 已收成一棵代码定义的组树；运行输入、资源披露、记录、任务状态、候选选择和存储转换也分别只有一个实现。
 
-v0.2.1 consolidates multi-Agent work into a code-defined group tree: one runtime owns tasks, shared boards, sleep and wake events, decisions, price routing, circuits, and adaptive compression, while the old queue and decision-group implementations are removed.
+By v0.2.56, multi-Agent work uses one code-defined group tree, while run input, resource disclosure, records, task state, candidate selection, and storage conversion each have one implementation.
 
 后续演进按风险和可验证性推进：
 

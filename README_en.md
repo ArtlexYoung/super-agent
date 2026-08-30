@@ -81,7 +81,7 @@ authority comes only from external configuration or code. See [Skills](docs/skil
 
 ## Use Python
 
-The common module exports one class:
+The common entry point needs only one class:
 
 ```python
 from super_agent import Agent, model_from_environment
@@ -92,7 +92,7 @@ print(result.text)
 ```
 
 The most common direct `Agent` actions are `run`, `for_user`, `add_group`, `add_subagent`,
-`add_library_path`, `enable_plugin`, `enable_skill`, `add_tool`, and `add_model`. Advanced contracts are imported from the
+`add_library_path`, `enable_plugin`, `enable_skill`, `list_enabled_features`, `add_tool`, and `add_model`. Advanced contracts are imported from the
 module that owns them.
 
 Compose specialized Agents in code. A task Skill selection belongs to one run and does
@@ -139,6 +139,8 @@ alice.memory.remember_long_term("The user prefers concise answers", labels=("pre
 result = alice.run("Continue analyzing the project", conversation_id=conversation.conversation_id)
 print(alice.runs.explain(result.run_id))
 ```
+
+`enable_memory()` is the direct convenience method for selecting `plugin:super-agent/memory`; the plugin reference is the only enabled state, with no second boolean switch.
 
 Conversation messages are short-term context. Long-term memory stores durable facts,
 preferences, and abstractions, and can be explicitly organized or forgotten. User and

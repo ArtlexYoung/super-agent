@@ -15,7 +15,6 @@ from core.model import Message, Model, Tool, next_model_profile_name
 from core.provider import ModelPricing, ModelProfile, ModelRouter, RouterSettings
 from core.records import (
     AuditPolicy,
-    Conversations,
     EventStore,
     RecordBackend,
     RecordScope,
@@ -26,14 +25,14 @@ from core.user import AgentUser
 from skill.agent_builder import (
     EVOLUTION_PLUGIN,
     MEMORY_PLUGIN,
-    agent_mechanisms,
+    agent_features,
     stream_agent,
 )
 from skill.library import AgentLibrary
 
 if TYPE_CHECKING:
     from skill.evolution import CandidateRunner
-    from skill.organization import Team, TeamMemberSettings, TeamSettings
+    from skill.organization import TeamMemberSettings, TeamSettings
     from skill.organization_runtime import TeamRuntime
 
 CandidateRunner = Callable[[str, str], str]
@@ -361,9 +360,9 @@ class Agent:
         """返回显式启用的 Skill，不触发 Skill 读取或执行。"""
         return tuple(self._enabled_skills)
 
-    def list_optional_mechanisms(self) -> tuple[str, ...]:
-        """从已选插件和模型读取机制，不触发工具注册或模型调用。"""
-        return agent_mechanisms(self)
+    def list_enabled_features(self) -> tuple[str, ...]:
+        """从已选插件和模型读取功能，不触发工具注册或模型调用。"""
+        return agent_features(self)
 
     def is_plain_agent(self) -> bool:
         """判断 Agent 是否仍是只包含模型和基础运行循环的普通 Agent。"""
@@ -478,7 +477,7 @@ class Agent:
         skill: str | None = None,
         working_directory: str | Path | WorkingDirectory | None = None,
     ) -> Iterator[RunEvent]:
-        """Build one run and pass it to the single Runtime loop."""
+        """构造一次运行并交给唯一 Runtime 循环。"""
         if context is not None and any(
             (
                 conversation_id is not None,
@@ -554,12 +553,12 @@ class Agent:
     @property
     def memory_enabled(self) -> bool:
         """Memory 插件是否被显式选择且未禁用。"""
-        return "memory" in agent_mechanisms(self)
+        return "memory" in agent_features(self)
 
     @property
     def evolution_enabled(self) -> bool:
         """Evolution 插件是否被显式选择且未禁用。"""
-        return "evolution" in agent_mechanisms(self)
+        return "evolution" in agent_features(self)
 
 
 def _clear_team_runtimes(agent: Agent) -> None:

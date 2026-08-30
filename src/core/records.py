@@ -224,12 +224,12 @@ class Record:
 
     @property
     def sequence(self) -> int:
-        """Return the order within the owning record stream."""
+        """返回记录在所属流内的顺序。"""
         return self.position
 
     @property
     def session_id(self) -> str | None:
-        """Return a session ID only for the in-memory session stream."""
+        """仅为内存会话流返回会话 ID。"""
         return self.stream_id if self.stream == "session" else None
 
     @property

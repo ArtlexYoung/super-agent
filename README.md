@@ -28,6 +28,10 @@ The central library manages Skills and MCP definitions; plugins keep canonical r
 
 Builtin plugins are split by purpose: `common`, `code`, `session`, `audit`, `policy`, `research`, `knowledge`, `automation`, `memory`, `evolution`, `task`, `team`, `review`, and `model-routing`; enable only what the current task needs.
 
+`enable_memory()` 和 `enable_skill_evolution()` 只选择对应内置插件；`list_enabled_features()` 直接报告由此启用的可选功能，不维护另一套开关。
+
+`enable_memory()` and `enable_skill_evolution()` only select their builtin plugins; `list_enabled_features()` reports the resulting optional functions without maintaining another switch.
+
 每个 Skill 继续直接采用 Agent Skills 标准的 `SKILL.md`、YAML front matter 和 Markdown 正文；MCP 描述不包含命令、地址、密钥或自动连接逻辑。
 
 Every Skill still uses standard Agent Skills `SKILL.md`, YAML front matter, and Markdown; MCP definitions contain no command, endpoint, secret, or automatic connection logic.
@@ -57,11 +61,6 @@ Run `super-agent` without arguments for an interactive conversation, or pass tex
 远程模型必须通过通用环境变量或 `common.toml` 显式配置；项目不识别私人变量名，也不会猜测供应商、模型或地址。
 
 Remote models must be configured explicitly through generic environment variables or `common.toml`; the project does not recognize private variable names or guess a provider, model, or endpoint.
-
-```bash
-SUPER_AGENT_PROVIDER=mock super-agent check
-SUPER_AGENT_PROVIDER=mock super-agent "你好"
-```
 
 ## 核心方式
 
@@ -197,6 +196,7 @@ The complete usage guide is split by language, while this bilingual overview kee
 - [中文使用文档](README_cn.md)
 - [English guide](README_en.md)
 - [源码阅读路径 / Source tour](docs/source-tour.md)
+- [架构 / Architecture](docs/architecture.md)
 - [Skill](docs/skills.md)
 - [配置 / Configuration](docs/configuration.md)
 - [Runtime](docs/runtime.md)
@@ -238,5 +238,5 @@ Third-party projects retain their own copyrights and licenses; this project is l
 The full release gate checks Python tests, compilation, package contents, offline evaluation, and build.
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.39 --full
+python3.11 scripts/verify_release.py --version 0.2.56 --full
 ```

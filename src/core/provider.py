@@ -9,7 +9,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from threading import RLock
 from time import monotonic
-from typing import Callable, Iterable, Iterator, Mapping
+from typing import Iterable, Iterator, Mapping
 from urllib.parse import urlparse
 
 from core.model import (
@@ -21,7 +21,6 @@ from core.model import (
     ModelPerformanceBook,
     ModelRequest,
     ModelRequestOptions,
-    ToolCall,
     estimate_tokens,
     merge_model_usage,
     model_scope_from_metadata,

@@ -610,8 +610,8 @@ class _RunEngine:
                 "purpose": self.run.purpose,
                 "prompt": self.run.prompt,
                 "library_snapshot": self.session.library_snapshot or {},
-                "optional_mechanisms": self.run.metadata.get(
-                    "_super_agent_optional_mechanisms", {}
+                "enabled_features": self.run.metadata.get(
+                    "_super_agent_enabled_features", {}
                 ),
             },
         )

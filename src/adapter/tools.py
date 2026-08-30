@@ -5,7 +5,6 @@ from __future__ import annotations
 import ast
 import fnmatch
 import hashlib
-import json
 import re
 import subprocess
 from collections.abc import Callable, Iterable, Mapping

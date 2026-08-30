@@ -11,7 +11,7 @@ PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
 python3.11 -m unittest discover -s tests -p 'test_*.py' -v
 
 PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
-python3.11 scripts/verify_release.py --version 0.2.39 --full
+python3.11 scripts/verify_release.py --version 0.2.56 --full
 ```
 
 发布检查验证版本、Python 最低版本、零默认依赖、源码布局、旧目录删除、构建范围、内置插件去重关系和离线评测资产。
@@ -24,9 +24,9 @@ Log writes never trigger retention cleanup. Run `super-agent data storage prune 
 
 ## 版本 / Version
 
-v0.2.39 整理存储、工作目录、进程和 CLI 适配边界，保持默认无持久化、无后台进程，并统一版本元数据。
+v0.2.56 统一运行、资源、记录、任务、选择和存储路径，移除重复状态，并收紧源码预算。
 
-v0.2.39 cleans up storage, workspace, process, and CLI adapter boundaries while keeping defaults free of persistence and background processes, with unified version metadata.
+v0.2.56 unifies run, resource, record, task, selection, and storage paths, removes duplicate state, and tightens the source budget.
 
 检查通过后创建一个本地逻辑提交和标签；远程推送是单独的授权边界。
 
