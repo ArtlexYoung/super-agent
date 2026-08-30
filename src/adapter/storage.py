@@ -11,8 +11,8 @@ from dataclasses import replace
 from pathlib import Path
 from threading import RLock
 
-from core.event import CheckpointStore, RunCheckpoint
-from core.records import EventStore, MemoryStore, Record, RecordBackend, RecordQuery
+from core.event import RunCheckpoint
+from core.records import EventStore, Record, RecordBackend, RecordQuery
 
 
 class MemoryStorage:
@@ -206,14 +206,14 @@ class SqliteStorage:
             try:
                 connection.execute(
                     "INSERT INTO records VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    _record_values(stored),
+                    record_to_sql_row(stored),
                 )
             except sqlite3.IntegrityError as error:
                 raise ValueError(f"duplicate event ID: {record.event_id}") from error
         return stored
 
     def read(self, query: RecordQuery) -> list[Record]:
-        clauses, parameters = _sql_filters(query, "?")
+        clauses, parameters = build_sql_filters(query, "?")
         order = "DESC" if query.descending else "ASC"
         sql = "SELECT event_id,user_id,agent_name,stream,stream_id,event_type,data,created_at,position FROM records"
         if clauses:
@@ -224,10 +224,10 @@ class SqliteStorage:
             parameters.append(query.limit)
         with self._lock, self._connect() as connection:
             rows = connection.execute(sql, parameters).fetchall()
-        return [_record_from_row(row) for row in rows]
+        return [record_from_sql_row(row) for row in rows]
 
     def delete(self, query: RecordQuery) -> int:
-        clauses, parameters = _sql_filters(query, "?")
+        clauses, parameters = build_sql_filters(query, "?")
         if not clauses:
             raise ValueError("refusing to delete all SQLite records without a filter")
         with self._lock, self._connect() as connection:
@@ -291,8 +291,9 @@ def create_storage(
 
 
 def verify_storage(backend: RecordBackend) -> dict[str, object]:
-    if isinstance(backend, SqliteStorage):
-        return backend.verify()
+    verify = getattr(backend, "verify", None)
+    if callable(verify):
+        return verify()
     try:
         records = backend.read(RecordQuery(limit=1))
         return {"backend": type(backend).__name__, "ok": True, "sample_records": len(records)}
@@ -344,7 +345,9 @@ def _replace_jsonl(path: Path, records: Iterable[Record]) -> None:
         raise
 
 
-def _sql_filters(query: RecordQuery, placeholder: str) -> tuple[list[str], list[object]]:
+def build_sql_filters(
+    query: RecordQuery, placeholder: str
+) -> tuple[list[str], list[object]]:
     clauses: list[str] = []
     parameters: list[object] = []
     for column, value in (
@@ -366,7 +369,7 @@ def _sql_filters(query: RecordQuery, placeholder: str) -> tuple[list[str], list[
     return clauses, parameters
 
 
-def _record_values(record: Record) -> tuple[object, ...]:
+def record_to_sql_row(record: Record) -> tuple[object, ...]:
     return (
         record.event_id,
         record.user_id,
@@ -380,7 +383,7 @@ def _record_values(record: Record) -> tuple[object, ...]:
     )
 
 
-def _record_from_row(row: Iterable[object]) -> Record:
+def record_from_sql_row(row: Iterable[object]) -> Record:
     values = list(row)
     data = json.loads(str(values[6]))
     if not isinstance(data, dict):

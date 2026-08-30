@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import json
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import replace
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from adapter.storage import build_sql_filters, record_from_sql_row, record_to_sql_row
 from core.records import Record, RecordQuery
 
 
@@ -43,7 +43,7 @@ class DatabaseStorage:
                     "INSERT INTO super_agent_records "
                     "(event_id,user_id,agent_name,stream,stream_id,event_type,data,created_at,position) "
                     "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                    _record_values(stored),
+                    record_to_sql_row(stored),
                 )
             except Exception as error:
                 raise ValueError(f"database record append failed for event {record.event_id}") from error
@@ -52,7 +52,7 @@ class DatabaseStorage:
         return stored
 
     def read(self, query: RecordQuery) -> list[Record]:
-        clauses, parameters = _filters(query)
+        clauses, parameters = build_sql_filters(query, "%s")
         order = "DESC" if query.descending else "ASC"
         sql = (
             "SELECT event_id,user_id,agent_name,stream,stream_id,event_type,data,created_at,position "
@@ -71,10 +71,10 @@ class DatabaseStorage:
                 rows = cursor.fetchall()
             finally:
                 cursor.close()
-        return [_record_from_row(row) for row in rows]
+        return [record_from_sql_row(row) for row in rows]
 
     def delete(self, query: RecordQuery) -> int:
-        clauses, parameters = _filters(query)
+        clauses, parameters = build_sql_filters(query, "%s")
         if not clauses:
             raise ValueError("refusing to delete all database records without a filter")
         with self._connection() as connection:
@@ -156,56 +156,3 @@ class DatabaseStorage:
             )
         finally:
             cursor.close()
-
-def _filters(query: RecordQuery) -> tuple[list[str], list[object]]:
-    clauses: list[str] = []
-    parameters: list[object] = []
-    for name, value in (
-        ("user_id", query.user_id),
-        ("agent_name", query.agent_name),
-        ("stream", query.stream),
-        ("stream_id", query.stream_id),
-    ):
-        if value is not None:
-            clauses.append(f"{name}=%s")
-            parameters.append(value)
-    for name, values in (("event_type", query.event_types), ("event_id", query.event_ids)):
-        if values:
-            clauses.append(f"{name} IN ({','.join('%s' for _ in values)})")
-            parameters.extend(values)
-    if query.before is not None:
-        clauses.append("created_at<%s")
-        parameters.append(query.before)
-    return clauses, parameters
-
-
-def _record_values(record: Record) -> tuple[object, ...]:
-    return (
-        record.event_id,
-        record.user_id,
-        record.agent_name,
-        record.stream,
-        record.stream_id,
-        record.event_type,
-        json.dumps(dict(record.data), ensure_ascii=False, separators=(",", ":")),
-        record.created_at,
-        record.position,
-    )
-
-
-def _record_from_row(row: Iterable[object]) -> Record:
-    values = list(row)
-    data = json.loads(str(values[6]))
-    if not isinstance(data, dict):
-        raise ValueError("stored database record data must be an object")
-    return Record(
-        event_id=str(values[0]),
-        user_id=str(values[1]),
-        agent_name=str(values[2]),
-        stream=str(values[3]),
-        stream_id=str(values[4]),
-        event_type=str(values[5]),
-        data=data,
-        created_at=str(values[7]),
-        position=int(values[8]),
-    )

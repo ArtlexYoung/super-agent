@@ -5,8 +5,9 @@ import unittest
 from pathlib import Path
 
 from adapter.cli import CliConfig, _build_agent, _storage_from_config
+from adapter.database import DatabaseStorage
 from adapter.process import ProcessSettings, ProcessTools
-from adapter.storage import JsonlStorage
+from adapter.storage import JsonlStorage, create_storage, verify_storage
 from core.config import Config, StorageConfig
 from core.provider import MockModel
 
@@ -61,6 +62,24 @@ class AdapterBoundaryTests(unittest.TestCase):
         agent.model = MockModel("answer")
 
         self.assertEqual("answer", agent.run("hello").text)
+
+    def test_remote_storage_is_created_without_loading_optional_driver(self):
+        backend = create_storage(
+            "postgresql",
+            database_url="postgresql://user:password@localhost/database",
+        )
+
+        self.assertIsInstance(backend, DatabaseStorage)
+
+    def test_storage_verification_uses_the_backend_contract(self):
+        class VerifiableStorage:
+            def verify(self):
+                return {"backend": "custom", "ok": True, "records": 3}
+
+        self.assertEqual(
+            {"backend": "custom", "ok": True, "records": 3},
+            verify_storage(VerifiableStorage()),
+        )
 
 
 if __name__ == "__main__":
