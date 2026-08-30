@@ -33,7 +33,7 @@ from core.resources import MAX_PAGE_CHARACTERS, ResourceCenter
 
 
 EventListener = Callable[[RunEvent], object]
-RunPreparation = Callable[["RunContext", "ToolContext"], object]
+RunPreparation = Callable[["_RunState", "ToolContext"], object]
 ToolDecision = Callable[[Tool, Mapping[str, object]], str]
 CancelCheck = Callable[[], bool]
 
@@ -268,89 +268,15 @@ class ToolRegistry:
 
 
 @dataclass
-class RunResources:
-    """一次运行可使用的外部资源；空值表示宿主没有提供该资源。"""
-
-    available_tools: Mapping[str, Tool] | None = None
-    resource_center: ResourceCenter | None = None
-    working_directory: object | None = None
-    library_snapshot: Mapping[str, object] | None = None
-    mcp_tools_by_server: Mapping[str, tuple[Tool, ...]] | None = None
-    tool_registry: ToolRegistry | None = None
-
-    def ready(self) -> RunResources:
-        """创建运行期副本，并只为本轮补齐内存级默认值。"""
-        registry = self.tool_registry or ToolRegistry()
-        registry.register_many(
-            (
-                tool
-                for tool in (self.available_tools or {}).values()
-                if isinstance(tool, Tool)
-            ),
-            exposure="after_skill",
-        )
-        center = self.resource_center
-        if center is None:
-            center = ResourceCenter()
-        elif not isinstance(center, ResourceCenter):
-            raise TypeError("run resource center must be a ResourceCenter")
-        return RunResources(
-            available_tools=registry.available,
-            resource_center=center,
-            working_directory=self.working_directory,
-            library_snapshot=dict(self.library_snapshot or {}),
-            mcp_tools_by_server={
-                key: tuple(value)
-                for key, value in (self.mcp_tools_by_server or {}).items()
-            },
-            tool_registry=registry,
-        )
-
-    def merge(self, override: RunResources) -> RunResources:
-        """合并运行计划和宿主资源，宿主明确提供的字段优先。"""
-        if not isinstance(override, RunResources):
-            raise TypeError("run resource override must be RunResources")
-        return RunResources(
-            available_tools=(
-                override.available_tools
-                if override.available_tools is not None
-                else self.available_tools
-            ),
-            resource_center=(
-                override.resource_center
-                if override.resource_center is not None
-                else self.resource_center
-            ),
-            working_directory=(
-                override.working_directory
-                if override.working_directory is not None
-                else self.working_directory
-            ),
-            library_snapshot=(
-                override.library_snapshot
-                if override.library_snapshot is not None
-                else self.library_snapshot
-            ),
-            mcp_tools_by_server=(
-                override.mcp_tools_by_server
-                if override.mcp_tools_by_server is not None
-                else self.mcp_tools_by_server
-            ),
-            tool_registry=(
-                override.tool_registry
-                if override.tool_registry is not None
-                else self.tool_registry
-            ),
-        )
-
-
-@dataclass
-class RunContext:
+class _RunState:
     identity: RunIdentity
     messages: list[Message]
     instructions: list[str]
-    tools: dict[str, Tool]
-    resources: RunResources = field(default_factory=RunResources)
+    tool_registry: ToolRegistry = field(default_factory=ToolRegistry)
+    resource_center: ResourceCenter = field(default_factory=ResourceCenter)
+    working_directory: object | None = None
+    library_snapshot: Mapping[str, object] = field(default_factory=dict)
+    mcp_tools_by_server: Mapping[str, tuple[Tool, ...]] = field(default_factory=dict)
     active_skills: list[str] = field(default_factory=list)
     workflow: str = "model-directed"
     context_limit: int | None = None
@@ -359,13 +285,12 @@ class RunContext:
     runtime_lifecycle: RuntimeLifecycle | None = None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.resources, RunResources):
-            raise TypeError("run resources must be RunResources")
-        self.resources = self.resources.ready()
-        self.resources.tool_registry.register_many(
-            self.tools.values(), exposure="always"
-        )
-        self.tools = self.resources.tool_registry.active
+        if not isinstance(self.resource_center, ResourceCenter):
+            raise TypeError("run resource center must be a ResourceCenter")
+        self.library_snapshot = dict(self.library_snapshot)
+        self.mcp_tools_by_server = {
+            key: tuple(value) for key, value in self.mcp_tools_by_server.items()
+        }
         if self.ledger is None:
             self.ledger = ContextLedger(
                 self.context_limit,
@@ -419,7 +344,11 @@ class RunContext:
         return self.ledger.snapshot()
 
     def add_tool(self, tool: Tool) -> None:
-        self.resources.tool_registry.register(tool, exposure="always")
+        self.tool_registry.register(tool, exposure="always")
+
+    @property
+    def tools(self) -> dict[str, Tool]:
+        return self.tool_registry.active
 
     def activate_skill(self, key: str) -> None:
         if key not in self.active_skills:
@@ -430,51 +359,29 @@ class RunContext:
         return tuple(([Message("system", system)] if system else []) + self.messages)
 
 
-RunSession = RunContext
-
-
 @dataclass(frozen=True)
 class ToolContext:
-    session: RunContext
+    session: _RunState
     emit: Callable[[str, Mapping[str, object]], RunEvent]
 
 
-@dataclass
-class RunPlan:
-    """收集一次运行的显式贡献，Runtime 不关心贡献来自哪个插件。"""
-
-    instructions: list[str] = field(default_factory=list)
-    active_tools: dict[str, Tool] = field(default_factory=dict)
-    resources: RunResources = field(default_factory=RunResources)
-    listeners: list[EventListener] = field(default_factory=list)
-    prepare_hooks: list[RunPreparation] = field(default_factory=list)
-
-    def add_instruction(self, instruction: str) -> None:
-        text = instruction.strip()
-        if text and text not in self.instructions:
-            self.instructions.append(text)
-
-    def add_tool(self, tool: Tool) -> None:
-        add_unique_tool(self.active_tools, tool)
-
-    def add_listener(self, listener: EventListener) -> None:
-        if not callable(listener):
-            raise TypeError("run plan listener must be callable")
-        self.listeners.append(listener)
-
-    def add_prepare_hook(self, hook: RunPreparation) -> None:
-        if not callable(hook):
-            raise TypeError("run plan preparation hook must be callable")
-        self.prepare_hooks.append(hook)
-
-
 @dataclass(frozen=True)
-class RunSetup:
-    """收拢运行身份、监听器和可选机制的接线信息。"""
+class RunInput:
+    """一次模型与工具循环所需的唯一输入。"""
 
-    identity: RunIdentity | None = None
+    prompt: str
+    model: Model
+    messages: tuple[Message | Mapping[str, object], ...] = ()
+    instructions: tuple[str, ...] = ()
+    tools: tuple[Tool, ...] = ()
+    available_tools: Mapping[str, Tool] = field(default_factory=dict)
+    tool_registry: ToolRegistry | None = None
+    identity: RunIdentity = field(default_factory=RunIdentity)
+    resource_center: ResourceCenter | None = None
+    working_directory: object | None = None
+    library_snapshot: Mapping[str, object] = field(default_factory=dict)
+    mcp_tools_by_server: Mapping[str, tuple[Tool, ...]] = field(default_factory=dict)
     listeners: tuple[EventListener, ...] = ()
-    resources: RunResources = field(default_factory=RunResources)
     prepare: RunPreparation | None = None
     session_record: SessionRecord | None = None
     tool_decider: ToolDecision | None = None
@@ -484,14 +391,6 @@ class RunSetup:
     resume_checkpoint: RunCheckpoint | None = None
     interrupt_check: CancelCheck | None = None
     runtime_lifecycle: RuntimeLifecycle | None = None
-    plan: RunPlan | None = None
-
-
-@dataclass(frozen=True)
-class RunRequest:
-    prompt: str
-    messages: tuple[Message | Mapping[str, object], ...] = ()
-    instructions: tuple[str, ...] = ()
     purpose: str = "auto"
     required_features: tuple[str, ...] = ("text",)
     limits: RunLimits = RunLimits()
@@ -502,6 +401,10 @@ class RunRequest:
     def __post_init__(self) -> None:
         if not isinstance(self.prompt, str) or not self.prompt.strip():
             raise ValueError("prompt cannot be empty")
+        if self.resource_center is not None and not isinstance(
+            self.resource_center, ResourceCenter
+        ):
+            raise TypeError("run resource center must be a ResourceCenter")
 
 
 def build_run_instructions(
@@ -529,28 +432,6 @@ def build_run_instructions(
     return tuple(instructions)
 
 
-def build_run_resources(
-    available_tools: Mapping[str, Tool],
-    resource_center: ResourceCenter | None,
-    working_directory: object | None = None,
-    *,
-    library_snapshot: Mapping[str, object] | None = None,
-    mcp_tools_by_server: Mapping[str, tuple[Tool, ...]] | None = None,
-    tool_registry: ToolRegistry | None = None,
-) -> RunResources:
-    """集中构造一次运行的资源，不创建文件、数据库或网络连接。"""
-    if resource_center is not None and not isinstance(resource_center, ResourceCenter):
-        raise TypeError("run resource center must be a ResourceCenter")
-    return RunResources(
-        available_tools=available_tools,
-        resource_center=resource_center,
-        working_directory=working_directory,
-        library_snapshot=library_snapshot,
-        mcp_tools_by_server=mcp_tools_by_server,
-        tool_registry=tool_registry,
-    )
-
-
 def add_unique_tool(target: dict[str, Tool], tool: Tool) -> None:
     """注册工具，并拒绝同名不同实现。"""
     existing = target.get(tool.name)
@@ -573,103 +454,40 @@ def add_optional_tools(
 
 
 def stream_run(
-    request: RunRequest,
-    model: Model,
-    tools: Iterable[Tool] = (),
-    *,
-    setup: RunSetup | None = None,
+    run: RunInput,
 ) -> Generator[RunEvent, None, RunResult]:
-    selected = setup or RunSetup()
-    request, tools, selected = _apply_run_plan(request, tools, selected)
-    session = _create_session(request, tools, selected)
-    engine = _RunEngine(
-        request,
-        model,
-        session,
-        selected.listeners,
-        selected.prepare,
-        selected.session_record,
-        ToolExecutionCenter(
-            selected.tool_decider,
-            timeout_seconds=selected.tool_timeout_seconds,
-            is_cancelled=selected.cancel_check,
-        ),
-        selected.checkpoint_store,
-        selected.resume_checkpoint,
-        selected.interrupt_check,
-    )
-    return (yield from engine.stream())
+    if not isinstance(run, RunInput):
+        raise TypeError("stream_run requires a RunInput")
+    return (yield from _RunEngine(run, _create_state(run)).stream())
 
 
-def _apply_run_plan(
-    request: RunRequest,
-    tools: Iterable[Tool],
-    setup: RunSetup,
-) -> tuple[RunRequest, tuple[Tool, ...], RunSetup]:
-    plan = setup.plan
-    if plan is None:
-        return request, tuple(tools), setup
-    selected_prepare = _combine_preparations(plan.prepare_hooks, setup.prepare)
-    selected = replace(
-        setup,
-        listeners=(*plan.listeners, *setup.listeners),
-        resources=plan.resources.merge(setup.resources),
-        prepare=selected_prepare,
-        plan=None,
-    )
-    return (
-        replace(request, instructions=(*plan.instructions, *request.instructions)),
-        (*plan.active_tools.values(), *tuple(tools)),
-        selected,
-    )
-
-
-def _combine_preparations(
-    hooks: Iterable[RunPreparation], final: RunPreparation | None
-) -> RunPreparation | None:
-    selected = tuple(hooks)
-    if not selected:
-        return final
-
-    def prepare(session: RunContext, context: ToolContext) -> None:
-        for hook in selected:
-            hook(session, context)
-        if final is not None:
-            final(session, context)
-
-    return prepare
-
-
-def _create_session(
-    request: RunRequest,
-    tools: Iterable[Tool],
-    setup: RunSetup,
-) -> RunContext:
-    registered: dict[str, Tool] = {}
-    for tool in tools:
-        if tool.name in registered:
-            raise ValueError(f"duplicate tool: {tool.name}")
-        registered[tool.name] = tool
-    history = normalize_messages(request.messages)
-    history.append(Message("user", request.prompt.strip()))
-    identity = setup.identity or RunIdentity()
-    if setup.session_record is not None:
-        if identity.session_id not in {None, setup.session_record.session_id}:
+def _create_state(run: RunInput) -> _RunState:
+    registry = run.tool_registry or ToolRegistry()
+    registry.register_many(run.available_tools.values(), exposure="after_skill")
+    registry.register_many(run.tools, exposure="always")
+    history = normalize_messages(run.messages)
+    history.append(Message("user", run.prompt.strip()))
+    identity = run.identity
+    if run.session_record is not None:
+        if identity.session_id not in {None, run.session_record.session_id}:
             raise ValueError("run identity session_id does not match session record")
-        identity = replace(identity, session_id=setup.session_record.session_id)
-    if setup.resume_checkpoint is not None:
-        if setup.resume_checkpoint.run_id != identity.run_id:
+        identity = replace(identity, session_id=run.session_record.session_id)
+    if run.resume_checkpoint is not None:
+        if run.resume_checkpoint.run_id != identity.run_id:
             raise ValueError("resume checkpoint run_id does not match run identity")
-        if setup.resume_checkpoint.status not in {"failed", "interrupted", "waiting"}:
+        if run.resume_checkpoint.status not in {"failed", "interrupted", "waiting"}:
             raise ValueError("only failed, interrupted, or waiting runs can be resumed")
-    session = RunContext(
+    session = _RunState(
         identity=identity,
         messages=history,
-        instructions=[item.strip() for item in request.instructions if item.strip()],
-        tools=registered,
-        resources=setup.resources,
-        context_limit=request.limits.max_context_characters,
-        runtime_lifecycle=setup.runtime_lifecycle,
+        instructions=[item.strip() for item in run.instructions if item.strip()],
+        tool_registry=registry,
+        resource_center=run.resource_center or ResourceCenter(),
+        working_directory=run.working_directory,
+        library_snapshot=run.library_snapshot,
+        mcp_tools_by_server=run.mcp_tools_by_server,
+        context_limit=run.limits.max_context_characters,
+        runtime_lifecycle=run.runtime_lifecycle,
     )
     for instruction in session.instructions:
         session.reserve_context(instruction, kind="instruction", source="request")
@@ -687,16 +505,8 @@ class _ModelTurn:
 
 @dataclass
 class _RunEngine:
-    request: RunRequest
-    model: Model
-    session: RunContext
-    listeners: tuple[EventListener, ...]
-    prepare: RunPreparation | None
-    session_record: SessionRecord | None = None
-    tool_center: ToolExecutionCenter = field(default_factory=ToolExecutionCenter)
-    checkpoint_store: CheckpointStore | None = None
-    resume_checkpoint: RunCheckpoint | None = None
-    interrupt_check: CancelCheck | None = None
+    run: RunInput
+    session: _RunState
     events: list[RunEvent] = field(default_factory=list)
     listener_failures: list[dict[str, str]] = field(default_factory=list)
     usage: dict[str, int | float | None] = field(default_factory=dict)
@@ -704,15 +514,21 @@ class _RunEngine:
     turns: int = 0
     context: ToolContext = field(init=False)
     event_bus: EventBus = field(init=False)
+    tool_center: ToolExecutionCenter = field(init=False)
 
     def __post_init__(self) -> None:
         self.context = ToolContext(self.session, self.capture)
+        self.tool_center = ToolExecutionCenter(
+            self.run.tool_decider,
+            timeout_seconds=self.run.tool_timeout_seconds,
+            is_cancelled=self.run.cancel_check,
+        )
         self.event_bus = EventBus(
-            self.listeners,
-            session_record=self.session_record,
-            checkpoint_store=self.checkpoint_store,
+            self.run.listeners,
+            session_record=self.run.session_record,
+            checkpoint_store=self.run.checkpoint_store,
             checkpoint_factory=self._checkpoint_for,
-            allow_listener_failures=self.request.allow_listener_failures,
+            allow_listener_failures=self.run.allow_listener_failures,
         )
 
     def emit(
@@ -720,7 +536,7 @@ class _RunEngine:
         event_type: str,
         data: Mapping[str, object] | None = None,
     ) -> RunEvent:
-        maximum = self.request.limits.max_events
+        maximum = self.run.limits.max_events
         if maximum is not None and len(self.events) >= maximum:
             raise RuntimeError(f"run event limit reached: {maximum}")
         event = RunEvent(
@@ -773,12 +589,12 @@ class _RunEngine:
 
     def _start(self) -> Generator[RunEvent, None, None]:
         identity = self.session.identity
-        if self.resume_checkpoint is not None:
+        if self.run.resume_checkpoint is not None:
             yield self.emit(
                 "run.resumed",
                 {
-                    "checkpoint_id": self.resume_checkpoint.checkpoint_id,
-                    "checkpoint_sequence": self.resume_checkpoint.event_sequence,
+                    "checkpoint_id": self.run.resume_checkpoint.checkpoint_id,
+                    "checkpoint_sequence": self.run.resume_checkpoint.event_sequence,
                 },
             )
         yield self.emit(
@@ -791,39 +607,39 @@ class _RunEngine:
                 "working_directory_id": identity.working_directory_id,
                 "parent_run_id": identity.parent_run_id,
                 "depth": identity.depth,
-                "purpose": self.request.purpose,
-                "prompt": self.request.prompt,
-                "library_snapshot": self.session.resources.library_snapshot or {},
-                "optional_mechanisms": self.request.metadata.get(
+                "purpose": self.run.purpose,
+                "prompt": self.run.prompt,
+                "library_snapshot": self.session.library_snapshot or {},
+                "optional_mechanisms": self.run.metadata.get(
                     "_super_agent_optional_mechanisms", {}
                 ),
             },
         )
-        for warning in self.request.warning_messages:
+        for warning in self.run.warning_messages:
             yield self.emit("run.warning", {"message": warning})
-        if self.prepare is not None:
+        if self.run.prepare is not None:
             self.captured_events.clear()
-            self.prepare(self.session, self.context)
+            self.run.prepare(self.session, self.context)
             yield from self._take_captured_events()
 
     def _call_model(self) -> Generator[RunEvent, None, _ModelTurn]:
         self._check_interrupted()
         self.turns += 1
-        maximum = self.request.limits.max_model_turns
+        maximum = self.run.limits.max_model_turns
         if maximum is not None and self.turns > maximum:
             raise RuntimeError(f"model turn limit reached: {maximum}")
         messages = self.session.model_messages()
         _check_model_input(
             messages,
             self.session.tools.values(),
-            self.request.limits,
+            self.run.limits,
         )
         model_request = ModelRequest(
             messages,
             tuple(tool.spec for tool in self.session.tools.values()),
-            self.request.purpose,
-            self.request.required_features,
-            self.request.metadata,
+            self.run.purpose,
+            self.run.required_features,
+            self.run.metadata,
         )
         yield self.emit(
             "model.call.started",
@@ -836,7 +652,7 @@ class _RunEngine:
         text_parts: list[str] = []
         calls: list[ToolCall] = []
         stop_reason = "model_finished"
-        for event in self.model.stream(model_request):
+        for event in self.run.model.stream(model_request):
             if not isinstance(event, ModelEvent):
                 raise TypeError("Model.stream() must yield ModelEvent values")
             if event.event_type == "text":
@@ -890,7 +706,7 @@ class _RunEngine:
             output = {"error": f"unknown tool: {call.name}"}
             content, recorded_output = _prepare_tool_output(
                 output,
-                self.request.limits,
+                self.run.limits,
                 self.context,
                 f"tool:{call.name}:{call.call_id}",
             )
@@ -937,7 +753,7 @@ class _RunEngine:
                 )
                 content, recorded_output = _prepare_tool_output(
                     output,
-                    self.request.limits,
+                    self.run.limits,
                     self.context,
                     f"tool:{call.name}:{call.call_id}",
                 )
@@ -960,7 +776,7 @@ class _RunEngine:
                 }
                 content, recorded_output = _prepare_tool_output(
                     output,
-                    self.request.limits,
+                    self.run.limits,
                     self.context,
                     f"tool:{call.name}:{call.call_id}:error",
                 )
@@ -979,7 +795,7 @@ class _RunEngine:
         )
 
     def _check_interrupted(self) -> None:
-        if self.interrupt_check is not None and self.interrupt_check():
+        if self.run.interrupt_check is not None and self.run.interrupt_check():
             raise RunInterrupted("run interruption was requested")
 
     def _checkpoint_for(self, event: RunEvent) -> RunCheckpoint:
@@ -1011,7 +827,7 @@ class _RunEngine:
                 "workflow": self.session.workflow,
                 "context_ledger": self.session.context_snapshot(),
                 "runtime_lifecycle": self.session.runtime_lifecycle.snapshot(),
-                "library_snapshot": self.session.resources.library_snapshot or {},
+                "library_snapshot": self.session.library_snapshot or {},
             },
             created_at=event.created_at,
         )
@@ -1037,7 +853,7 @@ class _RunEngine:
                 "usage": dict(self.usage),
                 "context_ledger": self.session.context_snapshot(),
                 "runtime_lifecycle": self.session.runtime_lifecycle.snapshot(),
-                "library_snapshot": self.session.resources.library_snapshot or {},
+                "library_snapshot": self.session.library_snapshot or {},
             },
         )
         return RunResult(
@@ -1047,7 +863,7 @@ class _RunEngine:
             events=tuple(self.events),
             skills=tuple(self.session.active_skills),
             workflow=self.session.workflow,
-            warning_messages=self.request.warning_messages,
+            warning_messages=self.run.warning_messages,
             usage=dict(self.usage),
             subscriber_failures=tuple(self.listener_failures),
             parent_run_id=identity.parent_run_id,
@@ -1055,9 +871,7 @@ class _RunEngine:
             session_id=identity.session_id,
             context_ledger=self.session.context_snapshot(),
             runtime_lifecycle=self.session.runtime_lifecycle.snapshot(),
-            library_snapshot=(
-                self.session.resources.library_snapshot or {}
-            ),
+            library_snapshot=self.session.library_snapshot or {},
         )
 
 
@@ -1087,7 +901,7 @@ def _prepare_tool_output(
         wrapper_characters = len(
             json.dumps({"progressive_disclosure": {}}, ensure_ascii=False, sort_keys=True)
         ) - 2
-        disclosed = context.session.resources.resource_center.disclose_resource(
+        disclosed = context.session.resource_center.disclose_resource(
             reference,
             text,
             max_characters=min(maximum or MAX_PAGE_CHARACTERS, MAX_PAGE_CHARACTERS),
@@ -1095,7 +909,7 @@ def _prepare_tool_output(
                 None if remaining is None else remaining - wrapper_characters
             ),
         )
-        reader = context.session.resources.resource_center.create_read_tool()
+        reader = context.session.resource_center.create_read_tool()
         context.session.add_tool(reader)
         summary = {"progressive_disclosure": disclosed.to_dict()}
         context.emit(

@@ -11,7 +11,7 @@ from core.event import RunIdentity
 from core.model import ModelEvent, Tool
 from core.provider import MockModel
 from core.records import EventStore
-from core.run import RunResources, RunSession, ToolContext
+from core.run import ToolContext
 from skill.document import format_skill, parse_skill_text, read_skill_package
 from skill.evolution import (
     SkillEvidence,
@@ -21,6 +21,7 @@ from skill.evolution import (
 )
 from skill.library import AgentLibrary
 from super_agent import Agent
+from tests.run_state import make_run_state
 
 
 def write_skill(
@@ -157,7 +158,7 @@ class AgentLibraryTests(unittest.TestCase):
             tool = next(
                 item for item in installed.tools() if item.name == "read_skill_resource"
             )
-            session = RunSession(RunIdentity(), [], [], {})
+            session = make_run_state()
             context = ToolContext(session, lambda _event, _data: None)  # type: ignore[arg-type]
             page = tool.handler(
                 {
@@ -216,9 +217,7 @@ class AgentLibraryTests(unittest.TestCase):
             cached = library.read_disclosed(first.cache_path, max_characters=10)
             self.assertEqual((10, first.content), (len(first.content), cached.content))
             self.assertEqual(2, len(library.history()))
-            session = RunSession(
-                RunIdentity(), [], [], {}, resources=RunResources(available_tools={})
-            )
+            session = make_run_state()
             self.assertEqual(
                 ("skill:demo",), library.activate_skill("skill:demo", session)
             )
@@ -254,12 +253,9 @@ class AgentLibraryTests(unittest.TestCase):
             )
             library = AgentLibrary((root,))
             available = Tool("available", "Available", lambda _args, _context: {})
-            session = RunSession(
-                RunIdentity(),
-                [],
-                ["existing"],
-                {},
-                resources=RunResources(available_tools={"available": available}),
+            session = make_run_state(
+                instructions=("existing",),
+                available_tools=(available,),
                 context_characters=8,
             )
             with self.assertRaises(RuntimeError):
@@ -282,14 +278,8 @@ class AgentLibraryTests(unittest.TestCase):
             )
             required = Tool("required", "Required", lambda _args, _context: {})
             optional = Tool("optional", "Optional", lambda _args, _context: {})
-            session = RunSession(
-                RunIdentity(),
-                [],
-                [],
-                {},
-                resources=RunResources(
-                    available_tools={"required": required, "optional": optional}
-                ),
+            session = make_run_state(
+                available_tools=(required, optional),
             )
             library = AgentLibrary((root,))
             library.activate_skill("skill:optional", session)
@@ -342,11 +332,7 @@ class AgentLibraryTests(unittest.TestCase):
             )
             library = AgentLibrary((root,))
             self.assertEqual(("search",), library.find_mcp_server("mcp:example/search").tools)
-            session = RunSession(
-                RunIdentity(), [], [], {}, resources=RunResources(
-                    available_tools={}, mcp_tools_by_server={}
-                )
-            )
+            session = make_run_state()
             with self.assertRaisesRegex(RuntimeError, "explicitly connected"):
                 library.activate_plugin("plugin:example/task", session)
 
@@ -401,15 +387,8 @@ class AgentLibraryTests(unittest.TestCase):
             events = []
             library = AgentLibrary((root,), record_event=lambda event, data: events.append((event, data)))
             tool = Tool("search", "Search", lambda _arguments, _context: {})
-            session = RunSession(
-                RunIdentity(),
-                [],
-                [],
-                {},
-                resources=RunResources(
-                    available_tools={},
-                    mcp_tools_by_server={"mcp:example/search": (tool,)},
-                ),
+            session = make_run_state(
+                mcp_tools_by_server={"mcp:example/search": (tool,)},
             )
             library.activate_plugin("plugin:example/task", session)
             self.assertIn("search", session.tools)
@@ -502,11 +481,7 @@ class AgentLibraryTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1] / "src" / "skill" / "builtin"
         library = AgentLibrary((root,))
         self.assertEqual(23, library.list_skills().total)
-        session = RunSession(
-                RunIdentity(), [], [], {}, resources=RunResources(
-                    available_tools={"calculate_numbers": object()}
-                )
-        )
+        session = make_run_state()
         with self.assertRaises(RuntimeError):
             library.activate_plugin("plugin:super-agent/common", session)
 

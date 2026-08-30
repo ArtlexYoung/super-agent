@@ -24,21 +24,21 @@ from core.provider import (
     create_model,
 )
 from core.records import AuditPolicy, Conversations, EventStore, RecordQuery
-from core.run import RunPlan, RunRequest, RunSetup, collect_run, stream_run
+from core.run import RunInput, collect_run, stream_run
 from super_agent import Agent, model_from_environment
 
 
 class CoreRuntimeTests(unittest.TestCase):
-    def test_run_plan_contributes_without_domain_knowledge_in_runtime(self):
+    def test_run_input_contributes_without_domain_knowledge_in_runtime(self):
         tool = Tool("planned", "Planned tool", lambda _args, _context: {"ok": True})
-        plan = RunPlan()
-        plan.add_instruction("follow the plan")
-        plan.add_tool(tool)
         result = collect_run(
             stream_run(
-                RunRequest("use plan"),
-                MockModel("complete"),
-                setup=RunSetup(plan=plan),
+                RunInput(
+                    "use plan",
+                    MockModel("complete"),
+                    instructions=("follow the plan",),
+                    tools=(tool,),
+                )
             )
         )
         self.assertEqual("complete", result.text)
@@ -98,11 +98,7 @@ class CoreRuntimeTests(unittest.TestCase):
         )
         tool = Tool("add", "Add two numbers", add, {"type": "object"})
         result = collect_run(
-            stream_run(
-                RunRequest("calculate"),
-                model,
-                (tool,),
-            )
+            stream_run(RunInput("calculate", model, tools=(tool,)))
         )
         self.assertEqual("The sum is five.", result.text)
         self.assertEqual([{"a": 2, "b": 3}], calls)
@@ -118,9 +114,11 @@ class CoreRuntimeTests(unittest.TestCase):
         )
         result = collect_run(
             stream_run(
-                RunRequest("run invalid tool"),
-                model,
-                (Tool("invalid", "Return an invalid value", lambda _args, _context: object()),),
+                RunInput(
+                    "run invalid tool",
+                    model,
+                    tools=(Tool("invalid", "Return an invalid value", lambda _args, _context: object()),),
+                )
             )
         )
         self.assertTrue(any(event.event_type == "tool.failed" for event in result.events))
@@ -135,12 +133,12 @@ class CoreRuntimeTests(unittest.TestCase):
         )
         result = collect_run(
             stream_run(
-                RunRequest(
+                RunInput(
                     "read large output",
+                    model,
+                    tools=(Tool("large", "Return bounded test data", lambda _args, _context: {"value": "x" * 1000}),),
                     limits=RunLimits(max_tool_output_characters=200),
-                ),
-                model,
-                (Tool("large", "Return bounded test data", lambda _args, _context: {"value": "x" * 1000}),),
+                )
             )
         )
         completed = next(
@@ -163,15 +161,15 @@ class CoreRuntimeTests(unittest.TestCase):
         )
         result = collect_run(
             stream_run(
-                RunRequest(
+                RunInput(
                     "x",
+                    model,
+                    tools=(Tool("large", "Return test data", lambda _args, _context: "y" * 2_000),),
                     limits=RunLimits(
                         max_context_characters=500,
                         max_tool_output_characters=1_000,
                     ),
-                ),
-                model,
-                (Tool("large", "Return test data", lambda _args, _context: "y" * 2_000),),
+                )
             )
         )
         completed = next(event for event in result.events if event.event_type == "tool.completed")
@@ -186,15 +184,15 @@ class CoreRuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "disclosure reference|remaining context"):
             collect_run(
                 stream_run(
-                    RunRequest(
+                    RunInput(
                         "x",
+                        model,
+                        tools=(Tool("large", "Return test data", lambda _args, _context: "y" * 2_000),),
                         limits=RunLimits(
                             max_context_characters=100,
                             max_tool_output_characters=10,
                         ),
-                    ),
-                    model,
-                    (Tool("large", "Return test data", lambda _args, _context: "y" * 2_000),),
+                    )
                 )
             )
 
@@ -213,8 +211,12 @@ class CoreRuntimeTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             collect_run(
                 stream_run(
-                    RunRequest("hello", instructions=("x" * 20,), limits=RunLimits(max_context_characters=10)),
-                    MockModel("never reached"),
+                    RunInput(
+                        "hello",
+                        MockModel("never reached"),
+                        instructions=("x" * 20,),
+                        limits=RunLimits(max_context_characters=10),
+                    )
                 )
             )
 

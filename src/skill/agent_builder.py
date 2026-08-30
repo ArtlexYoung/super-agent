@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from collections.abc import Mapping
@@ -14,9 +14,9 @@ from core.records import EventStore, RecordScope
 
 if TYPE_CHECKING:
     from core.config import WorkingDirectory
-    from core.model import Model, Tool
+    from core.model import Tool
     from core.records import EventStore, RecordBackend, SessionRecord
-    from core.run import RunRequest, RunSetup, ToolRegistry
+    from core.run import ToolRegistry
     from skill.library import AgentLibrary
     from super_agent import Agent
 
@@ -58,358 +58,232 @@ class OptionalMechanisms:
         }
 
 
-class AgentRunParts:
-    """Hold optional run parts without making the basic Agent stateful."""
+def agent_event_store(agent: Agent, identity: RunIdentity) -> EventStore | None:
+    if agent.storage is None:
+        return None
+    return EventStore(agent.storage, scope=RecordScope.from_identity(identity))
 
-    def __init__(self, agent: Agent) -> None:
-        self.agent = agent
-        self._memories: dict[tuple[str, str, str], object] = {}
 
-    def clear_memory_cache(self) -> None:
-        """Drop only in-process memory objects after storage changes."""
-        self._memories.clear()
+def agent_library(
+    agent: Agent, identity: RunIdentity, store: EventStore | None
+) -> AgentLibrary | None:
+    base = agent.library
+    if base is None:
+        return None
+    library = base.for_scope(
+        identity.user_id,
+        identity.agent_name,
+        disabled_plugins=agent._disabled_plugins,
+        disabled_skills=agent._disabled_skills,
+        disabled_mcp_servers=base.disabled_mcp_servers,
+    )
+    if store is not None:
+        def record(event: str, data: Mapping[str, object]) -> object:
+            stream = next((name for name in ("plugin", "skill", "mcp") if event.startswith(f"{name}.")), "disclosure")
+            return store.append(stream, str(data.get("key", data.get("reference", "content"))), event, data)
 
-    def event_store(self, identity: RunIdentity) -> EventStore | None:
-        storage = self.agent.storage
-        if storage is None:
-            return None
-        return EventStore(
-            storage,
-            scope=RecordScope.from_identity(identity),
-        )
+        library.record_event = record
+    return library
 
-    def library(
-        self, identity: RunIdentity, store: EventStore | None
-    ) -> AgentLibrary | None:
-        base = self.agent.library
-        if base is None:
-            return None
-        library = base.for_scope(
+
+def agent_memory(
+    agent: Agent,
+    identity: RunIdentity,
+    store: EventStore | None,
+    working_directory: WorkingDirectory | None = None,
+) -> object:
+    key = (identity.user_id, identity.agent_name, "" if working_directory is None else working_directory.identity)
+    if key in agent._memories:
+        return agent._memories[key]
+    selected_store: RecordBackend | EventStore | None = store
+    if working_directory is not None:
+        import hashlib
+
+        scope = hashlib.sha256(f"{identity.user_id}\0{identity.agent_name}".encode()).hexdigest()[:24]
+        selected_store = JsonlMemoryStore(
+            working_directory.path / ".super-agent" / "memory" / "users" / f"{scope}.jsonl",
             identity.user_id,
             identity.agent_name,
-            disabled_plugins=self.agent._disabled_plugins,
-            disabled_skills=self.agent._disabled_skills,
-            disabled_mcp_servers=base.disabled_mcp_servers,
         )
-        if store is None:
-            return library
+    elif store is not None:
+        selected_store = EventMemoryStore(store)
+    from skill.memory import Memory
 
-        def record_catalog_event(
-            event: str, data: Mapping[str, object]
-        ) -> object:
-            stream = next(
-                (
-                    name
-                    for name in ("plugin", "skill", "mcp")
-                    if event.startswith(f"{name}.")
-                ),
-                "disclosure",
+    agent._memories[key] = Memory(selected_store)
+    return agent._memories[key]
+
+
+def agent_evolution(agent: Agent, library: AgentLibrary, store: EventStore | None) -> object:
+    from skill.evolution import SkillEvolution
+
+    return SkillEvolution(library, policy=agent.evolution_policy, store=store, runner=agent.candidate_runner)
+
+
+def agent_tools(
+    agent: Agent,
+    identity: RunIdentity,
+    library: AgentLibrary | None,
+    store: EventStore | None,
+    working_directory: WorkingDirectory | None,
+) -> tuple[ToolRegistry, dict[str, tuple[Tool, ...]]]:
+    from adapter.tools import mcp_tools
+    from core.run import ToolRegistry
+
+    registry = ToolRegistry(agent._tool_registry.active.values(), agent._tool_registry.available.values())
+    mcp_by_server: dict[str, tuple[Tool, ...]] = {}
+    if library is not None:
+        registry.register_many(library.tools(), exposure="always")
+        for reference, (server, effects) in agent._mcp_servers.items():
+            definition = library.find_mcp_server(reference)
+            mcp_by_server[definition.reference] = mcp_tools(
+                definition.mcp_id, server, effects, declared_tools=definition.tools
             )
-            stream_id = str(data.get("key", data.get("reference", "content")))
-            return store.append(stream, stream_id, event, data)
-
-        library.record_event = record_catalog_event
-        return library
-
-    def memory(
-        self,
-        identity: RunIdentity,
-        store: EventStore | None,
-        working_directory: WorkingDirectory | None = None,
-    ) -> object:
-        key = (
-            identity.user_id,
-            identity.agent_name,
-            "" if working_directory is None else working_directory.identity,
+    if agent.optional_mechanisms.memory:
+        if "plugin:super-agent/memory" not in agent._enabled_plugins:
+            raise RuntimeError("memory requires the explicit Memory plugin")
+        registry.register_many(
+            agent_memory(agent, identity, store, working_directory).tools(),
+            exposure="after_skill" if library is not None else "always",
         )
-        if key in self._memories:
-            return self._memories[key]
-        selected_store: RecordBackend | EventStore | None = store
-        if working_directory is not None:
-            import hashlib
+    if agent.optional_mechanisms.evolution:
+        if "plugin:super-agent/evolution" not in agent._enabled_plugins:
+            raise RuntimeError("Skill evolution requires the explicit Evolution plugin")
+        if library is None:
+            raise RuntimeError("Skill evolution requires an AgentLibrary")
+        registry.register_many(agent_evolution(agent, library, store).tools(), exposure="after_skill")
+    return registry, mcp_by_server
 
-            scope = hashlib.sha256(
-                f"{identity.user_id}\0{identity.agent_name}".encode("utf-8")
-            ).hexdigest()[:24]
-            path = (
-                working_directory.path
-                / ".super-agent"
-                / "memory"
-                / "users"
-                / f"{scope}.jsonl"
-            )
-            selected_store = JsonlMemoryStore(
-                path,
-                identity.user_id,
-                identity.agent_name,
-            )
-        elif store is not None:
-            selected_store = EventMemoryStore(store)
-        from skill.memory import Memory
 
-        value = Memory(selected_store)
-        self._memories[key] = value
-        return value
+def stream_agent(agent: Agent, prompt: str, context: AgentContext):
+    """Build and execute one Agent run through the only Runtime entry point."""
+    from core import require_text
+    from core.run import RunInput, RuntimeLifecycle, ToolContext, build_run_instructions, stream_run
+    from core.user import conversation_run_messages, model_scope, model_tracking_listener
 
-    def evolution(self, library: AgentLibrary, store: EventStore | None) -> object:
-        from skill.evolution import SkillEvolution
-
-        return SkillEvolution(
-            library,
-            policy=self.agent.evolution_policy,
-            store=store,
-            runner=self.agent.candidate_runner,
+    selected_session = context.session or agent._session_record
+    checkpoint = context.resume_checkpoint
+    working_directory = _make_working_directory(
+        context.working_directory or agent.working_directory
+    )
+    model = agent._require_model()
+    selected_prompt = require_text(prompt, "Agent prompt")
+    identity = _build_run_identity(
+        context, agent.name, selected_session, working_directory, checkpoint
+    )
+    store = agent_event_store(agent, identity)
+    library = agent_library(agent, identity, store)
+    agent_tree = context.team_runtime or _team_runtime(agent, identity.user_id)
+    lifecycle = context.runtime_lifecycle or RuntimeLifecycle(identity.run_id)
+    group_id = context.agent_group_id or _agent_group_id(agent)
+    _check_call_depth(_tree_settings(agent, agent_tree), identity.depth)
+    tree_plan = (
+        None if agent_tree is None else agent_tree.prepare_run(group_id, identity.depth)
+    )
+    resource_center = (
+        tree_plan.resources
+        if tree_plan is not None
+        else None if library is None else library.resources
+    )
+    if library is not None and resource_center is not None:
+        library.use_resource_center(resource_center)
+    effective_context = replace(
+        context,
+        conversation_id=identity.conversation_id,
+        identity=identity,
+        team_runtime=agent_tree,
+        agent_group_id=group_id,
+        runtime_lifecycle=lifecycle,
+    )
+    runtime_scope = effective_context.scope(agent.name)
+    runtime_options = effective_context.options()
+    messages = conversation_run_messages(
+        effective_context.messages,
+        runtime_scope.conversation_id,
+        runtime_options.save_conversation,
+        store,
+    )
+    registry, mcp_tools = agent_tools(
+        agent, identity, library, store, working_directory
+    )
+    if tree_plan is not None:
+        registry.register_many(
+            tree_plan.tools,
+            exposure="after_skill" if library is not None else "always",
         )
+        if library is None:
+            registry.register(tree_plan.resources.create_read_tool(), exposure="always")
+    listeners = [*agent._listeners, *runtime_options.listeners]
+    if store is not None and runtime_options.persist_run_events:
+        listeners.append(store.run_listener(identity))
+    tracking = model_tracking_listener(
+        agent, model, store, identity, effective_context.purpose
+    )
+    if tracking is not None:
+        listeners.append(tracking)
 
-    def tools(
-        self,
-        identity: RunIdentity,
-        library: AgentLibrary | None,
-        store: EventStore | None,
-        working_directory: WorkingDirectory | None,
-    ) -> tuple[ToolRegistry, dict[str, tuple[Tool, ...]]]:
-        """Build tools from explicitly selected optional parts."""
-        from adapter.tools import mcp_tools
-        from core.model import Tool
-        from core.run import ToolRegistry
-
-        registry = ToolRegistry(
-            active=self.agent._tool_registry.active.values(),
-            available=self.agent._tool_registry.available.values(),
-        )
-        mcp_by_server: dict[str, tuple[Tool, ...]] = {}
+    def prepare(session: object, tool_context: ToolContext) -> None:
         if library is not None:
-            registry.register_many(library.tools(), exposure="always")
-            for reference, (server, effects) in self.agent._mcp_servers.items():
-                definition = library.find_mcp_server(reference)
-                mcp_by_server[definition.reference] = mcp_tools(
-                    definition.mcp_id,
-                    server,
-                    effects,
-                    declared_tools=definition.tools,
-                )
-        self._register_optional_tools(
-            registry,
-            identity=identity,
-            library=library,
-            store=store,
-            working_directory=working_directory,
-        )
-        return registry, mcp_by_server
-
-    def _register_optional_tools(
-        self,
-        registry: ToolRegistry,
-        *,
-        identity: RunIdentity,
-        library: AgentLibrary | None,
-        store: EventStore | None,
-        working_directory: WorkingDirectory | None,
-    ) -> None:
-        """只在明确打开对应机制时注册工具。"""
-        mechanisms = self.agent.optional_mechanisms
-        if mechanisms.memory:
-            if "plugin:super-agent/memory" not in self.agent._enabled_plugins:
-                raise RuntimeError("memory requires the explicit Memory plugin")
-            value = self.memory(identity, store, working_directory)
-            registry.register_many(
-                value.tools(),
-                exposure="after_skill" if library is not None else "always",
-            )
-        if mechanisms.evolution:
-            if "plugin:super-agent/evolution" not in self.agent._enabled_plugins:
-                raise RuntimeError(
-                    "Skill evolution requires the explicit Evolution plugin"
-                )
-            if library is None:
-                raise RuntimeError("Skill evolution requires an AgentLibrary")
-            value = self.evolution(library, store)
-            registry.register_many(value.tools(), exposure="after_skill")
-
-
-@dataclass(frozen=True)
-class AgentRun:
-    """Everything needed to hand one prepared run to the Runtime."""
-
-    model: Model
-    request: RunRequest
-    setup: RunSetup
-    prompt: str
-    conversation_id: str | None
-    save_conversation: bool
-    store: EventStore | None
-
-
-class AgentRunBuilder:
-    """Translate Agent configuration into the one Runtime input shape."""
-
-    def __init__(self, agent: Agent) -> None:
-        self.agent = agent
-
-    def build(self, prompt: str, context: AgentContext) -> AgentRun:
-        from core import require_text
-        from core.model import Model
-        from core.run import (
-            RunPlan,
-            RunRequest,
-            RunSetup,
-            RuntimeLifecycle,
-            ToolContext,
-            build_run_instructions,
-            build_run_resources,
-        )
-        from core.user import conversation_run_messages, model_scope, model_tracking_listener
-
-        selected_session = context.session or self.agent._session_record
-        checkpoint = context.resume_checkpoint
-        working_directory = _make_working_directory(
-            context.working_directory or self.agent.working_directory
-        )
-        model = self.agent._require_model()
-        selected_prompt = require_text(prompt, "Agent prompt")
-        identity = _build_run_identity(
-            context,
-            self.agent.name,
-            selected_session,
-            working_directory,
-            checkpoint,
-        )
-        conversation_id = identity.conversation_id
-        parts = self.agent.run_parts
-        store = parts.event_store(identity)
-        library = parts.library(identity, store)
-        agent_tree = context.team_runtime or _team_runtime(
-            self.agent, identity.user_id
-        )
-        lifecycle = context.runtime_lifecycle or RuntimeLifecycle(identity.run_id)
-        group_id = context.agent_group_id or _agent_group_id(self.agent)
-        tree_settings = _tree_settings(self.agent, agent_tree)
-        _check_call_depth(tree_settings, identity.depth)
-        tree_plan = (
-            None
-            if agent_tree is None
-            else agent_tree.prepare_run(group_id, identity.depth)
-        )
-        resource_center = (
-            tree_plan.resources
-            if tree_plan is not None
-            else None if library is None else library.resources
-        )
-        if library is not None and resource_center is not None:
-            library.use_resource_center(resource_center)
-        warnings = () if tree_plan is None else tree_plan.warnings
-        effective_context = replace(
-            context,
-            conversation_id=conversation_id,
-            identity=identity,
-            team_runtime=agent_tree,
-            agent_group_id=group_id,
-            runtime_lifecycle=lifecycle,
-        )
-        runtime_scope = effective_context.scope(self.agent.name)
-        runtime_options = effective_context.options()
-        messages = conversation_run_messages(
-            effective_context.messages,
-            runtime_scope.conversation_id,
-            runtime_options.save_conversation,
-            store,
-        )
-        registry, mcp_tools = parts.tools(
-            identity, library, store, working_directory
-        )
-        if tree_plan is not None:
-            registry.register_many(
-                tree_plan.tools,
-                exposure="after_skill" if library is not None else "always",
-            )
-            if library is None:
-                registry.register(
-                    tree_plan.resources.create_read_tool(), exposure="always"
-                )
-        instructions = build_run_instructions(
-            self.agent.instructions,
-            None if library is None else library.resource_index(),
-            effective_context.shared_context,
-        )
-        active_tools = registry.active
-        request = RunRequest(
-            prompt=selected_prompt,
-            messages=messages,
-            instructions=(),
-            purpose=effective_context.purpose,
-            required_features=_required_features(
-                effective_context.required_features, bool(active_tools)
-            ),
-            limits=self.agent.settings.limits,
-            metadata={
-                **dict(effective_context.metadata),
-                "_super_agent_model_scope": model_scope(identity),
-                "_super_agent_run_scope": runtime_scope.to_dict(),
-                "_super_agent_optional_mechanisms": self.agent.optional_mechanisms.describe(
-                    model
-                ),
-            },
-            warning_messages=warnings,
-        )
-        listeners = [*self.agent._listeners, *runtime_options.listeners]
-        if store is not None and runtime_options.persist_run_events:
-            listeners.append(store.run_listener(identity))
-        tracking = model_tracking_listener(
-            self.agent, model, store, identity, effective_context.purpose
-        )
-        if tracking is not None:
-            listeners.append(tracking)
-        plan = RunPlan(
-            instructions=list(instructions),
-            active_tools=dict(active_tools),
-            resources=build_run_resources(
-                registry.available,
-                resource_center,
-                working_directory,
-                library_snapshot=(
-                    None if library is None else library.snapshot().to_dict()
-                ),
-                mcp_tools_by_server=mcp_tools,
-                tool_registry=registry,
-            ),
-            listeners=listeners,
-        )
-
-        def prepare(session: object, tool_context: ToolContext) -> None:
-            session.resources.available_tools = registry.available
-            if library is None:
-                return
             _activate_requested_skills(
                 library,
                 session,
                 tool_context,
                 effective_context.plugin,
                 effective_context.skill,
-                self.agent._enabled_plugins,
-                self.agent._enabled_skills,
+                agent._enabled_plugins,
+                agent._enabled_skills,
             )
 
-        return AgentRun(
-            model=model,
-            request=request,
-            setup=RunSetup(
-                identity=identity,
-                prepare=prepare,
-                session_record=selected_session,
-                tool_decider=runtime_options.tool_decider,
-                tool_timeout_seconds=runtime_options.tool_timeout_seconds,
-                cancel_check=runtime_options.cancel_check,
-                checkpoint_store=runtime_options.checkpoint_store,
-                resume_checkpoint=runtime_options.resume_checkpoint,
-                interrupt_check=runtime_options.interrupt_check,
-                runtime_lifecycle=lifecycle,
-                plan=plan,
-            ),
-            prompt=selected_prompt,
-            conversation_id=runtime_scope.conversation_id,
-            save_conversation=runtime_options.save_conversation,
-            store=store,
+    run = RunInput(
+        prompt=selected_prompt,
+        model=model,
+        messages=messages,
+        instructions=build_run_instructions(
+            agent.instructions,
+            None if library is None else library.resource_index(),
+            effective_context.shared_context,
+        ),
+        tool_registry=registry,
+        identity=identity,
+        resource_center=resource_center,
+        working_directory=working_directory,
+        library_snapshot={} if library is None else library.snapshot().to_dict(),
+        mcp_tools_by_server=mcp_tools,
+        listeners=tuple(listeners),
+        prepare=prepare,
+        session_record=selected_session,
+        tool_decider=runtime_options.tool_decider,
+        tool_timeout_seconds=runtime_options.tool_timeout_seconds,
+        cancel_check=runtime_options.cancel_check,
+        checkpoint_store=runtime_options.checkpoint_store,
+        resume_checkpoint=runtime_options.resume_checkpoint,
+        interrupt_check=runtime_options.interrupt_check,
+        runtime_lifecycle=lifecycle,
+        purpose=effective_context.purpose,
+        required_features=_required_features(
+            effective_context.required_features, bool(registry.active)
+        ),
+        limits=agent.settings.limits,
+        metadata={
+            **dict(effective_context.metadata),
+            "_super_agent_model_scope": model_scope(identity),
+            "_super_agent_run_scope": runtime_scope.to_dict(),
+            "_super_agent_optional_mechanisms": agent.optional_mechanisms.describe(model),
+        },
+        warning_messages=() if tree_plan is None else tree_plan.warnings,
+    )
+    result = yield from stream_run(run)
+    if runtime_scope.conversation_id and runtime_options.save_conversation:
+        if store is None:
+            raise RuntimeError("conversation persistence was requested without storage")
+        from core.records import Conversations
+
+        Conversations(store).add_turn(
+            runtime_scope.conversation_id,
+            selected_prompt,
+            result.text,
+            run_id=result.run_id,
         )
+    return result
 
 
 def _activate_requested_skills(

@@ -1,30 +1,27 @@
 import unittest
 
-from core.event import RunIdentity
 from core.model import Tool
-from core.run import RunResources, RunSession
 from core.provider import MockModel
 from super_agent import Agent
+from tests.run_state import make_run_state
 
 
 class RuntimeResourcesTests(unittest.TestCase):
     def test_run_state_uses_named_resources_instead_of_an_untyped_values_map(self):
         tool = Tool("read", "Read", lambda _arguments, _context: "ok")
-        resources = RunResources(available_tools={"read": tool})
-        session = RunSession(RunIdentity(), [], [], {}, resources=resources)
+        session = make_run_state(available_tools=(tool,))
 
-        self.assertIs(session.resources.available_tools["read"], tool)
-        self.assertIsNotNone(session.resources.resource_center)
+        self.assertIs(session.tool_registry.available["read"], tool)
+        self.assertIsNotNone(session.resource_center)
         self.assertFalse(hasattr(session, "values"))
 
     def test_resource_defaults_are_memory_only_and_isolated_per_run(self):
-        first = RunSession(RunIdentity(), [], [], {})
-        second = RunSession(RunIdentity(), [], [], {})
+        first = make_run_state()
+        second = make_run_state()
 
-        self.assertIsNot(first.resources, second.resources)
-        self.assertIsNot(first.resources.resource_center, second.resources.resource_center)
-        self.assertEqual({}, first.resources.library_snapshot)
-        self.assertEqual({}, first.resources.mcp_tools_by_server)
+        self.assertIsNot(first.resource_center, second.resource_center)
+        self.assertEqual({}, first.library_snapshot)
+        self.assertEqual({}, first.mcp_tools_by_server)
 
     def test_optional_state_features_select_their_plugin_explicitly(self):
         agent = Agent(MockModel("answer"))

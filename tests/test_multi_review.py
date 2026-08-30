@@ -4,11 +4,12 @@ from pathlib import Path
 
 from core.event import RunIdentity
 from core.provider import MockModel
-from core.run import RunResources, RunSession, ToolContext
+from core.run import ToolContext
 from skill.library import AgentLibrary
 from skill.organization import TeamMemberSettings, TeamSettings, team_node
 from skill.organization_runtime import TeamRuntime
 from super_agent import Agent
+from tests.run_state import make_run_state
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,13 +22,7 @@ class MultiAgentReviewTests(unittest.TestCase):
         root.add_subagent(Agent(MockModel("second")), name="reviewer-b")
         runtime = TeamRuntime(team_node(root).root())
         tools = {tool.name: tool for tool in runtime.tools(team_node(root).group_id)}
-        session = RunSession(
-            RunIdentity(),
-            [],
-            [],
-            {},
-            resources=RunResources(available_tools=tools),
-        )
+        session = make_run_state(available_tools=tools.values())
 
         activated = library.activate_skill(
             "skill:super-agent/review/multi-agent", session
@@ -79,7 +74,7 @@ class MultiAgentReviewTests(unittest.TestCase):
         tool = next(
             item for item in runtime.tools(group_id) if item.name == "dispatch_agent_tasks"
         )
-        session = RunSession(RunIdentity(agent_name="root"), [], [], {})
+        session = make_run_state(identity=RunIdentity(agent_name="root"))
         context = ToolContext(session, lambda _event, _data: None)  # type: ignore[arg-type]
 
         with self.assertRaisesRegex(RuntimeError, "different models"):

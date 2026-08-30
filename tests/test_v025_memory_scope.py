@@ -6,6 +6,7 @@ from adapter.storage import EventMemoryStore, JsonlMemoryStore, MemoryStorage
 from core.event import RunIdentity
 from core.records import EventStore, RecordQuery
 from core.provider import MockModel
+from skill.agent_builder import agent_memory
 from skill.memory import Memory
 from super_agent import Agent
 
@@ -37,7 +38,8 @@ class WorkingDirectoryMemoryTests(unittest.TestCase):
     def test_long_term_memory_is_created_inside_the_working_directory(self):
         with tempfile.TemporaryDirectory() as directory:
             agent = Agent(MockModel("answer"), working_directory=directory)
-            memory = agent.run_parts.memory(
+            memory = agent_memory(
+                agent,
                 RunIdentity(user_id="alice", agent_name=agent.name),
                 None,
                 agent.working_directory,

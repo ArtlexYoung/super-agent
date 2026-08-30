@@ -1,11 +1,10 @@
 import unittest
 
 from adapter.storage import MemoryStorage
-from core.event import RunIdentity
 from core.records import Conversations, EventStore, SessionRecord
 from core.provider import MockModel
-from core.run import RunContext, RunSession
 from super_agent import Agent, AgentContext
+from tests.run_state import make_run_state
 
 
 class LightweightSessionTests(unittest.TestCase):
@@ -22,10 +21,10 @@ class LightweightSessionTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             session.append_record("late.event")
 
-    def test_run_context_is_the_runtime_context_name(self):
-        self.assertIs(RunContext, RunSession)
-        context = RunContext(RunIdentity(), [], [], {})
-        self.assertEqual(0, len(context.messages))
+    def test_minimal_run_state_has_no_untyped_values_map(self):
+        state = make_run_state()
+        self.assertEqual([], state.messages)
+        self.assertFalse(hasattr(state, "values"))
 
     def test_agent_only_records_when_a_session_is_explicitly_attached(self):
         session = SessionRecord("session-run")

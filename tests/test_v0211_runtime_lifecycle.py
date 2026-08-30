@@ -2,10 +2,11 @@ import unittest
 
 from core.event import RunIdentity
 from core.provider import MockModel
-from core.run import RunSession, RuntimeLifecycle, ToolContext
+from core.run import RuntimeLifecycle, ToolContext
 from skill.organization import TeamSettings, team_node
 from skill.organization_runtime import TeamRuntime
 from super_agent import Agent
+from tests.run_state import make_run_state
 
 
 class RuntimeLifecycleTests(unittest.TestCase):
@@ -25,13 +26,7 @@ class RuntimeLifecycleTests(unittest.TestCase):
         group_id = team_node(root).group_id
         identity = RunIdentity(agent_name="root", run_id="parent-run")
         lifecycle = RuntimeLifecycle(identity.run_id)
-        session = RunSession(
-            identity,
-            [],
-            [],
-            {},
-            runtime_lifecycle=lifecycle,
-        )
+        session = make_run_state(identity=identity, runtime_lifecycle=lifecycle)
         context = ToolContext(session, lambda _event, _data: None)  # type: ignore[arg-type]
         tool = next(
             item for item in runtime.tools(group_id) if item.name == "create_agent_task"

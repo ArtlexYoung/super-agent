@@ -5,25 +5,24 @@ from pathlib import Path
 from adapter.storage import MemoryStorage
 from core.event import RunIdentity
 from core.provider import MockModel
-from skill.agent_builder import AgentRunParts
+from skill.agent_builder import agent_event_store, agent_memory
 from super_agent import Agent
 
 
 class OptionalRunPartsTests(unittest.TestCase):
-    def test_agent_owns_one_central_optional_parts_object(self):
+    def test_agent_exposes_one_central_run_entry_without_parts_object(self):
         agent = Agent(MockModel("answer"))
 
-        self.assertIsInstance(agent.run_parts, AgentRunParts)
-        self.assertIsNone(agent.run_parts.event_store(RunIdentity()))
+        self.assertIsNone(agent_event_store(agent, RunIdentity()))
         self.assertIsNone(agent.library)
 
     def test_storage_replacement_drops_cached_memory_objects(self):
         agent = Agent(MockModel("answer"))
         identity = RunIdentity(user_id="alice", agent_name=agent.name)
-        first = agent.run_parts.memory(identity, None)
+        first = agent_memory(agent, identity, None)
 
         agent.use_storage(MemoryStorage())
-        second = agent.run_parts.memory(identity, agent.run_parts.event_store(identity))
+        second = agent_memory(agent, identity, agent_event_store(agent, identity))
 
         self.assertIsNot(first, second)
 
@@ -31,7 +30,7 @@ class OptionalRunPartsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             agent = Agent(MockModel("answer"), working_directory=directory)
             identity = RunIdentity(user_id="alice", agent_name=agent.name)
-            agent.run_parts.memory(identity, None, agent.working_directory)
+            agent_memory(agent, identity, None, agent.working_directory)
 
             self.assertFalse((Path(directory) / ".super-agent").exists())
 

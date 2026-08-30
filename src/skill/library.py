@@ -19,7 +19,7 @@ from uuid import uuid4
 from core import require_integer as _integer, require_text as _text
 from core.model import Tool
 from core.resources import DisclosedContent, DisclosurePage, ResourceCenter
-from core.run import RunContext, ToolContext
+from core.run import ToolContext, _RunState
 from skill.document import (
     SKILL_FILE,
     Skill,
@@ -349,13 +349,13 @@ class AgentLibrary:
     def history(self) -> tuple[Mapping[str, object], ...]:
         return self.resources.read_history()
 
-    def activate_plugin(self, reference: str, session: RunContext) -> tuple[str, ...]:
+    def activate_plugin(self, reference: str, session: _RunState) -> tuple[str, ...]:
         plugin = self.find_plugin(reference)
         unavailable: list[tuple[str, str]] = []
 
         def activate(
             content: object,
-            run: RunContext,
+            run: _RunState,
             activated_skills: list[str],
             stack: tuple[str, ...],
         ) -> None:
@@ -381,7 +381,7 @@ class AgentLibrary:
         )
         return activated
 
-    def activate_skill(self, reference: str, session: RunContext) -> tuple[str, ...]:
+    def activate_skill(self, reference: str, session: _RunState) -> tuple[str, ...]:
         activated = self._activate(session, self._activate_skill, self.find_skill(reference))
         for key in activated:
             self._record("skill.activated", {"key": key, "run_id": session.identity.run_id})
@@ -657,7 +657,7 @@ class AgentLibrary:
     def _activate_plugin(
         self,
         plugin: Plugin,
-        session: RunContext,
+        session: _RunState,
         activated: list[str],
         stack: tuple[str, ...],
         unavailable: list[tuple[str, str]],
@@ -676,14 +676,12 @@ class AgentLibrary:
         for reference in plugin.skill_references:
             self._activate_skill(self.find_skill(reference), session, activated, ())
 
-    def _activate_skill(self, skill: Skill, session: RunContext, activated: list[str], stack: tuple[str, ...]) -> None:
+    def _activate_skill(self, skill: Skill, session: _RunState, activated: list[str], stack: tuple[str, ...]) -> None:
         if skill.reference in session.active_skills:
             return
         if skill.reference in stack:
             raise ValueError(f"Skill include cycle: {' -> '.join((*stack, skill.reference))}")
-        registry = session.resources.tool_registry
-        if registry is None:  # pragma: no cover - RunContext always creates it
-            raise RuntimeError("run tool registry is unavailable")
+        registry = session.tool_registry
         for name in (*skill.requires, *skill.optional_tools):
             if name not in session.tools and isinstance(registry.available.get(name), Tool):
                 registry.activate(name)
@@ -699,7 +697,7 @@ class AgentLibrary:
         session.activate_skill(skill.reference)
         activated.append(skill.reference)
 
-    def _activate(self, session: RunContext, action: Callable[[object, RunContext, list[str], tuple[str, ...]], None], content: object) -> tuple[str, ...]:
+    def _activate(self, session: _RunState, action: Callable[[object, _RunState, list[str], tuple[str, ...]], None], content: object) -> tuple[str, ...]:
         activated: list[str] = []
         state = _activation_state(session)
         try:
@@ -725,10 +723,10 @@ class AgentLibrary:
     def _mount_plugin_mcp(
         self,
         plugin: Plugin,
-        session: RunContext,
+        session: _RunState,
         unavailable: list[tuple[str, str]],
     ) -> None:
-        bindings = session.resources.mcp_tools_by_server or {}
+        bindings = session.mcp_tools_by_server
         if not isinstance(bindings, Mapping):
             raise TypeError("run MCP tools by server must be an object")
         required = tuple(f"mcp:{item}" for item in plugin.required_mcp_servers)
@@ -1059,12 +1057,12 @@ def _references(value: object, kind: str, name: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(parser(item) for item in value))
 
 
-def _activation_state(session: RunContext) -> tuple[list[str], dict[str, Tool], list[str], int, int]:
+def _activation_state(session: _RunState) -> tuple[list[str], dict[str, Tool], list[str], int, int]:
     ledger_size = 0 if session.ledger is None else len(session.ledger.entries())
     return list(session.instructions), dict(session.tools), list(session.active_skills), session.context_characters, ledger_size
 
 
-def _restore_activation(session: RunContext, state: tuple[list[str], dict[str, Tool], list[str], int, int]) -> None:
+def _restore_activation(session: _RunState, state: tuple[list[str], dict[str, Tool], list[str], int, int]) -> None:
     instructions, tools, skills, characters, ledger_size = state
     session.instructions[:], session.active_skills[:] = instructions, skills
     session.tools.clear()

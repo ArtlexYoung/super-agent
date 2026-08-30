@@ -3,7 +3,7 @@ import unittest
 
 from core.model import ModelEvent, Tool
 from core.provider import MockModel
-from core.run import FatalToolError, RunRequest, RunSetup, collect_run, stream_run
+from core.run import FatalToolError, RunInput, collect_run, stream_run
 
 
 class ToolExecutionCenterTests(unittest.TestCase):
@@ -16,13 +16,13 @@ class ToolExecutionCenterTests(unittest.TestCase):
         with self.assertRaises(FatalToolError):
             collect_run(
                 stream_run(
-                    RunRequest("write"),
-                    model,
-                    (tool,),
-                    setup=RunSetup(
+                    RunInput(
+                        "write",
+                        model,
+                        tools=(tool,),
                         listeners=(events.append,),
                         tool_decider=lambda _tool, _arguments: "deny",
-                    ),
+                    )
                 )
             )
         self.assertTrue(any(item.event_type == "action.checked" for item in events))
@@ -43,7 +43,7 @@ class ToolExecutionCenterTests(unittest.TestCase):
             lambda arguments, _context: calls.append(arguments) or "done",
             {"type": "object", "required": ["value"], "properties": {"value": {"type": "integer"}}},
         )
-        result = collect_run(stream_run(RunRequest("add"), model, (tool,)))
+        result = collect_run(stream_run(RunInput("add", model, tools=(tool,))))
         self.assertEqual("recovered", result.text)
         self.assertEqual([], calls)
         self.assertTrue(any(item.event_type == "tool.failed" for item in result.events))
@@ -58,10 +58,7 @@ class ToolExecutionCenterTests(unittest.TestCase):
         tool = Tool("slow", "Slow tool", lambda _args, _context: time.sleep(0.05))
         result = collect_run(
             stream_run(
-                RunRequest("slow"),
-                model,
-                (tool,),
-                setup=RunSetup(tool_timeout_seconds=0.001),
+                RunInput("slow", model, tools=(tool,), tool_timeout_seconds=0.001)
             )
         )
         self.assertEqual("recovered", result.text)

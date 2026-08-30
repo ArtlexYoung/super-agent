@@ -21,9 +21,9 @@ from core.records import (
     RecordScope,
     SessionRecord,
 )
-from core.run import EventListener, ToolRegistry, collect_run, stream_run
+from core.run import EventListener, ToolRegistry, collect_run
 from core.user import AgentUser
-from skill.agent_builder import AgentRunBuilder, AgentRunParts, OptionalMechanisms
+from skill.agent_builder import OptionalMechanisms, stream_agent
 from skill.library import AgentLibrary
 
 if TYPE_CHECKING:
@@ -71,7 +71,7 @@ class Agent:
         self.library: AgentLibrary | None = None
         self._mcp_servers: dict[str, tuple[object, Mapping[str, tuple[str, ...]]]] = {}
         self.storage: RecordBackend | None = None
-        self.run_parts = AgentRunParts(self)
+        self._memories: dict[tuple[str, str, str], object] = {}
         self.audit_policy = AuditPolicy()
         self.evolution_policy = EvolutionConfig()
         self.candidate_runner: CandidateRunner | None = None
@@ -329,7 +329,7 @@ class Agent:
     def use_storage(self, storage: RecordBackend) -> None:
         self.storage = storage
         self._loaded_model_scopes.clear()
-        self.run_parts.clear_memory_cache()
+        self._memories.clear()
         _clear_team_runtimes(self)
         for node in _get_team_node(self).walk():
             child = node.coordinator
@@ -491,20 +491,7 @@ class Agent:
             skill=skill,
             working_directory=working_directory,
         )
-        prepared = AgentRunBuilder(self).build(prompt, selected_context)
-        result = yield from stream_run(
-            prepared.request, prepared.model, (), setup=prepared.setup
-        )
-        if prepared.conversation_id and prepared.save_conversation:
-            if prepared.store is None:
-                raise RuntimeError("conversation persistence was requested without storage")
-            Conversations(prepared.store).add_turn(
-                prepared.conversation_id,
-                prepared.prompt,
-                result.text,
-                run_id=result.run_id,
-            )
-        return result
+        return (yield from stream_agent(self, prompt, selected_context))
 
     def run(
         self,

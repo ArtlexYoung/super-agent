@@ -2,7 +2,6 @@ import unittest
 
 from core.event import RunIdentity
 from core.provider import MockModel
-from skill.agent_builder import AgentRunBuilder
 from skill.organization import team_node
 from skill.organization_runtime import TeamRuntime
 from super_agent import Agent, AgentContext
@@ -20,7 +19,7 @@ class TeamRunPlanTests(unittest.TestCase):
         self.assertIs(runtime.resources, plan.resources)
         self.assertIn("create_agent_task", {tool.name for tool in plan.tools})
 
-    def test_run_builder_registers_the_prepared_tree_plan_once(self):
+    def test_agent_registers_the_prepared_tree_plan_once(self):
         root = Agent(MockModel("answer"), name="root")
         child = Agent(MockModel("child"), name="child")
         root.add_subagent(child)
@@ -28,12 +27,11 @@ class TeamRunPlanTests(unittest.TestCase):
             team_runtime=TeamRuntime(team_node(root).root())
         )
 
-        prepared = AgentRunBuilder(root).build("hello", context)
-        names = tuple(prepared.setup.plan.active_tools)
+        root.run("hello", context=context)
+        names = tuple(tool.name for tool in root.model.requests[0].tools)
 
         self.assertIn("create_agent_task", names)
         self.assertEqual(len(names), len(set(names)))
-        self.assertIsNotNone(prepared.setup.plan.resources.tool_registry)
 
 
 if __name__ == "__main__":

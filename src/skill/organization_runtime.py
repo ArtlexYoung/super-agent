@@ -482,8 +482,10 @@ def get_or_create_team_runtime(
     if existing is not None:
         return existing
     identity = RunIdentity(user_id=user_id, agent_name=owner.name)
-    store = owner.run_parts.event_store(identity)
-    library = owner.run_parts.library(identity, store)
+    from skill.agent_builder import agent_event_store, agent_library
+
+    store = agent_event_store(owner, identity)
+    library = agent_library(owner, identity, store)
     runtime = TeamRuntime(
         root,
         owner.team_settings,

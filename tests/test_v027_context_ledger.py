@@ -3,7 +3,7 @@ import unittest
 from core.event import ContextLedger, RunLimits
 from core.model import ModelEvent
 from core.provider import MockModel
-from core.run import collect_run, stream_run, RunRequest
+from core.run import RunInput, collect_run, stream_run
 from super_agent import Agent
 
 
@@ -30,8 +30,7 @@ class ContextLedgerTests(unittest.TestCase):
     def test_run_result_exposes_the_central_ledger_snapshot(self):
         result = collect_run(
             stream_run(
-                RunRequest("hello", instructions=("answer",)),
-                MockModel("answer"),
+                RunInput("hello", MockModel("answer"), instructions=("answer",))
             )
         )
         self.assertEqual(result.context_ledger, result.events[-1].data["context_ledger"])
@@ -52,9 +51,12 @@ class ContextLedgerTests(unittest.TestCase):
 
         completed = collect_run(
             stream_run(
-                RunRequest("read", limits=RunLimits(max_tool_output_characters=100)),
-                model,
-                (Tool("large", "large output", lambda _args, _context: "x" * 1_000),),
+                RunInput(
+                    "read",
+                    model,
+                    tools=(Tool("large", "large output", lambda _args, _context: "x" * 1_000),),
+                    limits=RunLimits(max_tool_output_characters=100),
+                )
             )
         )
         entries = completed.context_ledger["entries"]

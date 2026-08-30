@@ -4,7 +4,7 @@ from adapter.storage import EventCheckpointStore, MemoryCheckpointStore, MemoryS
 from core.event import RunCheckpoint, RunIdentity
 from core.records import EventStore
 from core.provider import MockModel
-from core.run import RunInterrupted, RunRequest, RunSetup, collect_run, stream_run
+from core.run import RunInput, RunInterrupted, collect_run, stream_run
 from super_agent import Agent, AgentContext
 
 
@@ -13,9 +13,11 @@ class CheckpointTests(unittest.TestCase):
         store = MemoryCheckpointStore()
         result = collect_run(
             stream_run(
-                RunRequest("private prompt"),
-                MockModel("private response"),
-                setup=RunSetup(checkpoint_store=store),
+                RunInput(
+                    "private prompt",
+                    MockModel("private response"),
+                    checkpoint_store=store,
+                )
             )
         )
         checkpoint = store.read(result.run_id)
@@ -28,9 +30,12 @@ class CheckpointTests(unittest.TestCase):
         with self.assertRaises(RunInterrupted):
             collect_run(
                 stream_run(
-                    RunRequest("pause"),
-                    MockModel("answer"),
-                    setup=RunSetup(checkpoint_store=store, interrupt_check=lambda: True),
+                    RunInput(
+                        "pause",
+                        MockModel("answer"),
+                        checkpoint_store=store,
+                        interrupt_check=lambda: True,
+                    )
                 )
             )
         checkpoint = store.read(next(iter(store._checkpoints)))
@@ -43,25 +48,25 @@ class CheckpointTests(unittest.TestCase):
         with self.assertRaises(RunInterrupted):
             collect_run(
                 stream_run(
-                    RunRequest("pause"),
-                    MockModel("answer"),
-                    setup=RunSetup(
+                    RunInput(
+                        "pause",
+                        MockModel("answer"),
                         identity=identity,
                         checkpoint_store=store,
                         interrupt_check=lambda: True,
-                    ),
+                    )
                 )
             )
         checkpoint = store.read(identity.run_id)
         result = collect_run(
             stream_run(
-                RunRequest("resume"),
-                MockModel("resumed"),
-                setup=RunSetup(
+                RunInput(
+                    "resume",
+                    MockModel("resumed"),
                     identity=identity,
                     checkpoint_store=store,
                     resume_checkpoint=checkpoint,
-                ),
+                )
             )
         )
         self.assertEqual("resumed", result.text)

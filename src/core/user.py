@@ -13,6 +13,12 @@ from core.model import Message, Model, ModelPerformance
 from core.provider import ModelRouter
 from core.records import Conversations, EventStore, Record, RecordScope
 from core.run import EventListener, collect_run
+from skill.agent_builder import (
+    agent_event_store,
+    agent_evolution,
+    agent_library,
+    agent_memory,
+)
 
 if TYPE_CHECKING:
     from super_agent import Agent
@@ -133,9 +139,10 @@ class UserMemory:
             agent_name=self.user.agent.name,
         )
         # 直接记忆调用遵循明确工作目录；没有目录或存储时仅保留在当前进程。
-        return self.user.agent.run_parts.memory(
+        return agent_memory(
+            self.user.agent,
             identity,
-            self.user.agent.run_parts.event_store(identity),
+            agent_event_store(self.user.agent, identity),
             self.user.agent.working_directory,
         )
 
@@ -286,10 +293,10 @@ class UserRuns:
 
         identity = RunIdentity(user_id=self.user.user_id, agent_name=self.user.agent.name)
         store = self._store()
-        library = self.user.agent.run_parts.library(identity, store)
+        library = agent_library(self.user.agent, identity, store)
         if library is None:
             raise RuntimeError("Skill evolution requires an AgentLibrary")
-        evolution = self.user.agent.run_parts.evolution(library, store)
+        evolution = agent_evolution(self.user.agent, library, store)
         evidence = evidence_from_run(result, score=score, success=success)
         for item in evidence:
             evolution.record_evidence(item)
@@ -465,7 +472,7 @@ def model_profile_views(
     model = agent.model
     if isinstance(model, ModelRouter):
         _load_model_performance(
-            agent, model, agent.run_parts.event_store(identity), identity
+            agent, model, agent_event_store(agent, identity), identity
         )
         return model.list_model_profiles(
             purpose=purpose, scope=model_scope(identity)
