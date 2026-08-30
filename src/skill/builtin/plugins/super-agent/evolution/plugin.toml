@@ -1,6 +1,6 @@
 schema = 1
 id = "super-agent/evolution"
-version = "0.2.51"
+version = "0.2.52"
 description = "Explicit Skill improvement methods"
 entry_skill = "skill:super-agent/evolution"
 skills = [

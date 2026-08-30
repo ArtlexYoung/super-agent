@@ -398,7 +398,6 @@ class TeamRuntime(TaskQueue):
         with self._condition:
             queued = self._change(
                 task,
-                "agent_task.queued",
                 status="queued",
                 agent_name=worker.name,
                 worker_link_id=worker.link_id,
@@ -430,7 +429,7 @@ class TeamRuntime(TaskQueue):
         for task_id in decision.task_ids:
             task = self._require_task(task_id)
             if task.status == "created":
-                self._change(task, "agent_task.cancelled", status="cancelled")
+                self._change(task, status="cancelled")
 
     def _board_group(self, source: TeamNode, board: str) -> TeamNode:
         if board == "current":

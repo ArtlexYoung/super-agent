@@ -22,6 +22,23 @@ from skill.organization_tools import strings
 from skill.organization_workers import AgentWorkerPool, candidate_members
 
 TERMINAL = frozenset({"completed", "failed", "cancelled"})
+TASK_TRANSITIONS = {
+    None: frozenset({"created"}),
+    "created": frozenset({"queued", "cancelled"}),
+    "queued": frozenset({"running", "cancelled"}),
+    "running": frozenset({"queued", "completed", "failed"}),
+    "completed": frozenset(),
+    "failed": frozenset(),
+    "cancelled": frozenset(),
+}
+TASK_EVENTS = {
+    "created": "agent_task.created",
+    "queued": "agent_task.queued",
+    "running": "agent_task.running",
+    "completed": "agent_task.completed",
+    "failed": "agent_task.failed",
+    "cancelled": "agent_task.cancelled",
+}
 RecordEvent = Callable[[str, Mapping[str, object]], object]
 
 
@@ -76,10 +93,9 @@ class TaskQueue:
                     None if shared_context is None else dict(shared_context)
                 ),
             )
-            self._tasks[task.task_id] = task
             if runtime_lifecycle is not None:
                 self._task_lifecycles[task.task_id] = runtime_lifecycle
-            return self._change(task, "agent_task.created")
+            return self._change(task)
 
     def dispatch_task(
         self,
@@ -96,14 +112,10 @@ class TaskQueue:
                 self._task_lifecycles[task_id] = runtime_lifecycle
             if task.source_group_id != source_group_id:
                 raise PermissionError("a group can dispatch only its own tasks")
-            if task.status != "created":
-                raise ValueError(
-                    f"Agent task must be created before dispatch: {task.status}"
-                )
+            _validate_task_transition(task.status, "queued")
             worker = self._choose(task, agent_name, set())
             queued = self._change(
                 task,
-                "agent_task.queued",
                 status="queued",
                 agent_name=worker.name,
                 worker_link_id=worker.link_id,
@@ -133,10 +145,7 @@ class TaskQueue:
             for task in tasks:
                 if task.source_group_id != source_group_id:
                     raise PermissionError("a group can dispatch only its own tasks")
-                if task.status != "created":
-                    raise ValueError(
-                        f"Agent task must be created before dispatch: {task.status}"
-                    )
+                _validate_task_transition(task.status, "queued")
             routes = {
                 (task.target_group_id, task.purpose, task.required_features)
                 for task in tasks
@@ -168,7 +177,6 @@ class TaskQueue:
                 queued.append(
                     self._change(
                         task,
-                        "agent_task.queued",
                         status="queued",
                         agent_name=worker.name,
                         worker_link_id=worker.link_id,
@@ -253,11 +261,7 @@ class TaskQueue:
             task = self._require_task(task_id)
             if task.source_group_id != source_group_id:
                 raise PermissionError("a group can cancel only its own tasks")
-            if task.status not in {"created", "queued"}:
-                raise ValueError(
-                    f"only pending Agent tasks can be cancelled: {task.status}"
-                )
-            return self._change(task, "agent_task.cancelled", status="cancelled")
+            return self._change(task, status="cancelled")
 
     def _consume(self, task_id: str, worker: TeamMember) -> None:
         with self._workers.lock_for(worker):
@@ -267,7 +271,6 @@ class TaskQueue:
                     return
                 task = self._change(
                     task,
-                    "agent_task.running",
                     status="running",
                     attempts=task.attempts + 1,
                 )
@@ -291,7 +294,6 @@ class TaskQueue:
                 self._workers.mark_success(worker)
                 self._change(
                     self._require_task(task_id),
-                    "agent_task.completed",
                     status="completed",
                     result=compacted,
                 )
@@ -346,7 +348,7 @@ class TaskQueue:
                 )
                 retried = self._change(
                     task,
-                    "agent_task.retry_scheduled",
+                    event_type="agent_task.retry_scheduled",
                     status="queued",
                     agent_name=next_worker.name,
                     worker_link_id=next_worker.link_id,
@@ -358,7 +360,6 @@ class TaskQueue:
                 return
             self._change(
                 task,
-                "agent_task.failed",
                 status="failed",
                 error_type=type(error).__name__,
                 error_message=str(error),
@@ -433,8 +434,22 @@ class TaskQueue:
             daemon=True,
         ).start()
 
-    def _change(self, task: Task, event_type: str, **changes: object) -> Task:
+    def _change(
+        self,
+        task: Task,
+        *,
+        event_type: str | None = None,
+        **changes: object,
+    ) -> Task:
         with self._condition:
+            current = self._tasks.get(task.task_id)
+            if current is not None and current.version != task.version:
+                raise RuntimeError(f"Agent task changed concurrently: {task.task_id}")
+            previous = None if current is None else current.status
+            target = changes.get("status", task.status)
+            if not isinstance(target, str):
+                raise TypeError("Agent task status must be text")
+            _validate_task_transition(previous, target)
             self._version += 1
             updated = replace(
                 task, version=self._version, updated_at=utc_now(), **changes
@@ -449,9 +464,9 @@ class TaskQueue:
                     worker_link_id=updated.worker_link_id,
                 )
             self._record(
-                event_type,
+                event_type or TASK_EVENTS[target],
                 updated.to_dict(
-                    include_result=event_type == "agent_task.completed"
+                    include_result=target == "completed"
                 ),
             )
             self._condition.notify_all()
@@ -523,6 +538,12 @@ class TaskQueue:
     def _record(self, event_type: str, data: Mapping[str, object]) -> None:
         if self.record_event is not None:
             self.record_event(event_type, data)
+
+
+def _validate_task_transition(previous: str | None, target: str) -> None:
+    allowed = TASK_TRANSITIONS.get(previous)
+    if allowed is None or target not in allowed:
+        raise ValueError(f"invalid Agent task transition: {previous} -> {target}")
 
 
 
