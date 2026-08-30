@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from time import monotonic
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -40,16 +40,6 @@ if TYPE_CHECKING:
     from super_agent import Agent
 
 
-@dataclass(frozen=True)
-class TeamRunPlan:
-    """The complete tree contribution for one prepared Agent run."""
-
-    group_id: str
-    warnings: tuple[str, ...]
-    tools: tuple[Tool, ...]
-    resources: ResourceCenter
-
-
 class TeamRuntime(TaskQueue):
     """一个用户作用域内唯一的 Agent 树运行器。"""
 
@@ -79,15 +69,6 @@ class TeamRuntime(TaskQueue):
         """为当前组创建工具，不暴露其他组的私有任务。"""
         self._require_group(group_id)
         return team_tools(self, group_id)
-
-    def prepare_run(self, group_id: str, call_depth: int) -> TeamRunPlan:
-        """Prepare all tree contributions once before the Runtime loop starts."""
-        return TeamRunPlan(
-            group_id=group_id,
-            warnings=self.warning_messages(group_id, call_depth),
-            tools=self.tools(group_id),
-            resources=self.resources,
-        )
 
     def warning_messages(self, group_id: str, call_depth: int) -> tuple[str, ...]:
         """只在树发生变化时重新遍历结构。"""
@@ -531,7 +512,6 @@ __all__ = [
     "TERMINAL",
     "TeamDecision",
     "Task",
-    "TeamRunPlan",
     "TeamRuntime",
     "SharedNote",
     "clear_team_runtimes",

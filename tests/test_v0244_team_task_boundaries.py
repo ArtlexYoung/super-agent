@@ -2,7 +2,7 @@ import unittest
 
 from core.provider import MockModel
 from skill.organization import Team, TeamSettings, team_node
-from skill.organization_runtime import TeamRunPlan, TeamRuntime
+from skill.organization_runtime import TeamRuntime
 from skill.organization_tasks import TaskQueue
 from super_agent import Agent
 
@@ -21,10 +21,9 @@ class TeamTaskBoundaryTests(unittest.TestCase):
         )
 
         self.assertIsInstance(runtime, TaskQueue)
-        plan = runtime.prepare_run(team_node(agent).group_id, 1)
-        self.assertIsInstance(plan, TeamRunPlan)
+        tools = runtime.tools(team_node(agent).group_id)
         self.assertTrue({"create_agent_task", "create_agent_decision"} <= {
-            tool.name for tool in plan.tools
+            tool.name for tool in tools
         })
 
 

@@ -176,12 +176,15 @@ def stream_agent(agent: Agent, prompt: str, context: AgentContext):
     lifecycle = context.runtime_lifecycle or RuntimeLifecycle(identity.run_id)
     group_id = context.agent_group_id or _agent_group_id(agent)
     _check_call_depth(_tree_settings(agent, agent_tree), identity.depth)
-    tree_plan = (
-        None if agent_tree is None else agent_tree.prepare_run(group_id, identity.depth)
+    tree_tools = () if agent_tree is None else agent_tree.tools(group_id)
+    warnings = (
+        ()
+        if agent_tree is None
+        else agent_tree.warning_messages(group_id, identity.depth)
     )
     resource_center = (
-        tree_plan.resources
-        if tree_plan is not None
+        agent_tree.resources
+        if agent_tree is not None
         else None if library is None else library.resources
     )
     if library is not None and resource_center is not None:
@@ -205,13 +208,13 @@ def stream_agent(agent: Agent, prompt: str, context: AgentContext):
     registry, mcp_tools = agent_tools(
         agent, identity, library, store, working_directory
     )
-    if tree_plan is not None:
+    if agent_tree is not None:
         registry.register_many(
-            tree_plan.tools,
+            tree_tools,
             exposure="after_skill" if library is not None else "always",
         )
         if library is None:
-            registry.register(tree_plan.resources.create_read_tool(), exposure="always")
+            registry.register(resource_center.create_read_tool(), exposure="always")
     listeners = [*agent._listeners, *runtime_options.listeners]
     if store is not None and runtime_options.persist_run_events:
         listeners.append(store.run_listener(identity))
@@ -269,7 +272,7 @@ def stream_agent(agent: Agent, prompt: str, context: AgentContext):
             "_super_agent_run_scope": runtime_scope.to_dict(),
             "_super_agent_optional_mechanisms": agent.optional_mechanisms.describe(model),
         },
-        warning_messages=() if tree_plan is None else tree_plan.warnings,
+        warning_messages=warnings,
     )
     result = yield from stream_run(run)
     if runtime_scope.conversation_id and runtime_options.save_conversation:

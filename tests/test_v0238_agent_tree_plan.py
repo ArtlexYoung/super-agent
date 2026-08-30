@@ -7,17 +7,18 @@ from skill.organization_runtime import TeamRuntime
 from super_agent import Agent, AgentContext
 
 
-class TeamRunPlanTests(unittest.TestCase):
+class TeamRuntimeContributionTests(unittest.TestCase):
     def test_tree_runtime_prepares_warnings_tools_and_resources_together(self):
         agent = Agent(MockModel("answer"), name="root")
         runtime = TeamRuntime(team_node(agent).root())
         group_id = team_node(agent).group_id
 
-        plan = runtime.prepare_run(group_id, 1)
+        warnings = runtime.warning_messages(group_id, 1)
+        tools = runtime.tools(group_id)
 
-        self.assertEqual(group_id, plan.group_id)
-        self.assertIs(runtime.resources, plan.resources)
-        self.assertIn("create_agent_task", {tool.name for tool in plan.tools})
+        self.assertEqual((), warnings)
+        self.assertIsNotNone(runtime.resources)
+        self.assertIn("create_agent_task", {tool.name for tool in tools})
 
     def test_agent_registers_the_prepared_tree_plan_once(self):
         root = Agent(MockModel("answer"), name="root")

@@ -99,12 +99,14 @@ class Agent:
 
     def _apply_config(self, config: Config, *, model_was_explicit: bool) -> None:
         """应用通用配置；只创建内存对象，不因读取配置产生持久化副作用。"""
+        from skill.organization import TeamSettings
+
         self.instructions = list(config.instructions)
         if self.working_directory is None:
             self.working_directory = config.resolve_working_directory()
         self.settings = AgentSettings(config.limits)
         self.team_settings = replace(
-            _get_tree_settings(self),
+            self.team_settings or TeamSettings(),
             warn_level=config.warn_agent_level,
             max_level=config.max_agent_level,
             max_call_depth=config.max_agent_call_depth,
@@ -243,15 +245,15 @@ class Agent:
 
     def add_group(self, name: str, *, description: str = "") -> Any:
         """在当前 Agent 下创建一个不调用模型的结构组。"""
-        from skill.organization import Team
+        from skill.organization import Team, team_node
 
-        return Team(_get_team_node(self)).add_group(
-            name, description=description
-        )
+        return Team(team_node(self)).add_group(name, description=description)
 
     def list_agent_tree(self) -> dict[str, object]:
         """读取完整组织树和当前 Agent 所在位置。"""
-        current = _get_team_node(self)
+        from skill.organization import team_node
+
+        current = team_node(self)
         return {
             "current_group_id": current.group_id,
             "root": current.root().to_dict(),
@@ -259,12 +261,13 @@ class Agent:
 
     def validate_agent_tree(self) -> tuple[str, ...]:
         """显式检查层级、空组和委派链路。"""
-        from skill.organization import validate_tree
+        from skill.organization import TeamSettings, team_node, validate_tree
 
+        settings = self.team_settings or TeamSettings()
         return validate_tree(
-            _get_team_node(self).root(),
-            warn_level=_get_tree_settings(self).warn_level,
-            max_level=_get_tree_settings(self).max_level,
+            team_node(self).root(),
+            warn_level=settings.warn_level,
+            max_level=settings.max_level,
         )
 
     def list_models(self) -> tuple[ModelProfile, ...]:
@@ -331,7 +334,8 @@ class Agent:
         self._loaded_model_scopes.clear()
         self._memories.clear()
         _clear_team_runtimes(self)
-        for node in _get_team_node(self).walk():
+        nodes = () if self._team_node is None else self._team_node.walk()
+        for node in nodes:
             child = node.coordinator
             if child is not None and child is not self and child.storage is None:
                 child.use_storage(storage)
@@ -434,7 +438,11 @@ class Agent:
 
     def configure_team(self, settings: TeamSettings | None = None) -> None:
         """原子替换团队共用的任务、等待和层级设置。"""
-        self.team_settings = settings or _new_tree_settings()
+        if settings is None:
+            from skill.organization import TeamSettings
+
+            settings = TeamSettings()
+        self.team_settings = settings
         _clear_team_runtimes(self)
 
     def add_event_listener(self, listener: EventListener) -> None:
@@ -451,9 +459,9 @@ class Agent:
         settings: TeamMemberSettings | None = None,
     ) -> str:
         """把子 Agent 的已有子树挂到当前 Agent 下。"""
-        from skill.organization import Team
+        from skill.organization import Team, team_node
 
-        return Team(_get_team_node(self)).add_subagent(
+        return Team(team_node(self)).add_subagent(
             agent,
             name=name,
             description=description,
@@ -564,31 +572,6 @@ class Agent:
         if not isinstance(value, bool):
             raise TypeError("evolution_enabled must be a boolean")
         self.optional_mechanisms.evolution = value
-
-
-def _new_tree_settings() -> Any:
-    """Create tree settings only when a tree-related feature is requested."""
-    from skill.organization import TeamSettings
-
-    return TeamSettings()
-
-
-def _get_tree_settings(agent: Agent) -> Any:
-    settings = getattr(agent, "team_settings", None)
-    if settings is None:
-        settings = _new_tree_settings()
-        agent.team_settings = settings
-    return settings
-
-
-def _get_team_node(agent: Agent) -> Any:
-    node = getattr(agent, "_team_node", None)
-    if node is None:
-        from skill.organization import team_node
-
-        node = team_node(agent)
-        agent._team_node = node
-    return node
 
 
 def _clear_team_runtimes(agent: Agent) -> None:
