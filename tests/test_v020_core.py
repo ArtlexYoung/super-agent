@@ -8,7 +8,6 @@ from urllib.error import URLError
 
 from adapter.storage import JsonlStorage, MemoryStorage, SqliteStorage, create_storage
 from core.config import Config, ModelConfig, config_from_dict, config_from_environment
-from core.disclosure import DisclosureStore
 from core.event import RunLimits
 from core.model import Message, ModelEvent, ModelRequest, Tool, ToolCall
 from core.provider import (
@@ -24,6 +23,7 @@ from core.provider import (
     create_model,
 )
 from core.records import AuditPolicy, Conversations, EventStore, RecordQuery
+from core.resources import ResourceCenter
 from core.run import RunInput, collect_run, stream_run
 from super_agent import Agent, model_from_environment
 
@@ -198,9 +198,9 @@ class CoreRuntimeTests(unittest.TestCase):
 
     def test_failed_disclosure_does_not_write_a_cache_file(self):
         with tempfile.TemporaryDirectory() as directory:
-            store = DisclosureStore(directory)
+            store = ResourceCenter(directory)
             with self.assertRaisesRegex(RuntimeError, "remaining budget"):
-                store.disclose(
+                store.disclose_resource(
                     "large",
                     "x" * 2_000,
                     max_serialized_characters=10,

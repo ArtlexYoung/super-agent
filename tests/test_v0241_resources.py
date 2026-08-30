@@ -1,6 +1,5 @@
 import unittest
 
-from core.disclosure import DisclosureStore
 from core.resources import ResourceCenter
 
 
@@ -11,7 +10,7 @@ class ResourceCenterTests(unittest.TestCase):
         disclosed = center.disclose_resource("skill:demo", "abcdef", max_characters=2)
         cached = center.read_cached_resource(disclosed.cache_path, max_characters=2)
 
-        self.assertIsInstance(center.store, DisclosureStore)
+        self.assertIsInstance(center, ResourceCenter)
         self.assertEqual("ab", cached.content)
         self.assertEqual(2, len(center.read_history()))
         self.assertEqual(
@@ -19,13 +18,9 @@ class ResourceCenterTests(unittest.TestCase):
             center.create_read_tool().name,
         )
 
-    def test_a_supplied_store_is_not_reconfigured_by_the_center(self):
-        store = DisclosureStore()
-        center = ResourceCenter(store)
-
-        self.assertIs(store, center.store)
+    def test_resource_center_owns_its_cache_configuration(self):
         with self.assertRaises(ValueError):
-            ResourceCenter(store, cache_root="cache")
+            ResourceCenter("cache", max_entries=0)
 
 
 if __name__ == "__main__":
