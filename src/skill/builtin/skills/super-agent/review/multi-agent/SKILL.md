@@ -6,7 +6,7 @@ metadata:
   super-agent-includes: "[\"skill:super-agent/team/multi-agent\"]"
   super-agent-requires: "[\"dispatch_agent_tasks\"]"
   super-agent-type: "review"
-  super-agent-version: "0.2.52"
+  super-agent-version: "0.2.53"
 ---
 # Multi-Agent review
 

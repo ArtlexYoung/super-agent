@@ -6,11 +6,12 @@ import json
 import math
 from dataclasses import dataclass, field, replace
 from threading import RLock
-from typing import Callable, Iterable, Iterator, Mapping, Protocol
+from typing import Callable, Iterable, Iterator, Mapping, Protocol, TypeVar
 
 from core import require_text as _text
 
 JsonObject = dict[str, object]
+Candidate = TypeVar("Candidate")
 
 REASONING_EFFORTS = (
     "none",
@@ -28,6 +29,36 @@ _OPENAI_RUNTIME_BODY_FIELDS = frozenset(
 _ANTHROPIC_RUNTIME_BODY_FIELDS = frozenset(
     {"model", "messages", "tools", "stream", "system"}
 )
+
+
+def selection_score(
+    *,
+    exact: bool,
+    weight: float,
+    reliability: float,
+    quality: float,
+    price: float,
+    active: int = 0,
+) -> tuple[float, float]:
+    """Score model and Agent candidates with the same deterministic formula."""
+    return (
+        float(exact),
+        weight * reliability * quality / (1.0 + price) / (1.0 + active),
+    )
+
+
+def rank_candidates(
+    values: Iterable[Candidate],
+    score: Callable[[Candidate], tuple[float, float]],
+    *,
+    rotation: int = 0,
+) -> list[Candidate]:
+    """Sort candidates and optionally rotate equally configured choices."""
+    ordered = sorted(values, key=score, reverse=True)
+    if ordered and rotation:
+        offset = rotation % len(ordered)
+        return ordered[offset:] + ordered[:offset]
+    return ordered
 
 
 @dataclass(frozen=True)
@@ -398,7 +429,13 @@ class ModelPerformance:
         )
 
     def routing_value(self, weight: float, price: float) -> float:
-        return weight * self._reliability * self._quality_factor / (1.0 + price)
+        return selection_score(
+            exact=False,
+            weight=weight,
+            reliability=self._reliability,
+            quality=self._quality_factor,
+            price=price,
+        )[1]
 
     def to_dict(self) -> dict[str, object]:
         calls = self._call_count

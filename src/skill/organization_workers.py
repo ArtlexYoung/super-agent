@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import urllib.error
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from threading import Lock
 from time import monotonic
 
+from core.model import rank_candidates, selection_score
+from core.provider import is_temporary_provider_error
 from skill.organization import (
     TeamNode,
     TeamMember,
@@ -115,7 +116,7 @@ class AgentWorkerPool:
     def mark_failure(self, worker: TeamMember, error: Exception) -> bool:
         health = self._health.setdefault(id(worker.agent), _WorkerHealth())
         health.failures += 1
-        if not temporary_agent_error(error):
+        if not is_temporary_provider_error(error):
             return False
         health.circuit_failures += 1
         if health.circuit_failures >= self.settings.circuit_failures:
@@ -152,20 +153,20 @@ class AgentWorkerPool:
 
         def score(worker: TeamMember) -> tuple[float, float]:
             health = self._health[id(worker.agent)]
-            exact = float(task.purpose != "auto" and worker.purpose == task.purpose)
-            value = (
-                worker.weight
-                * health.reliability
-                / (1 + worker.pricing.selection_price)
-                / (1 + active.get(worker.link_id, 0))
+            return selection_score(
+                exact=task.purpose != "auto" and worker.purpose == task.purpose,
+                weight=worker.weight,
+                reliability=health.reliability,
+                quality=1.0,
+                price=worker.pricing.selection_price,
+                active=active.get(worker.link_id, 0),
             )
-            return exact, value
 
-        ordered = sorted(available, key=score, reverse=True)
-        if self.settings.selection == "rotate" and ordered:
-            offset = self._rotation % len(ordered)
-            ordered = ordered[offset:] + ordered[:offset]
-        return ordered
+        return rank_candidates(
+            available,
+            score,
+            rotation=self._rotation if self.settings.selection == "rotate" else 0,
+        )
 
     def _record(self, event_type: str, data: Mapping[str, object]) -> None:
         if self.record_event is not None:
@@ -226,10 +227,4 @@ def _first_agent_groups(group: TeamNode) -> list[TeamNode]:
     return values
 
 
-def temporary_agent_error(error: Exception) -> bool:
-    if isinstance(error, urllib.error.HTTPError):
-        return error.code in {408, 409, 425, 429} or error.code >= 500
-    return isinstance(error, (TimeoutError, ConnectionError, urllib.error.URLError))
-
-
-__all__ = ["AgentWorkerPool", "candidate_members", "temporary_agent_error"]
+__all__ = ["AgentWorkerPool", "candidate_members"]

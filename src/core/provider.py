@@ -25,6 +25,7 @@ from core.model import (
     estimate_tokens,
     merge_model_usage,
     model_scope_from_metadata,
+    rank_candidates,
     validate_model_request_options,
 )
 
@@ -321,7 +322,7 @@ class ModelRouter:
                     ),
                     error=error,
                 )
-                if emitted_output or not _is_temporary_model_error(error) or position + 1 >= attempts:
+                if emitted_output or not is_temporary_provider_error(error) or position + 1 >= attempts:
                     raise
                 yield ModelEvent.status_event(
                     "model_fallback",
@@ -376,10 +377,9 @@ class ModelRouter:
         with self._lock:
             candidates = [profile for profile in self.profiles if profile.matches(request)]
             available = [profile for profile in candidates if self._health[profile.name].retry_at <= now]
-            return sorted(
+            return rank_candidates(
                 available,
-                key=lambda item: self._score(item, request, scope),
-                reverse=True,
+                lambda item: self._score(item, request, scope),
             )
 
     def _score(
@@ -408,7 +408,7 @@ class ModelRouter:
                 health.circuit_failures = 0
                 health.retry_at = 0.0
                 return
-            if not _is_temporary_model_error(error):
+            if not is_temporary_provider_error(error):
                 return
             health.circuit_failures += 1
             if health.circuit_failures >= self.settings.circuit_failures:
@@ -669,7 +669,7 @@ def _is_local_url(value: str) -> bool:
     return urlparse(value).hostname in {"localhost", "127.0.0.1", "::1"}
 
 
-def _is_temporary_model_error(error: Exception) -> bool:
+def is_temporary_provider_error(error: Exception) -> bool:
     if isinstance(error, urllib.error.HTTPError):
         return error.code in {408, 409, 425, 429} or error.code >= 500
     return isinstance(error, (TimeoutError, ConnectionError, urllib.error.URLError))
