@@ -10,14 +10,7 @@ from typing import TYPE_CHECKING, Any
 from core import require_text as _text
 from core.config import Config, EvolutionConfig, WorkingDirectory, config_from_environment
 from core.context import AgentContext
-from core.event import (
-    CheckpointStore,
-    RunCheckpoint,
-    RunEvent,
-    RunIdentity,
-    RunLimits,
-    RunResult,
-)
+from core.event import RunEvent, RunLimits, RunResult
 from core.model import Message, Model, Tool, next_model_profile_name
 from core.provider import ModelPricing, ModelProfile, ModelRouter, RouterSettings
 from core.records import (
@@ -28,15 +21,7 @@ from core.records import (
     RecordScope,
     SessionRecord,
 )
-from core.run import (
-    CancelCheck,
-    EventListener,
-    RuntimeLifecycle,
-    ToolDecision,
-    ToolRegistry,
-    collect_run,
-    stream_run,
-)
+from core.run import EventListener, ToolRegistry, collect_run, stream_run
 from core.user import AgentUser
 from skill.agent_builder import AgentRunBuilder, AgentRunParts, OptionalMechanisms
 from skill.library import AgentLibrary
@@ -88,8 +73,6 @@ class Agent:
         self.storage: RecordBackend | None = None
         self.run_parts = AgentRunParts(self)
         self.audit_policy = AuditPolicy()
-        self.optional_mechanisms.memory = False
-        self.optional_mechanisms.evolution = False
         self.evolution_policy = EvolutionConfig()
         self.candidate_runner: CandidateRunner | None = None
         self._tool_registry = ToolRegistry()
@@ -640,50 +623,6 @@ def _make_working_directory(
     if isinstance(value, WorkingDirectory):
         return value
     return WorkingDirectory.from_path(value)
-
-
-def _build_run_identity(
-    context: AgentContext,
-    agent_name: str,
-    session: SessionRecord | None,
-    working_directory: WorkingDirectory | None,
-    checkpoint: RunCheckpoint | None,
-) -> RunIdentity:
-    state = {} if checkpoint is None else checkpoint.state
-    if _checkpoint_value(state, "agent_name", str, agent_name) != agent_name:
-        raise ValueError("checkpoint agent_name does not match Agent")
-    checkpoint_user = _checkpoint_value(state, "user_id", str, context.user_id)
-    if context.user_id != "local" and context.user_id != checkpoint_user:
-        raise ValueError("checkpoint user_id does not match Agent context")
-    directory_id = None if working_directory is None else working_directory.identity
-    if "working_directory_id" in state and state["working_directory_id"] != directory_id:
-        raise ValueError("checkpoint working directory does not match Agent context")
-    conversation_id = context.conversation_id or _checkpoint_value(state, "conversation_id", str, None)
-    identity = context.identity or RunIdentity(
-        user_id=checkpoint_user,
-        agent_name=agent_name,
-        conversation_id=conversation_id,
-        session_id=None if session is None else session.session_id,
-        working_directory_id=directory_id,
-    )
-    if checkpoint is not None and context.identity is None:
-        identity = replace(
-            identity,
-            run_id=checkpoint.run_id,
-            session_id=checkpoint.session_id or identity.session_id,
-            parent_run_id=_checkpoint_value(state, "parent_run_id", str, None),
-            depth=_checkpoint_value(state, "depth", int, 1),
-        )
-    return identity
-
-
-def _checkpoint_value(state: Mapping[str, object], name: str, value_type: type, default: object) -> object:
-    value = state.get(name)
-    if value is None:
-        return default
-    if value is not None and (isinstance(value, bool) and value_type is int or not isinstance(value, value_type)):
-        raise ValueError(f"checkpoint {name} has an invalid value")
-    return value
 
 
 __all__ = [
