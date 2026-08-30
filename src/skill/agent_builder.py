@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -21,41 +22,34 @@ if TYPE_CHECKING:
     from super_agent import Agent
 
 
-class OptionalMechanisms:
-    """集中保存可选机制的开关，并生成运行可审计的说明。"""
+MEMORY_PLUGIN = "plugin:super-agent/memory"
+EVOLUTION_PLUGIN = "plugin:super-agent/evolution"
 
-    def __init__(self) -> None:
-        self.memory = False
-        self.evolution = False
 
-    def enable_memory(self) -> None:
-        self.memory = True
+def agent_mechanisms(agent: Agent) -> tuple[str, ...]:
+    """从已选插件和模型直接推导机制，不维护第二份开关状态。"""
+    from core.provider import ModelRouter
 
-    def enable_evolution(self) -> None:
-        self.evolution = True
+    values = [
+        name
+        for name, reference in (
+            ("memory", MEMORY_PLUGIN),
+            ("evolution", EVOLUTION_PLUGIN),
+        )
+        if _plugin_is_enabled(agent, reference)
+    ]
+    if isinstance(agent.model, ModelRouter):
+        values.append("model-routing")
+    return tuple(values)
 
-    def list_enabled(self, model: object | None = None) -> tuple[str, ...]:
-        from core.provider import ModelRouter
 
-        values = [
-            name
-            for name, enabled in (
-                ("memory", self.memory),
-                ("evolution", self.evolution),
-            )
-            if enabled
-        ]
-        if isinstance(model, ModelRouter):
-            values.append("model-routing")
-        return tuple(values)
-
-    def describe(self, model: object | None = None) -> dict[str, object]:
-        enabled = set(self.list_enabled(model))
-        return {
-            "memory": "memory" in enabled,
-            "evolution": "evolution" in enabled,
-            "model_routing": "model-routing" in enabled,
-        }
+def agent_mechanism_status(agent: Agent) -> dict[str, bool]:
+    enabled = set(agent_mechanisms(agent))
+    return {
+        "memory": "memory" in enabled,
+        "evolution": "evolution" in enabled,
+        "model_routing": "model-routing" in enabled,
+    }
 
 
 def agent_event_store(agent: Agent, identity: RunIdentity) -> EventStore | None:
@@ -97,8 +91,6 @@ def agent_memory(
         return agent._memories[key]
     selected_store: RecordBackend | EventStore | None = store
     if working_directory is not None:
-        import hashlib
-
         scope = hashlib.sha256(f"{identity.user_id}\0{identity.agent_name}".encode()).hexdigest()[:24]
         selected_store = JsonlMemoryStore(
             working_directory.path / ".super-agent" / "memory" / "users" / f"{scope}.jsonl",
@@ -138,16 +130,12 @@ def agent_tools(
             mcp_by_server[definition.reference] = mcp_tools(
                 definition.mcp_id, server, effects, declared_tools=definition.tools
             )
-    if agent.optional_mechanisms.memory:
-        if "plugin:super-agent/memory" not in agent._enabled_plugins:
-            raise RuntimeError("memory requires the explicit Memory plugin")
+    if _plugin_is_enabled(agent, MEMORY_PLUGIN):
         registry.register_many(
             agent_memory(agent, identity, store, working_directory).tools(),
             exposure="after_skill" if library is not None else "always",
         )
-    if agent.optional_mechanisms.evolution:
-        if "plugin:super-agent/evolution" not in agent._enabled_plugins:
-            raise RuntimeError("Skill evolution requires the explicit Evolution plugin")
+    if _plugin_is_enabled(agent, EVOLUTION_PLUGIN):
         if library is None:
             raise RuntimeError("Skill evolution requires an AgentLibrary")
         registry.register_many(agent_evolution(agent, library, store).tools(), exposure="after_skill")
@@ -270,7 +258,7 @@ def stream_agent(agent: Agent, prompt: str, context: AgentContext):
             **dict(effective_context.metadata),
             "_super_agent_model_scope": model_scope(identity),
             "_super_agent_run_scope": runtime_scope.to_dict(),
-            "_super_agent_optional_mechanisms": agent.optional_mechanisms.describe(model),
+            "_super_agent_optional_mechanisms": agent_mechanism_status(agent),
         },
         warning_messages=warnings,
     )
@@ -322,6 +310,13 @@ def _activate_requested_skills(
             tool_context.emit(
                 "skill.activated", {"key": key, "source": "Agent.enable_skill"}
             )
+
+
+def _plugin_is_enabled(agent: Agent, reference: str) -> bool:
+    return (
+        reference in agent._enabled_plugins
+        and reference not in agent._disabled_plugins
+    )
 
 
 def _required_features(features: tuple[str, ...], has_tools: bool) -> tuple[str, ...]:

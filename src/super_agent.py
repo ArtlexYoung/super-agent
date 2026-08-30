@@ -23,7 +23,12 @@ from core.records import (
 )
 from core.run import EventListener, ToolRegistry, collect_run
 from core.user import AgentUser
-from skill.agent_builder import OptionalMechanisms, stream_agent
+from skill.agent_builder import (
+    EVOLUTION_PLUGIN,
+    MEMORY_PLUGIN,
+    agent_mechanisms,
+    stream_agent,
+)
 from skill.library import AgentLibrary
 
 if TYPE_CHECKING:
@@ -66,7 +71,6 @@ class Agent:
         self.working_directory = _make_working_directory(working_directory)
         self.instructions: list[str] = []
         self.settings = AgentSettings()
-        self.optional_mechanisms = OptionalMechanisms()
         self.team_settings = None
         self.library: AgentLibrary | None = None
         self._mcp_servers: dict[str, tuple[object, Mapping[str, tuple[str, ...]]]] = {}
@@ -111,8 +115,6 @@ class Agent:
             max_level=config.max_agent_level,
             max_call_depth=config.max_agent_call_depth,
         )
-        self.memory_enabled = False
-        self.evolution_enabled = False
         self.evolution_policy = config.evolution or EvolutionConfig()
         self._enabled_plugins = list(config.enabled_plugins)
         self._enabled_skills = list(config.enabled_skills)
@@ -360,8 +362,8 @@ class Agent:
         return tuple(self._enabled_skills)
 
     def list_optional_mechanisms(self) -> tuple[str, ...]:
-        """读取已启用的可选机制，不触发工具注册或模型调用。"""
-        return self.optional_mechanisms.list_enabled(self.model)
+        """从已选插件和模型读取机制，不触发工具注册或模型调用。"""
+        return agent_mechanisms(self)
 
     def is_plain_agent(self) -> bool:
         """判断 Agent 是否仍是只包含模型和基础运行循环的普通 Agent。"""
@@ -400,13 +402,11 @@ class Agent:
 
     def enable_memory(self) -> None:
         """显式选择 Memory 插件并启用其运行工具。"""
-        self.enable_plugin("plugin:super-agent/memory")
-        self.optional_mechanisms.enable_memory()
+        self.enable_plugin(MEMORY_PLUGIN)
 
     def enable_skill_evolution(self, runner: CandidateRunner | None = None) -> None:
         """启用候选和保鲜度工具；更新目标仍需单独授权。"""
-        self.enable_plugin("plugin:super-agent/evolution")
-        self.optional_mechanisms.enable_evolution()
+        self.enable_plugin(EVOLUTION_PLUGIN)
         self.candidate_runner = runner
 
     def allow_plugin_to_evolve(
@@ -433,8 +433,7 @@ class Agent:
         if auto_apply:
             automatic = tuple(dict.fromkeys((*automatic, reference)))
         self.evolution_policy = EvolutionConfig(allowed, automatic)
-        self.enable_plugin("plugin:super-agent/evolution")
-        self.evolution_enabled = True
+        self.enable_plugin(EVOLUTION_PLUGIN)
 
     def configure_team(self, settings: TeamSettings | None = None) -> None:
         """原子替换团队共用的任务、等待和层级设置。"""
@@ -554,24 +553,13 @@ class Agent:
 
     @property
     def memory_enabled(self) -> bool:
-        """保留直白的状态读取，真实状态由可选机制集合维护。"""
-        return self.optional_mechanisms.memory
-
-    @memory_enabled.setter
-    def memory_enabled(self, value: bool) -> None:
-        if not isinstance(value, bool):
-            raise TypeError("memory_enabled must be a boolean")
-        self.optional_mechanisms.memory = value
+        """Memory 插件是否被显式选择且未禁用。"""
+        return "memory" in agent_mechanisms(self)
 
     @property
     def evolution_enabled(self) -> bool:
-        return self.optional_mechanisms.evolution
-
-    @evolution_enabled.setter
-    def evolution_enabled(self, value: bool) -> None:
-        if not isinstance(value, bool):
-            raise TypeError("evolution_enabled must be a boolean")
-        self.optional_mechanisms.evolution = value
+        """Evolution 插件是否被显式选择且未禁用。"""
+        return "evolution" in agent_mechanisms(self)
 
 
 def _clear_team_runtimes(agent: Agent) -> None:

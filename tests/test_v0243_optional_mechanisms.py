@@ -21,6 +21,17 @@ class OptionalMechanismTests(unittest.TestCase):
         self.assertTrue(agent.memory_enabled)
         self.assertTrue(agent.evolution_enabled)
 
+    def test_plugin_selection_is_the_only_mechanism_state(self):
+        agent = Agent(MockModel("answer"))
+        agent.enable_plugin("plugin:super-agent/memory")
+
+        self.assertTrue(agent.memory_enabled)
+        self.assertEqual(("memory",), agent.list_optional_mechanisms())
+
+        agent.set_disabled_plugins("plugin:super-agent/memory")
+        self.assertFalse(agent.memory_enabled)
+        self.assertEqual((), agent.list_optional_mechanisms())
+
     def test_model_routing_is_observable_without_reimplementing_the_router(self):
         agent = Agent()
         agent.replace_models((ModelProfile("one", MockModel("answer")),))
