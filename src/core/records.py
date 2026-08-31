@@ -76,6 +76,7 @@ class SessionRecord:
                 event_id=f"session-{uuid4().hex}",
                 user_id=scope.user_id,
                 agent_name=scope.agent_name,
+                scope_key=scope.storage_key,
                 stream="session",
                 stream_id=self.session_id,
                 event_type=_text(event_type, "session event_type"),
@@ -167,6 +168,12 @@ class RecordScope:
             run_id=self.run_id,
         )
 
+    @property
+    def storage_key(self) -> str:
+        """返回用户与工作目录的稳定存储边界键。"""
+        value = json.dumps([self.user_id, self.working_directory_id], ensure_ascii=False, separators=(",", ":"))
+        return hashlib.sha256(value.encode()).hexdigest()
+
     def to_dict(self) -> dict[str, object]:
         return {
             "user_id": self.user_id,
@@ -175,6 +182,7 @@ class RecordScope:
             "conversation_id": self.conversation_id,
             "session_id": self.session_id,
             "run_id": self.run_id,
+            "storage_key": self.storage_key,
         }
 
 
@@ -183,6 +191,7 @@ class Record:
     event_id: str
     user_id: str
     agent_name: str
+    scope_key: str
     stream: str
     stream_id: str
     event_type: str
@@ -191,7 +200,7 @@ class Record:
     position: int = 0
 
     def __post_init__(self) -> None:
-        for name in ("event_id", "user_id", "agent_name", "stream", "stream_id", "event_type", "created_at"):
+        for name in ("event_id", "user_id", "agent_name", "scope_key", "stream", "stream_id", "event_type", "created_at"):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"record {name} cannot be empty")
@@ -234,6 +243,7 @@ class Record:
             event_id=_text(value.get("event_id"), "record event_id"),
             user_id=_text(value.get("user_id"), "record user_id"),
             agent_name=_text(value.get("agent_name"), "record agent_name"),
+            scope_key=_text(value.get("scope_key"), "record scope_key"),
             stream=_text(value.get("stream"), "record stream"),
             stream_id=_text(value.get("stream_id"), "record stream_id"),
             event_type=_text(value.get("event_type"), "record event_type"),
@@ -247,6 +257,7 @@ class Record:
 class RecordQuery:
     user_id: str | None = None
     agent_name: str | None = None
+    scope_key: str | None = None
     stream: str | None = None
     stream_id: str | None = None
     event_types: tuple[str, ...] = ()
@@ -259,6 +270,7 @@ class RecordQuery:
         checks = (
             self.user_id is None or record.user_id == self.user_id,
             self.agent_name is None or record.agent_name == self.agent_name,
+            self.scope_key is None or record.scope_key == self.scope_key,
             self.stream is None or record.stream == self.stream,
             self.stream_id is None or record.stream_id == self.stream_id,
             not self.event_types or record.event_type in self.event_types,
@@ -332,6 +344,7 @@ class EventStore:
             event_id=event_id or f"event-{uuid4().hex}",
             user_id=self.user_id,
             agent_name=self.agent_name,
+            scope_key=self.scope.storage_key,
             stream=_text(stream, "record stream"),
             stream_id=_text(stream_id, "record stream_id"),
             event_type=_text(event_type, "record event_type"),
@@ -352,6 +365,7 @@ class EventStore:
         query = RecordQuery(
             user_id=self.user_id,
             agent_name=self.agent_name,
+            scope_key=self.scope.storage_key,
             stream=stream,
             stream_id=stream_id,
             event_types=tuple(event_types),
@@ -362,7 +376,7 @@ class EventStore:
 
     def delete(self, stream: str, stream_id: str) -> int:
         return self.backend.delete(
-            RecordQuery(user_id=self.user_id, agent_name=self.agent_name, stream=stream, stream_id=stream_id)
+            RecordQuery(user_id=self.user_id, agent_name=self.agent_name, scope_key=self.scope.storage_key, stream=stream, stream_id=stream_id)
         )
 
     def replace_state(
@@ -382,6 +396,7 @@ class EventStore:
                 RecordQuery(
                     user_id=self.user_id,
                     agent_name=self.agent_name,
+                    scope_key=self.scope.storage_key,
                     event_ids=tuple(item.event_id for item in previous),
                 )
             )
@@ -412,7 +427,7 @@ class EventStore:
 
     def find_user_run(self, run_id: str) -> list[Record]:
         """按用户读取主或子 Agent 运行；方法名显式标明会跨 Agent。"""
-        records = self.backend.read(RecordQuery(user_id=self.user_id, stream="run", stream_id=run_id))
+        records = self.backend.read(RecordQuery(user_id=self.user_id, scope_key=self.scope.storage_key, stream="run", stream_id=run_id))
         owners = {record.agent_name for record in records}
         if len(owners) > 1:
             raise ValueError(f"run ID is ambiguous for user: {run_id}")

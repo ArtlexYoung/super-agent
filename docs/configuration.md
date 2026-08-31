@@ -68,6 +68,10 @@ Unknown fields fail directly. Loading configuration creates no directory, opens 
 
 `storage.backend` accepts `none`, `memory`, `jsonl`, `sqlite`, `mysql`, or `postgresql`. Without an explicit backend the Agent remains stateless; MySQL and PostgreSQL drivers remain optional dependencies.
 
+所有存储后端使用同一作用域键隔离用户与工作目录，再按 Agent 和流标识查询；相同会话或运行 ID 不会跨项目读取。
+
+Every storage backend uses the same scope key to isolate users and working directories, then queries by Agent and stream identity; equal conversation or run IDs cannot cross projects.
+
 `models.description` 是用户给出的只读先验。可靠性、用量、延迟和显式质量评价按用户、Agent 与 `purpose` 独立学习，不覆盖原描述。
 
 `models.description` is a read-only user prior. Reliability, usage, latency, and explicit quality evaluations learn separately by user, Agent, and `purpose` without overwriting it.

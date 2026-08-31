@@ -199,13 +199,13 @@ class SqliteStorage:
     def append(self, record: Record) -> Record:
         with self._lock, self._connect() as connection:
             position = connection.execute(
-                "SELECT COALESCE(MAX(position), 0) + 1 FROM records WHERE user_id=? AND agent_name=? AND stream=? AND stream_id=?",
-                (record.user_id, record.agent_name, record.stream, record.stream_id),
+                "SELECT COALESCE(MAX(position), 0) + 1 FROM records WHERE scope_key=? AND agent_name=? AND stream=? AND stream_id=?",
+                (record.scope_key, record.agent_name, record.stream, record.stream_id),
             ).fetchone()[0]
             stored = replace(record, position=int(position))
             try:
                 connection.execute(
-                    "INSERT INTO records VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO records VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     record_to_sql_row(stored),
                 )
             except sqlite3.IntegrityError as error:
@@ -215,7 +215,7 @@ class SqliteStorage:
     def read(self, query: RecordQuery) -> list[Record]:
         clauses, parameters = build_sql_filters(query, "?")
         order = "DESC" if query.descending else "ASC"
-        sql = "SELECT event_id,user_id,agent_name,stream,stream_id,event_type,data,created_at,position FROM records"
+        sql = "SELECT event_id,user_id,agent_name,scope_key,stream,stream_id,event_type,data,created_at,position FROM records"
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         sql += f" ORDER BY created_at {order}, position {order}, event_id {order}"
@@ -250,18 +250,19 @@ class SqliteStorage:
                 event_id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
                 agent_name TEXT NOT NULL,
+                scope_key TEXT NOT NULL,
                 stream TEXT NOT NULL,
                 stream_id TEXT NOT NULL,
                 event_type TEXT NOT NULL,
                 data TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 position INTEGER NOT NULL,
-                UNIQUE(user_id, agent_name, stream, stream_id, position)
+                UNIQUE(scope_key, agent_name, stream, stream_id, position)
             )
             """
         )
         connection.execute(
-            "CREATE INDEX IF NOT EXISTS records_scope ON records(user_id, agent_name, stream, stream_id, created_at)"
+            "CREATE INDEX IF NOT EXISTS records_scope ON records(scope_key, agent_name, stream, stream_id, created_at)"
         )
         return connection
 
@@ -311,8 +312,8 @@ def _next_position(records: Iterable[Record], target: Record) -> int:
     positions = [
         item.position
         for item in records
-        if (item.user_id, item.agent_name, item.stream, item.stream_id)
-        == (target.user_id, target.agent_name, target.stream, target.stream_id)
+        if (item.scope_key, item.agent_name, item.stream, item.stream_id)
+        == (target.scope_key, target.agent_name, target.stream, target.stream_id)
     ]
     return max(positions, default=0) + 1
 
@@ -353,6 +354,7 @@ def build_sql_filters(
     for column, value in (
         ("user_id", query.user_id),
         ("agent_name", query.agent_name),
+        ("scope_key", query.scope_key),
         ("stream", query.stream),
         ("stream_id", query.stream_id),
     ):
@@ -374,6 +376,7 @@ def record_to_sql_row(record: Record) -> tuple[object, ...]:
         record.event_id,
         record.user_id,
         record.agent_name,
+        record.scope_key,
         record.stream,
         record.stream_id,
         record.event_type,
@@ -385,17 +388,18 @@ def record_to_sql_row(record: Record) -> tuple[object, ...]:
 
 def record_from_sql_row(row: Iterable[object]) -> Record:
     values = list(row)
-    data = json.loads(str(values[6]))
+    data = json.loads(str(values[7]))
     if not isinstance(data, dict):
         raise ValueError("stored record data must be an object")
     return Record(
         event_id=str(values[0]),
         user_id=str(values[1]),
         agent_name=str(values[2]),
-        stream=str(values[3]),
-        stream_id=str(values[4]),
-        event_type=str(values[5]),
+        scope_key=str(values[3]),
+        stream=str(values[4]),
+        stream_id=str(values[5]),
+        event_type=str(values[6]),
         data=data,
-        created_at=str(values[7]),
-        position=int(values[8]),
+        created_at=str(values[8]),
+        position=int(values[9]),
     )

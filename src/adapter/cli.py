@@ -26,7 +26,7 @@ from core.config import (
     config_from_environment,
     discover_configuration_sources,
 )
-from core.records import AuditPolicy, Conversations, EventStore, RecordBackend
+from core.records import AuditPolicy, Conversations, RecordBackend
 from skill.library import AgentLibrary
 from super_agent import Agent, AgentContext
 
@@ -254,6 +254,8 @@ def _data_command(arguments: list[str]) -> int:
     if config.storage.backend == "none":
         raise RuntimeError("data commands require storage in general configuration")
     backend = _storage_from_config(config)
+    agent = Agent(config=config)
+    agent.use_storage(backend)
     if parsed.resource == "storage":
         if parsed.action == "verify":
             value = verify_storage(backend)
@@ -278,13 +280,9 @@ def _data_command(arguments: list[str]) -> int:
                 "created_at": conversation.created_at,
                 "updated_at": conversation.updated_at,
             }
-            for conversation in Conversations(
-                EventStore(backend, parsed.user, config.name)
-            ).list()
+            for conversation in Conversations(agent.get_record_store(parsed.user)).list()
         ]
     else:
-        agent = Agent(config=config)
-        agent.use_storage(backend)
         value = agent.for_user(parsed.user).runs.list()
     return _print_value(value, parsed.output)
 

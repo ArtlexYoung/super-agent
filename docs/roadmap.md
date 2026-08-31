@@ -52,6 +52,10 @@ v0.2.68 提供不绑定协议的 Agent 状态和运行追踪查询，界面只�
 
 v0.2.68 provides protocol-neutral Agent state and run-trace queries, with interfaces consuming JSON views only.
 
+v0.2.69 将用户、工作目录、Agent 和流的隔离语义统一到全部存储后端。
+
+v0.2.69 gives every storage backend the same isolation semantics for users, working directories, Agents, and streams.
+
 后续演进按风险和可验证性推进：
 
 Future work should proceed by risk and verifiability:

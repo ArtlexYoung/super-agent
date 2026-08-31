@@ -34,15 +34,15 @@ class DatabaseStorage:
             try:
                 cursor.execute(
                     "SELECT COALESCE(MAX(position), 0) + 1 FROM super_agent_records "
-                    "WHERE user_id=%s AND agent_name=%s AND stream=%s AND stream_id=%s FOR UPDATE",
-                    (record.user_id, record.agent_name, record.stream, record.stream_id),
+                    "WHERE scope_key=%s AND agent_name=%s AND stream=%s AND stream_id=%s FOR UPDATE",
+                    (record.scope_key, record.agent_name, record.stream, record.stream_id),
                 )
                 position = int(cursor.fetchone()[0])
                 stored = replace(record, position=position)
                 cursor.execute(
                     "INSERT INTO super_agent_records "
-                    "(event_id,user_id,agent_name,stream,stream_id,event_type,data,created_at,position) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    "(event_id,user_id,agent_name,scope_key,stream,stream_id,event_type,data,created_at,position) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                     record_to_sql_row(stored),
                 )
             except Exception as error:
@@ -55,7 +55,7 @@ class DatabaseStorage:
         clauses, parameters = build_sql_filters(query, "%s")
         order = "DESC" if query.descending else "ASC"
         sql = (
-            "SELECT event_id,user_id,agent_name,stream,stream_id,event_type,data,created_at,position "
+            "SELECT event_id,user_id,agent_name,scope_key,stream,stream_id,event_type,data,created_at,position "
             "FROM super_agent_records"
         )
         if clauses:
@@ -144,13 +144,14 @@ class DatabaseStorage:
                     event_id VARCHAR(96) PRIMARY KEY,
                     user_id VARCHAR(255) NOT NULL,
                     agent_name VARCHAR(255) NOT NULL,
+                    scope_key VARCHAR(64) NOT NULL,
                     stream VARCHAR(96) NOT NULL,
                     stream_id VARCHAR(255) NOT NULL,
                     event_type VARCHAR(255) NOT NULL,
                     data {data_type} NOT NULL,
                     created_at VARCHAR(64) NOT NULL,
                     position BIGINT NOT NULL,
-                    UNIQUE (user_id, agent_name, stream, stream_id, position)
+                    UNIQUE (scope_key, agent_name, stream, stream_id, position)
                 )
                 """
             )
