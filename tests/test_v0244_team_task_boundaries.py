@@ -45,6 +45,19 @@ class TeamTaskBoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "completed -> cancelled"):
             runtime.cancel_task(task.task_id, source_group_id=group_id)
 
+    def test_task_status_and_wait_share_one_explicit_queue_view(self):
+        agent = Agent(MockModel("root"), name="root")
+        agent.add_subagent(Agent(MockModel("done")), name="worker")
+        group_id = team_node(agent).group_id
+        runtime = TeamRuntime(team_node(agent).root(), TeamSettings(max_wait_seconds=1))
+        task = runtime.create_task("work", source_group_id=group_id)
+        runtime.dispatch_task(task.task_id, source_group_id=group_id)
+
+        waited = runtime.wait_for_task(task.task_id, source_group_id=group_id, timeout_seconds=1)
+
+        self.assertEqual("completed", waited["task"]["status"])
+        self.assertEqual(waited["task"], runtime.get_task(task.task_id, source_group_id=group_id))
+
 
 if __name__ == "__main__":
     unittest.main()

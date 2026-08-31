@@ -197,6 +197,29 @@ class TaskQueue:
                 if task.source_group_id == group_id
             ]
 
+    def get_task(
+        self, task_id: str, *, source_group_id: str | None = None, include_result: bool = True
+    ) -> dict[str, object]:
+        """读取一条任务的当前状态，不改变队列。"""
+        with self._condition:
+            task = self._require_task(task_id)
+            if source_group_id is not None and task.source_group_id != source_group_id:
+                raise PermissionError("a group can read only its own task")
+            return task.to_dict(include_result=include_result)
+
+    def wait_for_task(
+        self, task_id: str, *, source_group_id: str, timeout_seconds: float
+    ) -> dict[str, object]:
+        """等待一条任务进入完成、失败或取消状态。"""
+        value = self.wait_for_tasks(
+            "selected_tasks_finished",
+            group_id=source_group_id,
+            timeout_seconds=timeout_seconds,
+            task_ids=(task_id,),
+        )
+        value["task"] = self.get_task(task_id, source_group_id=source_group_id)
+        return value
+
     def wait_for_tasks(
         self,
         trigger: str,
