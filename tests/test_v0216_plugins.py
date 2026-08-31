@@ -498,6 +498,16 @@ class AgentLibraryTests(unittest.TestCase):
             library.refresh()
             self.assertEqual("new", library.find_skill(skill.reference).body)
 
+    def test_evolution_change_can_be_inspected_without_advancing_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            library = AgentLibrary((), writable_root=Path(directory))
+            skill = library.create_skill("local/self", "old", description="Self")
+            evolution = SkillEvolution(library, policy=EvolutionConfig((skill.reference,), ()))
+            change = evolution.propose(skill.reference, "new", reason="measured")
+
+            self.assertEqual("proposed", evolution.get_change(change.change_id).phase)
+            self.assertEqual("proposed", evolution.list_changes()[0]["status"])
+
     def test_plugin_evolution_authority_covers_every_shared_reference(self):
         with tempfile.TemporaryDirectory() as directory:
             library = AgentLibrary((), writable_root=Path(directory))

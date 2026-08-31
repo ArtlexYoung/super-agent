@@ -175,6 +175,11 @@ class SkillChange:
     def to_dict(self) -> dict[str, object]:
         return dataclass_data(self)
 
+    @property
+    def phase(self) -> str:
+        """返回进化事务当前阶段。"""
+        return self.status
+
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> SkillChange:
         report = value.get("report")
@@ -298,6 +303,19 @@ class SkillEvolution:
             self._evidence.append(selected)
         else:
             self.store.append("skill_evidence", selected.skill_key, "skill.evaluated", selected.to_dict())
+
+    def get_change(self, change_id: str) -> SkillChange:
+        """读取进化事务当前状态，不执行任何阶段。"""
+        try:
+            return self._load_changes()[_text(change_id, "Skill change ID")]
+        except KeyError as error:
+            raise KeyError(f"Skill change not found: {change_id}") from error
+
+    def list_changes(self, skill_reference: str | None = None) -> tuple[dict[str, object], ...]:
+        """按 Skill 读取进化事务摘要，供界面和审计使用。"""
+        selected = None if skill_reference is None else self.library.find_skill(skill_reference).key
+        values = (change for change in self._load_changes().values() if selected is None or change.skill_key == selected)
+        return tuple(change.to_dict() for change in sorted(values, key=lambda item: item.proposed_at, reverse=True))
 
     def freshness(self, reference: str, *, now: datetime | None = None) -> Freshness:
         skill = self.library.find_skill(reference)
