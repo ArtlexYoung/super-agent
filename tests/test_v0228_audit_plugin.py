@@ -12,6 +12,16 @@ BUILTIN = ROOT / "src" / "skill" / "builtin"
 
 
 class AuditPluginTests(unittest.TestCase):
+    def test_single_record_view_matches_the_list_view(self):
+        record = EventStore(MemoryStorage(), "alice", "agent").append(
+            "run", "run-1", "run.completed", {"text": "private"}
+        )
+        policy = AuditPolicy()
+
+        self.assertEqual(policy.record_view(record), policy.audit_view([record])[0])
+        self.assertEqual("run", policy.record_view(record)["category"])
+        self.assertTrue(policy.record_view(record)["critical"])
+
     def test_audit_plugin_is_independent_and_auditable(self):
         library = AgentLibrary((BUILTIN,))
         plugin = library.find_plugin("plugin:super-agent/audit")

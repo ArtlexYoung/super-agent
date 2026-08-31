@@ -4,21 +4,25 @@ v0.2.0 先固定最小边界：一个 Runtime、一条披露路径、一个事�
 
 v0.2.0 first fixes the minimum boundaries: one Runtime, one disclosure path, one event contract, and explicit optional adapters.
 
-到 v0.2.60，多 Agent 已收成一棵代码定义的组树；运行输入、资源披露、记录、任务状态、候选选择和存储转换也分别只有一个实现。
+到 v0.2.61，多 Agent 已收成一棵代码定义的组树；运行输入、资源披露、记录、任务状态、候选选择和存储转换也分别只有一个实现。
 
-By v0.2.60, multi-Agent work uses one code-defined group tree, while run input, resource disclosure, records, task state, candidate selection, and storage conversion each have one implementation.
+By v0.2.61, multi-Agent work uses one code-defined group tree, while run input, resource disclosure, records, task state, candidate selection, and storage conversion each have one implementation.
 
-v0.2.60 将事件类别和关键日志判定收敛到 `core.event`，Runtime、记录和适配器共享同一事件视图。
+v0.2.61 将事件类别和关键日志判定收敛到 `core.event`，Runtime、记录和适配器共享同一事件视图。
 
-v0.2.60 centralizes event categories and critical-log classification in `core.event`, so Runtime, records, and adapters share one event view.
+v0.2.61 centralizes event categories and critical-log classification in `core.event`, so Runtime, records, and adapters share one event view.
 
-v0.2.60 增加只读 Agent 组合快照，外部界面通过公开视图读取状态，不依赖内部字段。
+v0.2.61 增加只读 Agent 组合快照，外部界面通过公开视图读取状态，不依赖内部字段。
 
-v0.2.60 adds a read-only Agent assembly snapshot so external interfaces use a public view instead of internal fields.
+v0.2.61 adds a read-only Agent assembly snapshot so external interfaces use a public view instead of internal fields.
 
-v0.2.60 将 Runtime 的开始、检查点、完成事件和结果统一为同一份元数据快照。
+v0.2.61 将 Runtime 的开始、检查点、完成事件和结果统一为同一份元数据快照。
 
-v0.2.60 uses one metadata snapshot for Runtime start, checkpoints, completion events, and results.
+v0.2.61 uses one metadata snapshot for Runtime start, checkpoints, completion events, and results.
+
+v0.2.61 让单条记录和记录列表共享统一的审计投影。
+
+v0.2.61 makes single-record and record-list inspection share one audit projection.
 
 后续演进按风险和可验证性推进：
 

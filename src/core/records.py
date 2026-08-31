@@ -13,7 +13,7 @@ from typing import Protocol, runtime_checkable
 from uuid import uuid4
 
 from core import dataclass_data, require_integer as _integer, require_text as _text
-from core.event import CRITICAL_EVENT_TYPES, RunEvent, RunIdentity, utc_now
+from core.event import CRITICAL_EVENT_TYPES, RunEvent, RunIdentity, event_category, utc_now
 from core.model import Message
 
 
@@ -216,6 +216,14 @@ class Record:
     def run_id(self) -> str | None:
         value = self.data.get("run_id")
         return value if isinstance(value, str) and value.strip() else None
+
+    @property
+    def category(self) -> str:
+        return event_category(self.event_type)
+
+    @property
+    def critical(self) -> bool:
+        return self.event_type in CRITICAL_EVENTS
 
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> Record:
@@ -428,16 +436,19 @@ class AuditPolicy:
         return self.critical_days if record.event_type in CRITICAL_EVENTS else self.detailed_days
 
     def audit_view(self, records: Sequence[Record], *, include_sensitive: bool = False) -> list[dict[str, object]]:
-        values: list[dict[str, object]] = []
-        for record in records:
-            value = record.to_dict()
-            if not include_sensitive:
-                value["data"] = _redact(record.data)
-            value["retention"] = "state" if record.stream in STATE_STREAMS else (
-                "critical" if record.event_type in CRITICAL_EVENTS else "detailed"
-            )
-            values.append(value)
-        return values
+        return [self.record_view(record, include_sensitive=include_sensitive) for record in records]
+
+    def record_view(self, record: Record, *, include_sensitive: bool = False) -> dict[str, object]:
+        """创建单条记录的统一审计视图，默认动态脱敏正文。"""
+        value = record.to_dict()
+        if not include_sensitive:
+            value["data"] = _redact(record.data)
+        value.update(
+            category=record.category,
+            critical=record.critical,
+            retention=("state" if record.stream in STATE_STREAMS else "critical" if record.critical else "detailed"),
+        )
+        return value
 
     def prune(self, backend: RecordBackend, *, user_id: str, apply: bool = False, now: datetime | None = None) -> dict[str, object]:
         current = (now or datetime.now(UTC)).astimezone(UTC)

@@ -4,7 +4,7 @@ description: "Break work into explicit tasks with evidence and finish conditions
 metadata:
   super-agent-categories: "[\"general/task\",\"planning\"]"
   super-agent-type: "task"
-  super-agent-version: "0.2.60"
+  super-agent-version: "0.2.61"
 ---
 # Task method
 
