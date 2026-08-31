@@ -3,10 +3,18 @@ import unittest
 
 from core.model import ModelEvent, Tool
 from core.provider import MockModel
-from core.run import FatalToolError, RunInput, collect_run, stream_run
+from core.run import Action, FatalToolError, RunInput, ToolExecutionCenter, collect_run, stream_run
 
 
 class ToolExecutionCenterTests(unittest.TestCase):
+    def test_action_is_created_before_permission_and_execution(self):
+        tool = Tool("write", "Write", lambda _args, _context: None, effects=("write",))
+        action = ToolExecutionCenter().create_action(tool, {"value": "x"})
+
+        self.assertIsInstance(action, Action)
+        self.assertEqual({"write"}, set(action.effects))
+        self.assertEqual("write", action.to_dict()["name"])
+
     def test_decider_runs_in_the_central_loop_and_records_blocking(self):
         events = []
         model = MockModel(

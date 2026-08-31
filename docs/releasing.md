@@ -11,7 +11,7 @@ PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
 python3.11 -m unittest discover -s tests -p 'test_*.py' -v
 
 PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
-python3.11 scripts/verify_release.py --version 0.2.63 --full
+python3.11 scripts/verify_release.py --version 0.2.64 --full
 ```
 
 发布检查验证版本、Python 最低版本、零默认依赖、源码布局、旧目录删除、构建范围、内置插件去重关系和离线评测资产。
@@ -24,9 +24,9 @@ Log writes never trigger retention cleanup. Run `super-agent data storage prune 
 
 ## 版本 / Version
 
-v0.2.63 增加只读模型选择解释和按档案价格计算 token 成本的接口。
+v0.2.64 将工具调用统一为先创建 Action、再检查权限、最后显式执行的副作用链路。
 
-v0.2.63 adds read-only model-selection explanations and token-cost estimation by profile price.
+v0.2.64 unifies tool calls as an explicit create-action, check, then execute side-effect path.
 
 检查通过后创建一个本地逻辑提交和标签；远程推送是单独的授权边界。
 

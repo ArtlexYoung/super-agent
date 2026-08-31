@@ -46,6 +46,18 @@ class RunInterrupted(RuntimeError):
     """表示调用方显式要求暂停当前运行。"""
 
 
+@dataclass(frozen=True)
+class Action:
+    """一次待检查的工具动作，不代表动作已经执行。"""
+
+    name: str
+    arguments: Mapping[str, object]
+    effects: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, object]:
+        return {"name": self.name, "arguments": dict(self.arguments), "effects": list(self.effects)}
+
+
 class RuntimeLifecycle:
     """集中记录一棵运行树的生命周期元数据，不保存模型正文。"""
 
@@ -144,10 +156,19 @@ class ToolExecutionCenter:
         self.is_cancelled = is_cancelled
 
     def check(self, tool: Tool, arguments: Mapping[str, object]) -> str:
+        action = self.create_action(tool, arguments)
+        return self.check_action(tool, action)
+
+    def create_action(self, tool: Tool, arguments: Mapping[str, object]) -> Action:
+        """校验参数并创建动作描述，不调用工具。"""
         if self.is_cancelled is not None and self.is_cancelled():
             raise FatalToolError("tool execution was cancelled")
         validate_tool_arguments(tool, arguments)
-        decision = "allow" if self.decide is None else self.decide(tool, arguments)
+        return Action(tool.name, dict(arguments), tuple(tool.effects))
+
+    def check_action(self, tool: Tool, action: Action) -> str:
+        """对已规范化动作进行唯一一次权限判断。"""
+        decision = "allow" if self.decide is None else self.decide(tool, action.arguments)
         if decision not in {"allow", "ask", "deny"}:
             raise ValueError("tool decision must be allow, ask, or deny")
         return decision
@@ -705,14 +726,16 @@ class _RunEngine:
             )
         else:
             try:
-                decision = self.tool_center.check(tool, call.arguments)
+                action = self.tool_center.create_action(tool, call.arguments)
+                decision = self.tool_center.check_action(tool, action)
                 yield self.emit(
                     "action.checked",
                     {
                         "call_id": call.call_id,
                         "tool": tool.name,
-                        "effects": list(tool.effects),
+                        "effects": list(action.effects),
                         "decision": decision,
+                        "action": action.to_dict(),
                     },
                 )
                 if decision != "allow":

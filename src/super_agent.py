@@ -20,7 +20,7 @@ from core.records import (
     RecordScope,
     SessionRecord,
 )
-from core.run import EventListener, ToolRegistry, collect_run
+from core.run import Action, EventListener, ToolRegistry, collect_run
 from core.user import AgentUser
 from skill.agent_builder import (
     EVOLUTION_PLUGIN,
@@ -602,5 +602,6 @@ __all__ = [
     "RunResult",
     "AgentLibrary",
     "Tool",
+    "Action",
     "model_from_environment",
 ]
