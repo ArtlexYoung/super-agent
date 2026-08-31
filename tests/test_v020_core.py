@@ -8,7 +8,7 @@ from urllib.error import URLError
 
 from adapter.storage import JsonlStorage, MemoryStorage, SqliteStorage, create_storage
 from core.config import Config, ModelConfig, config_from_dict, config_from_environment
-from core.event import RunLimits
+from core.event import RunEvent, RunLimits, event_category, event_is_critical
 from core.model import Message, ModelEvent, ModelRequest, Tool, ToolCall
 from core.provider import (
     AnthropicModel,
@@ -29,6 +29,14 @@ from super_agent import Agent, model_from_environment
 
 
 class CoreRuntimeTests(unittest.TestCase):
+    def test_events_use_one_central_contract(self):
+        event = RunEvent("action.applied", {"run_id": "run-1"})
+
+        self.assertEqual("action", event.category)
+        self.assertTrue(event.critical)
+        self.assertEqual("custom", event_category("external.notice"))
+        self.assertFalse(event_is_critical("external.notice"))
+
     def test_run_input_contributes_without_domain_knowledge_in_runtime(self):
         tool = Tool("planned", "Planned tool", lambda _args, _context: {"ok": True})
         result = collect_run(

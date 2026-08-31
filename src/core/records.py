@@ -13,34 +13,14 @@ from typing import Protocol, runtime_checkable
 from uuid import uuid4
 
 from core import dataclass_data, require_integer as _integer, require_text as _text
-from core.event import RunEvent, RunIdentity, utc_now
+from core.event import CRITICAL_EVENT_TYPES, RunEvent, RunIdentity, utc_now
 from core.model import Message
 
 
 STATE_STREAMS = frozenset(
     {"conversation", "memory", "model_profile", "skill_change", "checkpoint"}
 )
-CRITICAL_EVENTS = frozenset(
-    {
-        "run.started",
-        "run.completed",
-        "run.failed",
-        "action.applied",
-        "action.blocked",
-        "skill.created",
-        "skill.updated",
-        "skill.removed",
-        "skill_change.applied",
-        "skill_change.undone",
-        "memory.created",
-        "memory.revised",
-        "memory.forgotten",
-        "memory.organized",
-        "model.evaluated",
-        "skill.evaluated",
-        "audit.pruned",
-    }
-)
+CRITICAL_EVENTS = CRITICAL_EVENT_TYPES
 SENSITIVE_NAMES = frozenset(
     {"api_key", "apikey", "authorization", "cookie", "password", "secret", "token", "access_token", "refresh_token"}
 )

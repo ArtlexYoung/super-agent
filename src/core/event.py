@@ -10,6 +10,21 @@ from uuid import uuid4
 
 from core import dataclass_data
 
+EVENT_CATEGORIES = frozenset({"run", "model", "tool", "action", "content", "plugin", "skill", "memory", "session", "checkpoint", "agent_task", "audit"})
+CRITICAL_EVENT_TYPES = frozenset({"run.started", "run.completed", "run.failed", "action.applied", "action.blocked", "skill.created", "skill.updated", "skill.removed", "skill_change.applied", "skill_change.undone", "memory.created", "memory.revised", "memory.forgotten", "memory.organized", "model.evaluated", "skill.evaluated", "audit.pruned"})
+
+
+def event_category(event_type: str) -> str:
+    """返回统一事件类别；未知扩展事件归入 custom。"""
+    prefix = event_type.split(".", 1)[0]
+    return prefix if prefix in EVENT_CATEGORIES else "custom"
+
+
+def event_is_critical(event_type: str) -> bool:
+    """判断事件是否应进入关键日志保留策略。"""
+    return event_type in CRITICAL_EVENT_TYPES
+
+
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -28,7 +43,6 @@ class ContextEntry:
 
     def to_dict(self) -> dict[str, object]:
         return dataclass_data(self)
-
 
 class ContextLedger:
     """统一记录历史、Skill、工具结果和子 Agent 摘要的预算。"""
@@ -221,6 +235,14 @@ class RunEvent:
 
     def to_dict(self) -> dict[str, object]:
         return dataclass_data(self)
+
+    @property
+    def category(self) -> str:
+        return event_category(self.event_type)
+
+    @property
+    def critical(self) -> bool:
+        return event_is_critical(self.event_type)
 
     @property
     def run_id(self) -> str | None:
