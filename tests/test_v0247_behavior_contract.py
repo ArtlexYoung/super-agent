@@ -6,6 +6,18 @@ from super_agent import Agent
 
 
 class PublicBehaviorContractTests(unittest.TestCase):
+    def test_agent_snapshot_is_a_safe_read_only_assembly_view(self):
+        agent = Agent(MockModel("answer"), name="root")
+        agent.enable_plugin("plugin:example/common")
+
+        snapshot = agent.snapshot()
+
+        self.assertEqual("root", snapshot["name"])
+        self.assertEqual(["default"], snapshot["model_names"])
+        self.assertEqual(["plugin:example/common"], snapshot["enabled_plugins"])
+        self.assertIsNone(snapshot["storage_backend"])
+        self.assertNotIn("answer", snapshot)
+
     def test_plain_agent_streams_one_tool_loop_through_public_methods(self):
         model = MockModel(
             responses=(

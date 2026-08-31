@@ -364,6 +364,16 @@ class Agent:
         """从已选插件和模型读取功能，不触发工具注册或模型调用。"""
         return agent_features(self)
 
+    def snapshot(self) -> dict[str, object]:
+        """返回 Agent 组合状态的单一只读视图。"""
+        tree = getattr(self, "_team_node", None)
+        return {"name": self.name, "model_names": [p.name for p in self._model_profiles],
+                "enabled_plugins": list(self.list_enabled_plugins()), "enabled_skills": list(self.list_enabled_skills()),
+                "features": list(self.list_enabled_features()),
+                "storage_backend": None if self.storage is None else type(self.storage).__name__,
+                "working_directory": None if self.working_directory is None else str(self.working_directory.path),
+                "has_subagents": tree is not None and bool(getattr(tree, "children", ())) }
+
     def is_plain_agent(self) -> bool:
         """判断 Agent 是否仍是只包含模型和基础运行循环的普通 Agent。"""
         return not any(
