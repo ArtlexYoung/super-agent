@@ -220,6 +220,30 @@ class TaskQueue:
         value["task"] = self.get_task(task_id, source_group_id=source_group_id)
         return value
 
+    def collect_independent_task_results(
+        self, task_ids: Iterable[str], *, source_group_id: str, minimum: int = 2
+    ) -> dict[str, object]:
+        """收集不同 Agent 的完整结果；证据不足时明确失败。"""
+        selected = tuple(dict.fromkeys(task_ids))
+        if minimum < 2 or len(selected) < minimum:
+            raise ValueError("independent task collection requires at least two tasks")
+        with self._condition:
+            tasks = tuple(self._require_task(task_id) for task_id in selected)
+            if any(task.source_group_id != source_group_id for task in tasks):
+                raise PermissionError("a group can collect only its own tasks")
+            if any(task.status not in TERMINAL for task in tasks):
+                raise RuntimeError("independent task collection requires terminal tasks")
+            completed = tuple(task for task in tasks if task.status == "completed")
+            reviewers = {task.worker_link_id for task in completed if task.worker_link_id}
+            if len(reviewers) < minimum:
+                raise RuntimeError("not enough independent completed Agent results")
+            return {
+                "reviewer_count": len(reviewers),
+                "completed_count": len(completed),
+                "failed_reviewers": [task.agent_name for task in tasks if task.status != "completed"],
+                "tasks": [task.to_dict() for task in tasks],
+            }
+
     def wait_for_tasks(
         self,
         trigger: str,

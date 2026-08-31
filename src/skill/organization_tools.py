@@ -41,6 +41,7 @@ def _tool_definitions() -> tuple[ToolDefinition, ...]:
         ("dispatch_agent_task", "Dispatch a created task to a suitable Agent", _dispatch_task, "dispatch", execute),
         ("dispatch_agent_tasks", "Dispatch matching tasks in parallel to distinct suitable Agents", _dispatch_tasks, "dispatch_many", execute),
         ("read_agent_tasks", "Read tasks created by this group", _read_tasks, "empty", read),
+        ("collect_independent_agent_results", "Collect terminal results from different Agents", _collect_independent_results, "collect_results", read),
         ("wait_for_agent_tasks", "Sleep until a task event or timeout", _wait_tasks, "wait", read),
         ("cancel_agent_task", "Cancel a task that has not started", _cancel_task, "task", write),
         ("post_shared_note", "Post a note to the current or parent group board", _post_note, "post_note", write),
@@ -167,6 +168,14 @@ def _read_tasks(runtime: TeamRuntime, group_id: str, _arguments: Arguments, _con
     return {"version": runtime.version, "tasks": runtime.list_tasks(group_id)}
 
 
+def _collect_independent_results(runtime: TeamRuntime, group_id: str, arguments: Arguments, _context: ToolContext) -> dict[str, object]:
+    return runtime.collect_independent_task_results(
+        strings(arguments.get("task_ids", []), "Agent task IDs"),
+        source_group_id=group_id,
+        minimum=integer(arguments.get("minimum", 2), "minimum reviewers", 2),
+    )
+
+
 def _wait_tasks(runtime: TeamRuntime, group_id: str, arguments: Arguments, _context: ToolContext) -> dict[str, object]:
     return runtime.wait_for_tasks(
         text(arguments.get("trigger"), "Agent task trigger"),
@@ -291,6 +300,7 @@ def _schemas() -> dict[str, dict[str, object]]:
         "task": task,
         "dispatch": _object_schema({"task_id": text, "agent_name": text}, "task_id"),
         "dispatch_many": _object_schema({"task_ids": {**text_array, "minItems": 2, "uniqueItems": True}, "different_models": {"type": "boolean"}}, "task_ids"),
+        "collect_results": _object_schema({"task_ids": {**text_array, "minItems": 2, "uniqueItems": True}, "minimum": {"type": "integer", "minimum": 2}}, "task_ids"),
         "create_task": _object_schema({"prompt": text, "target_group_id": text, "purpose": text, "required_features": text_array}, "prompt"),
         "wait": _object_schema({"trigger": {"type": "string", "enum": ["any_task_finished", "any_task_completed", "any_task_failed", "all_tasks_finished", "selected_tasks_finished", "timeout"]}, "timeout_seconds": {"type": "number", "minimum": 0}, "task_ids": text_array, "after_version": {"type": "integer", "minimum": 0}}, "trigger", "timeout_seconds"),
         "wait_notes": _object_schema({"board": board, "timeout_seconds": {"type": "number", "minimum": 0}, "after_version": {"type": "integer", "minimum": 0}}, "timeout_seconds"),

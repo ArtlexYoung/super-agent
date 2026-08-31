@@ -39,7 +39,10 @@ class MultiAgentReviewTests(unittest.TestCase):
         self.assertIn("create_agent_decision", session.tools)
         self.assertIn("post_shared_note", session.tools)
         review = library.find_skill("skill:super-agent/review/multi-agent")
-        self.assertEqual(("dispatch_agent_tasks",), review.requires)
+        self.assertEqual(
+            ("dispatch_agent_tasks", "collect_independent_agent_results"),
+            review.requires,
+        )
         self.assertIn("not executor self-check", review.body)
 
     def test_batch_review_dispatch_is_distinct_atomic_and_explicit_about_models(self):
@@ -110,6 +113,11 @@ class MultiAgentReviewTests(unittest.TestCase):
             for item in runtime.list_tasks(group_id)
         }
         self.assertEqual({"defect", "risk", "improvement"}, findings)
+        collected = runtime.collect_independent_task_results(
+            (task.task_id for task in tasks), source_group_id=group_id, minimum=2
+        )
+        self.assertEqual(3, collected["reviewer_count"])
+        self.assertEqual([], collected["failed_reviewers"])
 
 
 if __name__ == "__main__":
