@@ -20,7 +20,12 @@ from core import (
 from adapter.process import ProcessSettings, ProcessTools
 from adapter.storage import create_storage, verify_storage
 from adapter.tools import CodeWorkspace, ToolPolicy, WorkspaceSettings, general_tools
-from core.config import Config, config_from_environment
+from core.config import (
+    Config,
+    ConfigurationSource,
+    config_from_environment,
+    discover_configuration_sources,
+)
 from core.records import AuditPolicy, Conversations, EventStore, RecordBackend
 from skill.library import AgentLibrary
 from super_agent import Agent, AgentContext
@@ -70,14 +75,22 @@ class CliConfig:
     @classmethod
     def automatic(cls) -> CliConfig:
         explicit = os.environ.get("SUPER_AGENT_CLI_CONFIG")
-        candidates = [Path(explicit).expanduser()] if explicit else [
-            *_walk_up(Path.cwd(), "cli.toml"),
-            Path.home() / ".config/super-agent/cli.toml",
-        ]
-        for candidate in candidates:
-            if candidate.is_file():
-                return cls.load(candidate)
+        sources = discover_configuration_sources(
+            "cli.toml", explicit_path=explicit, kind="cli"
+        )
+        selected = next((source.path for source in sources if source.selected), None)
+        if selected is not None:
+            return cls.load(selected)
         return cls()
+
+    @classmethod
+    def configuration_sources(cls) -> tuple[ConfigurationSource, ...]:
+        """返回 CLI 配置候选，供工具和桌面界面只读展示。"""
+        return discover_configuration_sources(
+            "cli.toml",
+            explicit_path=os.environ.get("SUPER_AGENT_CLI_CONFIG"),
+            kind="cli",
+        )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -156,12 +169,14 @@ def _check_command(arguments: list[str]) -> int:
 def _config_command(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="super-agent config")
     parser.add_argument(
-        "action", choices=("show", "validate"), nargs="?", default="show"
+        "action", choices=("show", "sources", "validate"), nargs="?", default="show"
     )
     parser.add_argument("--config")
     parser.add_argument("--cli-config")
     parsed = parser.parse_args(arguments)
     cli = _load_cli(parsed.cli_config)
+    if parsed.action == "sources":
+        return _print_value(_configuration_sources(parsed.cli_config), cli.output)
     config = _load_general(parsed.config or cli.general_config)
     if parsed.action == "validate":
         if cli.code_config:
@@ -544,8 +559,36 @@ def _override_cli(cli: CliConfig, args: argparse.Namespace) -> CliConfig:
 def _load_general(path: str | None) -> Config:
     if path:
         return Config.load(path)
-    candidates = _walk_up(Path.cwd(), "common.toml")
-    return Config.load(candidates[0]) if candidates else config_from_environment()
+    sources = discover_configuration_sources("common.toml", kind="general")
+    selected = next((source.path for source in sources if source.selected), None)
+    return Config.load(selected) if selected is not None else config_from_environment()
+
+
+def _configuration_sources(cli_path: str | None) -> dict[str, object]:
+    """集中返回 CLI、通用和代码配置的候选及优先级。"""
+    cli_sources = discover_configuration_sources(
+        "cli.toml",
+        explicit_path=cli_path or os.environ.get("SUPER_AGENT_CLI_CONFIG"),
+        kind="cli",
+    )
+    cli = _load_cli(cli_path)
+    general_sources = discover_configuration_sources(
+        "common.toml", explicit_path=cli.general_config, kind="general"
+    )
+    code_sources = discover_configuration_sources(
+        "code.toml", explicit_path=cli.code_config, kind="code"
+    )
+    return {
+        "sources": [
+            source.to_dict()
+            for source in (*cli_sources, *general_sources, *code_sources)
+        ],
+        "selected": {
+            source.kind: str(source.path)
+            for source in (*cli_sources, *general_sources, *code_sources)
+            if source.selected
+        },
+    }
 
 
 def _library_roots(config: Config) -> tuple[Path, ...]:
@@ -596,16 +639,6 @@ def _workspace_instructions(root: Path) -> tuple[str, ...]:
                 f"Coding instructions from {path.name} in {directory}:\n{content}"
             )
     return tuple(values)
-
-
-def _walk_up(start: Path, filename: str) -> list[Path]:
-    """从当前目录向上查找一个明确命名的配置文件。"""
-    current = start.expanduser().resolve()
-    return [
-        candidate
-        for directory in (current, *current.parents)
-        if (candidate := directory / filename).is_file()
-    ]
 
 
 def _database_url(config: Config) -> str | None:

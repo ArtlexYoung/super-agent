@@ -4,9 +4,9 @@ v0.2.0 先固定最小边界：一个 Runtime、一条披露路径、一个事�
 
 v0.2.0 first fixes the minimum boundaries: one Runtime, one disclosure path, one event contract, and explicit optional adapters.
 
-到 v0.2.56，多 Agent 已收成一棵代码定义的组树；运行输入、资源披露、记录、任务状态、候选选择和存储转换也分别只有一个实现。
+到 v0.2.57，多 Agent 已收成一棵代码定义的组树；运行输入、资源披露、记录、任务状态、候选选择和存储转换也分别只有一个实现。
 
-By v0.2.56, multi-Agent work uses one code-defined group tree, while run input, resource disclosure, records, task state, candidate selection, and storage conversion each have one implementation.
+By v0.2.57, multi-Agent work uses one code-defined group tree, while run input, resource disclosure, records, task state, candidate selection, and storage conversion each have one implementation.
 
 后续演进按风险和可验证性推进：
 

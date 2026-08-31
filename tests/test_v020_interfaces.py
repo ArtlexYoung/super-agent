@@ -11,6 +11,7 @@ from unittest.mock import patch
 from adapter.cli import CliConfig, _build_agent, _load_code, _load_general
 from adapter.storage import MemoryStorage
 from core.config import Config, ModelConfig
+from core.config import discover_configuration_sources
 from core.event import RunLimits
 from core.provider import MockModel, OpenAIModel
 from scripts.verify_release import verify_release
@@ -104,6 +105,33 @@ class InterfaceTests(unittest.TestCase):
             self.assertEqual((root / "common.toml").resolve(), Path(cli.general_config))
             self.assertEqual((), config.models)
 
+    def test_configuration_sources_share_priority_and_selected_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            nested = root / "nested"
+            nested.mkdir()
+            (root / "common.toml").write_text("", encoding="utf-8")
+            sources = discover_configuration_sources(
+                "common.toml", start=nested, home=root / "home", kind="general"
+            )
+
+            self.assertEqual((root / "common.toml").resolve(), sources[1].path)
+            self.assertTrue(sources[1].selected)
+            self.assertEqual(
+                list(range(1, len(sources) + 1)),
+                [item.priority for item in sources],
+            )
+
+    def test_cli_sources_command_is_read_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "cli.toml").write_text("", encoding="utf-8")
+            with patch("adapter.cli.Path.cwd", return_value=root):
+                sources = CliConfig.configuration_sources()
+
+            self.assertTrue(any(item.selected for item in sources))
+            self.assertEqual("cli", next(item for item in sources if item.selected).kind)
+
     def test_code_config_validates_actions_and_keeps_allow_distinct_from_ask(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "code.toml"
@@ -175,7 +203,7 @@ commands = [["python3.11", "-V"]]
         self.assertNotIn("private failure detail", json.dumps(insight))
 
     def test_release_shape_matches_current_release(self):
-        self.assertEqual([], verify_release(ROOT, "0.2.56"))
+        self.assertEqual([], verify_release(ROOT, "0.2.57"))
 
 
 if __name__ == "__main__":

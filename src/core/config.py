@@ -49,6 +49,53 @@ class WorkingDirectory:
 
 
 @dataclass(frozen=True)
+class ConfigurationSource:
+    """描述一个配置候选，不读取内容，也不产生文件副作用。"""
+
+    kind: str
+    path: Path
+    priority: int
+    selected: bool
+    exists: bool
+
+    def to_dict(self) -> dict[str, object]:
+        return {"kind": self.kind, "path": str(self.path), "priority": self.priority, "selected": self.selected, "exists": self.exists}
+
+
+def discover_configuration_sources(
+    filename: str,
+    *,
+    explicit_path: str | Path | None = None,
+    start: str | Path | None = None,
+    home: str | Path | None = None,
+    kind: str = "general",
+) -> tuple[ConfigurationSource, ...]:
+    """按统一优先级列出配置文件候选。"""
+    name = _text(filename, "configuration filename")
+    selected_start = Path.cwd() if start is None else Path(start)
+    selected_home = Path.home() if home is None else Path(home)
+    candidates = ((Path(explicit_path),) if explicit_path is not None else
+                  tuple(directory / name for directory in _walk_parent_directories(selected_start)) +
+                  (selected_home / ".config" / "super-agent" / name,))
+    normalized = tuple(dict.fromkeys(item.expanduser().resolve() for item in candidates))
+    first_existing = next((i for i, item in enumerate(normalized) if item.is_file()), None)
+    return tuple(
+        ConfigurationSource(
+            kind=kind,
+            path=path,
+            priority=index + 1,
+            selected=index == first_existing,
+            exists=path.is_file(),
+        )
+        for index, path in enumerate(normalized)
+    )
+
+
+def _walk_parent_directories(start: str | Path) -> tuple[Path, ...]:
+    current = Path(start).expanduser().resolve(); return (current, *current.parents)
+
+
+@dataclass(frozen=True)
 class StorageConfig:
     backend: str = "none"
     path: str = ".super-agent"
