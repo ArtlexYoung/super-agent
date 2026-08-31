@@ -4,16 +4,18 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from io import StringIO
 from pathlib import Path
 
 from unittest.mock import patch
 
-from adapter.cli import CliConfig, _build_agent, _load_code, _load_general
-from adapter.storage import MemoryStorage
+from adapter.cli import CliConfig, _build_agent, _load_code, _load_general, main
+from adapter.storage import JsonlStorage, MemoryStorage
 from core.config import Config, ModelConfig
 from core.config import discover_configuration_sources
 from core.event import RunLimits
 from core.provider import MockModel, OpenAIModel
+from core.records import EventStore
 from scripts.verify_release import verify_release
 from super_agent import Agent
 
@@ -132,6 +134,41 @@ class InterfaceTests(unittest.TestCase):
             self.assertTrue(any(item.selected for item in sources))
             self.assertEqual("cli", next(item for item in sources if item.selected).kind)
 
+    def test_cli_data_agent_snapshot_does_not_require_storage(self):
+        with patch("sys.stdout") as output:
+            self.assertEqual(0, main(["data", "agent", "show"]))
+            self.assertTrue(output.write.called)
+
+    def test_cli_data_runs_lists_redacted_persisted_traces(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "common.toml"
+            config.write_text(
+                '[storage]\nbackend = "jsonl"\npath = "records"\n',
+                encoding="utf-8",
+            )
+            store = EventStore(JsonlStorage(root / "records"), "alice", "super-agent")
+            store.append("run", "run-1", "run.started", {"prompt": "private prompt"})
+            store.append(
+                "run",
+                "run-1",
+                "run.completed",
+                {"text": "private answer", "stop_reason": "completed"},
+            )
+            output = StringIO()
+            with patch("sys.stdout", output):
+                self.assertEqual(
+                    0,
+                    main(
+                        ["data", "runs", "list", "--config", str(config), "--user", "alice"]
+                    ),
+                )
+
+            value = json.loads(output.getvalue())
+            self.assertEqual("run-1", value[0]["run_id"])
+            self.assertEqual("completed", value[0]["status"])
+            self.assertTrue(value[0]["prompt"]["redacted"])
+
     def test_code_config_validates_actions_and_keeps_allow_distinct_from_ask(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "code.toml"
@@ -203,7 +240,7 @@ commands = [["python3.11", "-V"]]
         self.assertNotIn("private failure detail", json.dumps(insight))
 
     def test_release_shape_matches_current_release(self):
-        self.assertEqual([], verify_release(ROOT, "0.2.67"))
+        self.assertEqual([], verify_release(ROOT, "0.2.68"))
 
 
 if __name__ == "__main__":

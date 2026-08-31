@@ -53,6 +53,10 @@ super-agent config validate --config common.toml
 
 `config show` displays CLI and general configuration separately; `config validate` also validates an explicitly referenced `code.toml`. The three files are never deep-merged.
 
+`data agent show` 和 `data runs list` 提供不绑定界面的 Agent 状态与运行追踪 JSON；前者不需要存储，后者需要显式配置存储。
+
+`data agent show` and `data runs list` expose UI-neutral Agent state and run-trace JSON; the former needs no storage, while the latter requires explicit storage.
+
 ## 数据命令 / Data Commands
 
 ```bash

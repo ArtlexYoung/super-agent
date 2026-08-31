@@ -48,6 +48,10 @@ v0.2.67 为旁观复核提供独立结果收集，多样性不足时明确失败
 
 v0.2.67 adds independent result collection for external review and fails explicitly when diversity is insufficient.
 
+v0.2.68 提供不绑定协议的 Agent 状态和运行追踪查询，界面只消费 JSON 视图。
+
+v0.2.68 provides protocol-neutral Agent state and run-trace queries, with interfaces consuming JSON views only.
+
 后续演进按风险和可验证性推进：
 
 Future work should proceed by risk and verifiability:

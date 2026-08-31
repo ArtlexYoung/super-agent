@@ -11,7 +11,7 @@ PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
 python3.11 -m unittest discover -s tests -p 'test_*.py' -v
 
 PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
-python3.11 scripts/verify_release.py --version 0.2.67 --full
+python3.11 scripts/verify_release.py --version 0.2.68 --full
 ```
 
 发布检查验证版本、Python 最低版本、零默认依赖、源码布局、旧目录删除、构建范围、内置插件去重关系和离线评测资产。
@@ -24,9 +24,9 @@ Log writes never trigger retention cleanup. Run `super-agent data storage prune 
 
 ## 版本 / Version
 
-v0.2.67 增加独立 Agent 结果收集与多样性校验，支撑旁观复核和交叉验证。
+v0.2.68 增加无 UI 绑定的 Agent 状态和运行追踪 JSON 接口，供桌面与 Web 复用。
 
-v0.2.67 adds independent-Agent result collection and diversity checks for external review and cross-validation.
+v0.2.68 adds UI-neutral Agent state and run-trace JSON interfaces for desktop and Web clients.
 
 检查通过后创建一个本地逻辑提交和标签；远程推送是单独的授权边界。
 

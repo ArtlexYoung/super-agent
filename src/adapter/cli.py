@@ -233,8 +233,8 @@ def _catalog_command(kind: str, arguments: list[str]) -> int:
 
 def _data_command(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="super-agent data")
-    parser.add_argument("resource", choices=("storage", "conversations"))
-    parser.add_argument("action", choices=("verify", "list", "prune"))
+    parser.add_argument("resource", choices=("storage", "conversations", "runs", "agent"))
+    parser.add_argument("action", choices=("verify", "list", "show", "prune"))
     parser.add_argument("--config")
     parser.add_argument("--user", default="local")
     parser.add_argument("--apply", action="store_true")
@@ -244,6 +244,12 @@ def _data_command(arguments: list[str]) -> int:
         raise ValueError("--apply is only valid with the prune action")
     if parsed.resource == "conversations" and parsed.action != "list":
         raise ValueError("conversation data supports only the list action")
+    if parsed.resource == "runs" and parsed.action != "list":
+        raise ValueError("run data supports only the list action")
+    if parsed.resource == "agent" and parsed.action != "show":
+        raise ValueError("agent data supports only the show action")
+    if parsed.resource == "agent":
+        return _print_value(Agent(config=_load_general(parsed.config)).snapshot(), parsed.output)
     config = _load_general(parsed.config)
     if config.storage.backend == "none":
         raise RuntimeError("data commands require storage in general configuration")
@@ -263,7 +269,7 @@ def _data_command(arguments: list[str]) -> int:
             )
         else:
             raise ValueError("storage supports only verify or prune")
-    else:
+    elif parsed.resource == "conversations":
         value = [
             {
                 "conversation_id": conversation.conversation_id,
@@ -276,6 +282,10 @@ def _data_command(arguments: list[str]) -> int:
                 EventStore(backend, parsed.user, config.name)
             ).list()
         ]
+    else:
+        agent = Agent(config=config)
+        agent.use_storage(backend)
+        value = agent.for_user(parsed.user).runs.list()
     return _print_value(value, parsed.output)
 
 

@@ -4,7 +4,7 @@ description: "Methods for explicit scheduled and event-driven Agent work"
 metadata:
   super-agent-categories: "[\"automation\",\"events\",\"workers\"]"
   super-agent-type: "method"
-  super-agent-version: "0.2.67"
+  super-agent-version: "0.2.68"
 ---
 # Automation method
 
