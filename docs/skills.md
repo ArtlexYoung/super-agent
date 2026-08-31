@@ -82,6 +82,16 @@ optional_mcp_servers = []
 
 `entry_skill` is the plugin entry; `skills` lists extra methods; `included_plugins` recursively reuses another plugin's references. Activation fails when required MCP is not explicitly bound by code. Missing optional MCP never creates a connection or hidden fallback.
 
+## 插件开发检查 / Plugin Development Checks
+
+插件目录只能包含 `plugin.toml`，正文 Skill 和 MCP 描述必须放在中央 `skills/`、`mcps/` 目录并使用规范引用。清单 ID 必须匹配目录；入口、成员、嵌套插件和 MCP 引用都必须存在；同一列表不得重复，必需与可选 MCP 不得重叠，插件包含关系不得成环。
+
+A plugin directory contains only `plugin.toml`; Skill bodies and MCP definitions stay in central `skills/` and `mcps/` directories and use canonical references. Manifest IDs match their directories; entry, member, included-plugin, and MCP references exist; lists contain no duplicates, required and optional MCP sets do not overlap, and plugin includes remain acyclic.
+
+开发时运行 `super-agent check --config common.toml --output json` 验证实际资源库。发布时运行 `python3.11 scripts/verify_release.py --version <version>`，它还检查内置插件集合、版本一致性和物理资源唯一性。
+
+Run `super-agent check --config common.toml --output json` while developing to validate the real library. At release time, `python3.11 scripts/verify_release.py --version <version>` also checks the builtin plugin set, version alignment, and physical resource uniqueness.
+
 ## 去重与冲突 / Deduplication and Conflicts
 
 1. 同类型、ID、版本和内容哈希相同：合并为一个逻辑对象并记录全部来源。

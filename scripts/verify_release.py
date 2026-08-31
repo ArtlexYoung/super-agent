@@ -1,4 +1,4 @@
-"""Run the local release checks for v0.2.69."""
+"""Run the local release checks for v0.2.70."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-VERSION = "0.2.69"
+VERSION = "0.2.70"
 MAX_SOURCE_FILES = 27
 MAX_SOURCE_LINES = 11_600
 SOURCE_ROOTS = {"adapter", "core", "skill", "cli.py", "super_agent.py"}
@@ -218,6 +218,25 @@ def _check_old_imports(files: list[Path]) -> list[str]:
 
 def _check_builtin_plugins(root: Path) -> list[str]:
     errors: list[str] = []
+    try:
+        from skill.library import AgentLibrary
+
+        snapshot = AgentLibrary((root,)).snapshot()
+    except (OSError, TypeError, ValueError) as error:
+        return [f"builtin library validation failed: {error}"]
+    expected_plugins = {f"super-agent/{name}" for name in REQUIRED_BUILTIN_SKILLS}
+    if set(snapshot.plugins) != expected_plugins:
+        errors.append(f"builtin plugin set changed: {sorted(snapshot.plugins)}")
+    for label, resources in (
+        ("Skill", snapshot.skills),
+        ("MCP", snapshot.mcps),
+        ("plugin", snapshot.plugins),
+    ):
+        for reference, resource in resources.items():
+            if resource.version != VERSION:
+                errors.append(f"builtin {label} version is invalid: {reference}")
+            if len(resource.sources) != 1:
+                errors.append(f"builtin {label} has duplicate sources: {reference}")
     directories = {path.name for path in root.iterdir() if path.is_dir()}
     if directories != {"plugins", "skills"}:
         errors.append(f"builtin library layout changed: {sorted(directories)}")

@@ -458,6 +458,20 @@ class AgentLibraryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "MCP definitions are missing"):
                 AgentLibrary((root,)).snapshot()
 
+            write_mcp(root)
+            manifest.write_text(
+                original.replace(
+                    "required_mcp_servers = []",
+                    'required_mcp_servers = ["mcp:example/search"]',
+                ).replace(
+                    "optional_mcp_servers = []",
+                    'optional_mcp_servers = ["mcp:example/search"]',
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "MCP servers overlap"):
+                AgentLibrary((root,)).snapshot()
+
             manifest.write_text(
                 original + f'base_hash = "{"0" * 64}"\n', encoding="utf-8"
             )

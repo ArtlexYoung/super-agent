@@ -1,7 +1,9 @@
+import shutil
 import unittest
 from pathlib import Path
 import tempfile
 
+from scripts.verify_release import VERSION, _check_builtin_plugins
 from skill.library import AgentLibrary
 
 
@@ -48,6 +50,24 @@ class PluginReferenceTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "only plugin.toml"):
                 AgentLibrary((root,)).snapshot()
+
+    def test_release_gate_rejects_a_stale_builtin_skill_version(self):
+        source = Path(__file__).resolve().parents[1] / "src" / "skill" / "builtin"
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "builtin"
+            shutil.copytree(source, target)
+            skill = target / "skills" / "super-agent" / "common" / "SKILL.md"
+            skill.write_text(
+                skill.read_text(encoding="utf-8").replace(
+                    f'super-agent-version: "{VERSION}"',
+                    'super-agent-version: "stale"',
+                ),
+                encoding="utf-8",
+            )
+
+            errors = _check_builtin_plugins(target)
+
+            self.assertTrue(any("Skill version is invalid" in item for item in errors))
 
 
 if __name__ == "__main__":

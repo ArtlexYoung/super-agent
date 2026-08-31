@@ -873,17 +873,22 @@ def _read_plugin_manifest(path: Path, library_root: Path, *, writable: bool) -> 
             f"plugin directory may contain only {PLUGIN_FILE}: {plugin_id}"
         )
     skills = _references(value.get("skills", []), "skill", "plugin skills")
+    included = _references(value.get("included_plugins", []), "plugin", "included plugins")
+    required = _references(value.get("required_mcp_servers", []), "mcp", "required MCP servers")
+    optional = _references(value.get("optional_mcp_servers", []), "mcp", "optional MCP servers")
     entry = _skill_reference(value.get("entry_skill"))
     if entry in skills:
         raise ValueError(f"plugin entry_skill must not be repeated in skills: {plugin_id}")
     for label, raw, normalized in (
         ("plugin skills", value.get("skills", []), skills),
-        ("included plugins", value.get("included_plugins", []), _references(value.get("included_plugins", []), "plugin", "included plugins")),
-        ("required MCP servers", value.get("required_mcp_servers", []), _references(value.get("required_mcp_servers", []), "mcp", "required MCP servers")),
-        ("optional MCP servers", value.get("optional_mcp_servers", []), _references(value.get("optional_mcp_servers", []), "mcp", "optional MCP servers")),
+        ("included plugins", value.get("included_plugins", []), included),
+        ("required MCP servers", value.get("required_mcp_servers", []), required),
+        ("optional MCP servers", value.get("optional_mcp_servers", []), optional),
     ):
         if isinstance(raw, list) and len(normalized) != len(raw):
             raise ValueError(f"{label} must not contain duplicates: {plugin_id}")
+    if overlap := sorted(set(required) & set(optional)):
+        raise ValueError(f"required and optional MCP servers overlap: {plugin_id}: {', '.join(overlap)}")
     return Plugin(
         plugin_id,
         _version(value.get("version"), "plugin version"),
@@ -891,9 +896,9 @@ def _read_plugin_manifest(path: Path, library_root: Path, *, writable: bool) -> 
         path.parent.resolve(),
         entry,
         tuple(dict.fromkeys(skills)),
-        tuple(item.removeprefix("plugin:") for item in _references(value.get("included_plugins", []), "plugin", "included plugins")),
-        tuple(item.removeprefix("mcp:") for item in _references(value.get("required_mcp_servers", []), "mcp", "required MCP servers")),
-        tuple(item.removeprefix("mcp:") for item in _references(value.get("optional_mcp_servers", []), "mcp", "optional MCP servers")),
+        tuple(item.removeprefix("plugin:") for item in included),
+        tuple(item.removeprefix("mcp:") for item in required),
+        tuple(item.removeprefix("mcp:") for item in optional),
         _directory_hash(path.parent),
         (path.parent.resolve(),),
         writable,

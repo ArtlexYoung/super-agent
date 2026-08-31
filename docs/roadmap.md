@@ -56,6 +56,10 @@ v0.2.69 将用户、工作目录、Agent 和流的隔离语义统一到全部存
 
 v0.2.69 gives every storage backend the same isolation semantics for users, working directories, Agents, and streams.
 
+v0.2.70 用真实资源快照固定插件清单、引用、版本与去重发布契约。
+
+v0.2.70 fixes plugin manifest, reference, version, and deduplication release contracts through the real resource snapshot.
+
 后续演进按风险和可验证性推进：
 
 Future work should proceed by risk and verifiability:
