@@ -4,37 +4,41 @@ v0.2.0 先固定最小边界：一个 Runtime、一条披露路径、一个事�
 
 v0.2.0 first fixes the minimum boundaries: one Runtime, one disclosure path, one event contract, and explicit optional adapters.
 
-到 v0.2.64，多 Agent 已收成一棵代码定义的组树；运行输入、资源披露、记录、任务状态、候选选择和存储转换也分别只有一个实现。
+到 v0.2.65，多 Agent 已收成一棵代码定义的组树；运行输入、资源披露、记录、任务状态、候选选择和存储转换也分别只有一个实现。
 
-By v0.2.64, multi-Agent work uses one code-defined group tree, while run input, resource disclosure, records, task state, candidate selection, and storage conversion each have one implementation.
+By v0.2.65, multi-Agent work uses one code-defined group tree, while run input, resource disclosure, records, task state, candidate selection, and storage conversion each have one implementation.
 
-v0.2.64 将事件类别和关键日志判定收敛到 `core.event`，Runtime、记录和适配器共享同一事件视图。
+v0.2.65 将事件类别和关键日志判定收敛到 `core.event`，Runtime、记录和适配器共享同一事件视图。
 
-v0.2.64 centralizes event categories and critical-log classification in `core.event`, so Runtime, records, and adapters share one event view.
+v0.2.65 centralizes event categories and critical-log classification in `core.event`, so Runtime, records, and adapters share one event view.
 
-v0.2.64 增加只读 Agent 组合快照，外部界面通过公开视图读取状态，不依赖内部字段。
+v0.2.65 增加只读 Agent 组合快照，外部界面通过公开视图读取状态，不依赖内部字段。
 
-v0.2.64 adds a read-only Agent assembly snapshot so external interfaces use a public view instead of internal fields.
+v0.2.65 adds a read-only Agent assembly snapshot so external interfaces use a public view instead of internal fields.
 
-v0.2.64 将 Runtime 的开始、检查点、完成事件和结果统一为同一份元数据快照。
+v0.2.65 将 Runtime 的开始、检查点、完成事件和结果统一为同一份元数据快照。
 
-v0.2.64 uses one metadata snapshot for Runtime start, checkpoints, completion events, and results.
+v0.2.65 uses one metadata snapshot for Runtime start, checkpoints, completion events, and results.
 
-v0.2.64 让单条记录和记录列表共享统一的审计投影。
+v0.2.65 让单条记录和记录列表共享统一的审计投影。
 
-v0.2.64 makes single-record and record-list inspection share one audit projection.
+v0.2.65 makes single-record and record-list inspection share one audit projection.
 
-v0.2.64 增加显式的单任务读取与等待接口，统一计划、队列和子 Agent 的状态观察。
+v0.2.65 增加显式的单任务读取与等待接口，统一计划、队列和子 Agent 的状态观察。
 
-v0.2.64 adds explicit single-task read and wait APIs for one shared view across plans, queues, and subagents.
+v0.2.65 adds explicit single-task read and wait APIs for one shared view across plans, queues, and subagents.
 
-v0.2.64 为模型路由提供不调用模型的选择解释和成本估算。
+v0.2.65 为模型路由提供不调用模型的选择解释和成本估算。
 
-v0.2.64 adds model-routing explanations and cost estimates without calling a model.
+v0.2.65 adds model-routing explanations and cost estimates without calling a model.
 
-v0.2.64 将副作用动作显式化，模型请求本身不再等同于已经执行。
+v0.2.65 将副作用动作显式化，模型请求本身不再等同于已经执行。
 
-v0.2.64 makes side-effect actions explicit so a model request is never treated as execution.
+v0.2.65 makes side-effect actions explicit so a model request is never treated as execution.
+
+v0.2.65 增加临时记忆清理动作，确保短期上下文可以显式结束而不会影响长期经验。
+
+v0.2.65 adds an explicit temporary-memory cleanup action so short-term context can end without changing durable experience.
 
 后续演进按风险和可验证性推进：
 

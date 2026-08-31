@@ -12,6 +12,15 @@ from super_agent import Agent
 
 
 class WorkingDirectoryMemoryTests(unittest.TestCase):
+    def test_temporary_memory_can_be_cleared_without_touching_long_term_memory(self):
+        memory = Memory()
+        memory.remember_temporary("working note", conversation_id="conversation-1")
+        durable = memory.remember_long_term("stable preference")
+
+        self.assertEqual(1, memory.clear_temporary("conversation-1"))
+        self.assertEqual([], memory.list_items(lifetime="temporary"))
+        self.assertEqual([durable.memory_id], [item.memory_id for item in memory.list_items(lifetime="long_term")])
+
     def test_direct_user_memory_without_storage_stays_in_process(self):
         agent = Agent(MockModel("answer"))
         agent.for_user("alice").memory.remember_long_term("process local preference")

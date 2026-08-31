@@ -137,6 +137,16 @@ class Memory:
         ]
         return sorted(values, key=lambda item: (item.updated_at, item.memory_id), reverse=True)
 
+    def clear_temporary(self, conversation_id: str, *, reason: str = "conversation ended") -> int:
+        """显式清除一个会话的临时记忆，不触碰长期记忆。"""
+        selected = _text(conversation_id, "conversation ID")
+        items = [item for item in self._load().values() if item.lifetime == "temporary" and item.conversation_id == selected]
+        for item in items:
+            self._items.pop(item.memory_id, None)
+            if self.store is not None:
+                self.store.append_item(item.memory_id, "memory.forgotten", {**item.to_dict(), "reason": reason})
+        return len(items)
+
     def forget(self, memory_id: str, reason: str = "explicit forget") -> MemoryItem:
         """显式遗忘一条长期记忆。"""
         return self.organize_long_term("forget", (memory_id,), reason=_text(reason, "forget reason"))[0]
@@ -222,6 +232,7 @@ class Memory:
             Tool("recall_memory", "Recall relevant long-term and current-conversation experience", self._recall_tool, _recall_schema()),
             Tool("promote_temporary_memory", "Promote one temporary item into an abstract long-term item", self._promote_tool, _promote_schema(), ("write",)),
             Tool("organize_long_term_memory", "Revise, forget, restore, relate, contradict, merge, or split long-term experience", self._organize_tool, _organize_schema(), ("write",)),
+            Tool("clear_temporary_memory", "Clear only temporary memory for one conversation", self._clear_temporary_tool, _clear_temporary_schema(), ("write",)),
         )
 
     def _create(
@@ -347,6 +358,12 @@ class Memory:
         )
         return {"items": [item.to_dict() for item in values]}
 
+    def _clear_temporary_tool(self, arguments: dict[str, object], context: ToolContext) -> dict[str, object]:
+        conversation_id = _text(arguments.get("conversation_id"), "conversation ID")
+        count = self.clear_temporary(conversation_id, reason=_text(arguments.get("reason"), "memory clear reason"))
+        context.emit("memory.forgotten", {"lifetime": "temporary", "conversation_id": conversation_id, "count": count})
+        return {"conversation_id": conversation_id, "cleared": count}
+
 
 def _memory_audit_data(item: MemoryItem, operation: str) -> dict[str, object]:
     return {
@@ -401,3 +418,7 @@ def _promote_schema() -> dict[str, object]:
 
 def _organize_schema() -> dict[str, object]:
     return {"type": "object", "required": ["operation", "memory_ids", "reason"], "properties": {"operation": {"type": "string", "enum": ["revise", "forget", "restore", "relate", "contradict", "merge", "split"]}, "memory_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1}, "text": {"type": "string"}, "texts": {"type": "array", "items": {"type": "string"}}, "labels": {"type": "array", "items": {"type": "string"}}, "reason": {"type": "string"}}}
+
+
+def _clear_temporary_schema() -> dict[str, object]:
+    return {"type": "object", "required": ["conversation_id", "reason"], "properties": {"conversation_id": {"type": "string"}, "reason": {"type": "string"}}}
