@@ -34,6 +34,15 @@ def model_agent(storage=None, *, name="agent"):
 
 
 class ModelProfileTests(unittest.TestCase):
+    def test_selection_explanation_is_read_only_and_contains_cost_facts(self):
+        router = model_agent().model
+
+        values = router.explain_selection(purpose="code", required_features=("text",))
+
+        self.assertEqual({"alpha", "beta"}, {item["name"] for item in values})
+        self.assertIn("performance", values[0])
+        self.assertEqual(0.000003, router.estimate_cost("alpha", {"input_tokens": 3}))
+
     def test_toml_description_reaches_the_safe_model_profile(self):
         config = config_from_dict(
             {

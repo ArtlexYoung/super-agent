@@ -344,6 +344,38 @@ class ModelRouter:
             for profile, performance in zip(self.profiles, performances)
         )
 
+    def explain_selection(
+        self, *, purpose: str = "auto", required_features: Iterable[str] = (), scope: str = "local"
+    ) -> tuple[dict[str, object], ...]:
+        """只读解释一次模型选择，不发起模型请求。"""
+        features = tuple(dict.fromkeys(required_features))
+        request = ModelRequest((Message("user", "selection preview"),), purpose=purpose, required_features=features)
+        now = monotonic()
+        matching = [profile for profile in self.profiles if profile.matches(request)]
+        ordered = rank_candidates(matching, lambda item: self._score(item, request, scope))
+        return tuple(
+            {
+                "name": profile.name,
+                "rank": index + 1,
+                "matches": True,
+                "available": self._health[profile.name].retry_at <= now,
+                "weight": profile.weight,
+                "pricing": profile.pricing.to_dict(),
+                "score": round(self._score(profile, request, scope)[1], 8),
+                "performance": self.get_model_performance(profile.name, purpose, scope=scope).to_dict(),
+            }
+            for index, profile in enumerate(ordered)
+        )
+
+    def estimate_cost(
+        self, profile_name: str, usage: Mapping[str, int | float | None]
+    ) -> float:
+        """按档案价格计算一组已观测 token 的成本。"""
+        profile = next((item for item in self.profiles if item.name == profile_name), None)
+        if profile is None:
+            raise KeyError(f"model profile not found: {profile_name}")
+        return profile.pricing.estimate(usage)
+
     def get_model_performance(
         self, profile_name: str, purpose: str = "auto", *, scope: str = "local"
     ) -> ModelPerformance:
