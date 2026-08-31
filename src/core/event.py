@@ -315,3 +315,19 @@ class RunResult:
 
     def to_dict(self) -> dict[str, object]:
         return {**dataclass_data(self), "trace_id": self.trace_id}
+
+    @property
+    def snapshot(self) -> dict[str, object]:
+        """返回一次运行的统一元数据快照，不包含模型正文。"""
+        return {
+            "run_id": self.run_id,
+            "parent_run_id": self.parent_run_id,
+            "conversation_id": self.conversation_id,
+            "session_id": self.session_id,
+            "skills": list(self.skills),
+            "workflow": self.workflow,
+            "usage": dict(self.usage),
+            "context_ledger": dict(self.context_ledger),
+            "runtime_lifecycle": dict(self.runtime_lifecycle),
+            "library_snapshot": dict(self.library_snapshot),
+        }

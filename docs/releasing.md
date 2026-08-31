@@ -11,7 +11,7 @@ PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
 python3.11 -m unittest discover -s tests -p 'test_*.py' -v
 
 PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
-python3.11 scripts/verify_release.py --version 0.2.59 --full
+python3.11 scripts/verify_release.py --version 0.2.60 --full
 ```
 
 发布检查验证版本、Python 最低版本、零默认依赖、源码布局、旧目录删除、构建范围、内置插件去重关系和离线评测资产。
@@ -24,9 +24,9 @@ Log writes never trigger retention cleanup. Run `super-agent data storage prune 
 
 ## 版本 / Version
 
-v0.2.59 增加只读 `Agent.snapshot()` 组合视图，统一应用和桌面读取 Agent 状态的入口。
+v0.2.60 统一 Runtime 的开始、检查点、完成事件和结果元数据快照。
 
-v0.2.59 adds the read-only `Agent.snapshot()` assembly view as the single state endpoint for applications and desktop clients.
+v0.2.60 unifies runtime metadata snapshots across start, checkpoint, completion events, and results.
 
 检查通过后创建一个本地逻辑提交和标签；远程推送是单独的授权边界。
 

@@ -1,10 +1,17 @@
 import unittest
 
 from core.context import AgentContext, RunOptions, RunScope
-from core.event import RunIdentity
+from core.event import RunIdentity, RunResult
 
 
 class RuntimeContextTests(unittest.TestCase):
+    def test_result_exposes_one_metadata_snapshot(self):
+        result = RunResult("answer", "run-1", "complete", ())
+
+        self.assertEqual("run-1", result.snapshot["run_id"])
+        self.assertEqual("complete", result.stop_reason)
+        self.assertIn("context_ledger", result.snapshot)
+
     def test_scope_is_derived_from_run_identity(self):
         identity = RunIdentity(
             user_id="alice",

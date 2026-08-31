@@ -597,24 +597,13 @@ class _RunEngine:
                     "checkpoint_sequence": self.run.resume_checkpoint.event_sequence,
                 },
             )
-        yield self.emit(
-            "run.started",
-            {
-                "user_id": identity.user_id,
-                "agent_name": identity.agent_name,
-                "conversation_id": identity.conversation_id,
-                "session_id": identity.session_id,
-                "working_directory_id": identity.working_directory_id,
-                "parent_run_id": identity.parent_run_id,
-                "depth": identity.depth,
-                "purpose": self.run.purpose,
-                "prompt": self.run.prompt,
-                "library_snapshot": self.session.library_snapshot or {},
-                "enabled_features": self.run.metadata.get(
-                    "_super_agent_enabled_features", {}
-                ),
-            },
+        started = self.runtime_snapshot()
+        started.update(
+            purpose=self.run.purpose,
+            prompt=self.run.prompt,
+            enabled_features=self.run.metadata.get("_super_agent_enabled_features", {}),
         )
+        yield self.emit("run.started", started)
         for warning in self.run.warning_messages:
             yield self.emit("run.warning", {"message": warning})
         if self.run.prepare is not None:
@@ -806,6 +795,8 @@ class _RunEngine:
             "run.waiting": "waiting",
         }.get(event.event_type, "running")
         identity = self.session.identity
+        state = self.runtime_snapshot()
+        state["last_event_type"] = event.event_type
         return RunCheckpoint(
             checkpoint_id=identity.run_id,
             run_id=identity.run_id,
@@ -813,22 +804,7 @@ class _RunEngine:
             status=status,
             event_sequence=len(self.events),
             turn=self.turns,
-            state={
-                "user_id": identity.user_id,
-                "last_event_type": event.event_type,
-                "agent_name": identity.agent_name,
-                "conversation_id": identity.conversation_id,
-                "working_directory_id": identity.working_directory_id,
-                "parent_run_id": identity.parent_run_id,
-                "depth": identity.depth,
-                "message_count": len(self.session.messages),
-                "tool_count": len(self.session.tools),
-                "skills": list(self.session.active_skills),
-                "workflow": self.session.workflow,
-                "context_ledger": self.session.context_snapshot(),
-                "runtime_lifecycle": self.session.runtime_lifecycle.snapshot(),
-                "library_snapshot": self.session.library_snapshot or {},
-            },
+            state=state,
             created_at=event.created_at,
         )
 
@@ -843,19 +819,9 @@ class _RunEngine:
         stop_reason: str,
     ) -> Generator[RunEvent, None, RunResult]:
         identity = self.session.identity
-        yield self.emit(
-            "run.completed",
-            {
-                "stop_reason": stop_reason,
-                "text": text,
-                "skills": list(self.session.active_skills),
-                "workflow": self.session.workflow,
-                "usage": dict(self.usage),
-                "context_ledger": self.session.context_snapshot(),
-                "runtime_lifecycle": self.session.runtime_lifecycle.snapshot(),
-                "library_snapshot": self.session.library_snapshot or {},
-            },
-        )
+        completed = self.runtime_snapshot()
+        completed.update(stop_reason=stop_reason, text=text, usage=dict(self.usage))
+        yield self.emit("run.completed", completed)
         return RunResult(
             text=text,
             run_id=identity.run_id,
@@ -873,6 +839,26 @@ class _RunEngine:
             runtime_lifecycle=self.session.runtime_lifecycle.snapshot(),
             library_snapshot=self.session.library_snapshot or {},
         )
+
+    def runtime_snapshot(self) -> dict[str, object]:
+        """返回运行、上下文、资源和工具的统一元数据视图。"""
+        identity = self.session.identity
+        return {
+            "user_id": identity.user_id,
+            "agent_name": identity.agent_name,
+            "conversation_id": identity.conversation_id,
+            "session_id": identity.session_id,
+            "working_directory_id": identity.working_directory_id,
+            "parent_run_id": identity.parent_run_id,
+            "depth": identity.depth,
+            "message_count": len(self.session.messages),
+            "tool_count": len(self.session.tools),
+            "skills": list(self.session.active_skills),
+            "workflow": self.session.workflow,
+            "context_ledger": self.session.context_snapshot(),
+            "runtime_lifecycle": self.session.runtime_lifecycle.snapshot(),
+            "library_snapshot": self.session.library_snapshot or {},
+        }
 
 
 def collect_run(events: Generator[RunEvent, None, RunResult]) -> RunResult:
