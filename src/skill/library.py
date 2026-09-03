@@ -69,7 +69,7 @@ class McpDefinition:
 
 @dataclass(frozen=True)
 class Plugin:
-    """只保存 Skill、MCP 和其他插件的引用。"""
+    """保存资源引用和可选的已注册 Runtime 扩展名称。"""
 
     plugin_id: str
     version: str
@@ -83,6 +83,7 @@ class Plugin:
     sha256: str
     sources: tuple[Path, ...] = ()
     writable: bool = False
+    runtime_extension: str | None = None
 
     @property
     def reference(self) -> str:
@@ -104,6 +105,7 @@ class Plugin:
             "included_plugins": [f"plugin:{item}" for item in self.included_plugins],
             "required_mcp_servers": [f"mcp:{item}" for item in self.required_mcp_servers],
             "optional_mcp_servers": [f"mcp:{item}" for item in self.optional_mcp_servers],
+            "runtime_extension": self.runtime_extension,
             "sha256": self.sha256,
             "sources": len(self.sources),
         }
@@ -561,6 +563,7 @@ class AgentLibrary:
         required_mcp_servers: Iterable[str] = (),
         optional_mcp_servers: Iterable[str] = (),
         version: str = "0.1.0",
+        runtime_extension: str | None = None,
     ) -> Plugin:
         selected = _resource_id(plugin_id, "plugin ID")
         if selected in self.snapshot().plugins:
@@ -594,6 +597,7 @@ class AgentLibrary:
             selected_plugins,
             selected_required_mcp,
             selected_optional_mcp,
+            runtime_extension,
         )
         self.refresh()
         created = self.find_plugin(f"plugin:{selected}")
@@ -860,7 +864,7 @@ def _read_plugin_manifest(path: Path, library_root: Path, *, writable: bool) -> 
     plugin_id = _resource_id("/".join(relative.parts), "plugin ID")
     with path.open("rb") as stream:
         value = tomllib.load(stream)
-    _unknown(value, {"schema", "id", "version", "description", "entry_skill", "skills", "included_plugins", "required_mcp_servers", "optional_mcp_servers"}, "plugin manifest")
+    _unknown(value, {"schema", "id", "version", "description", "entry_skill", "skills", "included_plugins", "required_mcp_servers", "optional_mcp_servers", "runtime_extension"}, "plugin manifest")
     if value.get("schema") != 1:
         raise ValueError(f"unsupported plugin schema: {value.get('schema')}")
     if _resource_id(value.get("id"), "plugin ID") != plugin_id:
@@ -902,6 +906,7 @@ def _read_plugin_manifest(path: Path, library_root: Path, *, writable: bool) -> 
         _directory_hash(path.parent),
         (path.parent.resolve(),),
         writable,
+        _optional_runtime_extension(value.get("runtime_extension")),
     )
 
 
@@ -1003,7 +1008,7 @@ def _validate_skill_includes(skills: Mapping[str, Skill]) -> None:
         visit(key, (), done)
 
 
-def _write_plugin_manifest(root: Path, plugin_id: str, version: str, description: str, entry_skill: str, skills: Iterable[str], included_plugins: Iterable[str], required_mcp_servers: Iterable[str], optional_mcp_servers: Iterable[str]) -> None:
+def _write_plugin_manifest(root: Path, plugin_id: str, version: str, description: str, entry_skill: str, skills: Iterable[str], included_plugins: Iterable[str], required_mcp_servers: Iterable[str], optional_mcp_servers: Iterable[str], runtime_extension: str | None) -> None:
     values = {
         "schema": 1,
         "id": plugin_id,
@@ -1014,6 +1019,7 @@ def _write_plugin_manifest(root: Path, plugin_id: str, version: str, description
         "included_plugins": list(_references(included_plugins, "plugin", "included plugins")),
         "required_mcp_servers": list(_references(required_mcp_servers, "mcp", "required MCP servers")),
         "optional_mcp_servers": list(_references(optional_mcp_servers, "mcp", "optional MCP servers")),
+        "runtime_extension": _optional_runtime_extension(runtime_extension),
     }
     lines = [
         "schema = 1",
@@ -1024,6 +1030,8 @@ def _write_plugin_manifest(root: Path, plugin_id: str, version: str, description
     ]
     for key in ("skills", "included_plugins", "required_mcp_servers", "optional_mcp_servers"):
         lines.append(f"{key} = {json.dumps(values[key], ensure_ascii=False)}")
+    if values["runtime_extension"] is not None:
+        lines.append(f"runtime_extension = {json.dumps(values['runtime_extension'])}")
     _atomic_write(root / PLUGIN_FILE, ("\n".join(lines) + "\n").encode())
 
 
@@ -1201,8 +1209,23 @@ def _optional_text(value: object) -> str | None:
     return None if value is None else _text(value, "optional text")
 
 
+def _optional_runtime_extension(value: object) -> str | None:
+    selected = _optional_text(value)
+    if selected is None:
+        return None
+    if not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?", selected):
+        raise ValueError(f"invalid runtime extension name: {selected}")
+    return selected
+
+
 def _plugin_event(value: Plugin) -> dict[str, object]:
-    return {"key": value.reference, "version": value.version, "sha256": value.sha256, "sources": len(value.sources)}
+    return {
+        "key": value.reference,
+        "version": value.version,
+        "sha256": value.sha256,
+        "sources": len(value.sources),
+        "runtime_extension": value.runtime_extension,
+    }
 
 
 def _skill_event(value: Skill) -> dict[str, object]:

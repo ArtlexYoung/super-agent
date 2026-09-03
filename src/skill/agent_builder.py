@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import replace
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from collections.abc import Mapping
@@ -12,6 +13,8 @@ from adapter.storage import EventMemoryStore, JsonlMemoryStore
 from core.context import AgentContext
 from core.event import RunCheckpoint, RunIdentity
 from core.records import EventStore, RecordScope
+from core.resources import ResourceCenter
+from core.run import RuntimeExtension
 
 if TYPE_CHECKING:
     from core.config import WorkingDirectory
@@ -24,6 +27,60 @@ if TYPE_CHECKING:
 
 MEMORY_PLUGIN = "plugin:super-agent/memory"
 EVOLUTION_PLUGIN = "plugin:super-agent/evolution"
+
+RuntimeExtensionFactory = Callable[
+    [object, RunIdentity, EventStore | None, ResourceCenter | None], RuntimeExtension
+]
+_RUNTIME_EXTENSION_FACTORIES: dict[str, RuntimeExtensionFactory] = {}
+
+
+def register_runtime_extension(
+    name: str, factory: RuntimeExtensionFactory
+) -> None:
+    """注册一个显式 Runtime 扩展工厂；插件清单不会导入任意代码。"""
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("runtime extension name cannot be empty")
+    if not callable(factory):
+        raise TypeError("runtime extension factory must be callable")
+    selected = name.strip()
+    if selected in _RUNTIME_EXTENSION_FACTORIES:
+        raise ValueError(f"runtime extension already registered: {selected}")
+    _RUNTIME_EXTENSION_FACTORIES[selected] = factory
+
+
+def create_runtime_extensions(
+    agent: object,
+    library: AgentLibrary | None,
+    identity: RunIdentity,
+    store: EventStore | None,
+    resource_center: ResourceCenter | None,
+    explicit_plugin: str | None = None,
+) -> tuple[RuntimeExtension, ...]:
+    """按已启用插件创建已注册扩展，不执行清单中未知的代码。"""
+    if library is None:
+        return ()
+    references = tuple(
+        dict.fromkeys(
+            reference
+            for reference in (explicit_plugin, *getattr(agent, "_enabled_plugins", ()))
+            if reference is not None
+        )
+    )
+    extensions: list[RuntimeExtension] = []
+    names: set[str] = set()
+    for reference in references:
+        plugin = library.find_plugin(reference)
+        name = plugin.runtime_extension
+        if name is None or name in names:
+            continue
+        factory = _RUNTIME_EXTENSION_FACTORIES.get(name)
+        if factory is None:
+            raise RuntimeError(
+                f"runtime extension is not registered: {name} ({plugin.reference})"
+            )
+        extensions.append(factory(agent, identity, store, resource_center))
+        names.add(name)
+    return tuple(extensions)
 
 
 def agent_features(agent: Agent) -> tuple[str, ...]:
@@ -177,6 +234,14 @@ def stream_agent(agent: Agent, prompt: str, context: AgentContext):
     )
     if library is not None and resource_center is not None:
         library.use_resource_center(resource_center)
+    runtime_extensions = create_runtime_extensions(
+        agent,
+        library,
+        identity,
+        store,
+        resource_center,
+        context.plugin,
+    )
     effective_context = replace(
         context,
         conversation_id=identity.conversation_id,
@@ -240,7 +305,7 @@ def stream_agent(agent: Agent, prompt: str, context: AgentContext):
         library_snapshot={} if library is None else library.snapshot().to_dict(),
         mcp_tools_by_server=mcp_tools,
         listeners=tuple(listeners),
-        runtime_extensions=runtime_options.runtime_extensions,
+        runtime_extensions=(*runtime_extensions, *runtime_options.runtime_extensions),
         prepare=prepare,
         session_record=selected_session,
         tool_decider=runtime_options.tool_decider,

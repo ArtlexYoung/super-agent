@@ -76,11 +76,16 @@ skills = ["skill:local/evidence"]
 included_plugins = ["plugin:super-agent/common"]
 required_mcp_servers = ["mcp:example/search"]
 optional_mcp_servers = []
+runtime_extension = "context-window"
 ```
 
 `entry_skill` 是插件入口；`skills` 是附加方法；`included_plugins` 递归复用其他插件引用。必需 MCP 未由代码显式绑定时激活失败，可选 MCP 缺失不会自动降级或建立连接。
 
+`runtime_extension` 只声明一个由可信代码预先注册的 Runtime 扩展名称。清单不会导入或执行任意代码；未知扩展在运行开始前直接失败。
+
 `entry_skill` is the plugin entry; `skills` lists extra methods; `included_plugins` recursively reuses another plugin's references. Activation fails when required MCP is not explicitly bound by code. Missing optional MCP never creates a connection or hidden fallback.
+
+`runtime_extension` declares only a Runtime extension name registered by trusted code. A manifest never imports or executes arbitrary code; an unknown extension fails before the run starts.
 
 ## 插件开发检查 / Plugin Development Checks
 
