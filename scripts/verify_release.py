@@ -1,4 +1,4 @@
-"""Run the local release checks for v0.2.75."""
+"""Run the local release checks for v0.2.76."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-VERSION = "0.2.75"
+VERSION = "0.2.76"
 MAX_SOURCE_FILES = 27
 MAX_SOURCE_LINES = 12_800
 SOURCE_ROOTS = {"adapter", "core", "skill", "cli.py", "super_agent.py"}
@@ -67,6 +67,7 @@ REQUIRED_BUILTIN_SKILLS = {
     "team": {"multi-agent"},
     "review": {"multi-agent"},
     "model-routing": set(),
+    "context-window": set(),
 }
 
 

@@ -27,6 +27,9 @@ from core.model import (
     Tool,
     ToolCall,
     TokenUsage,
+    TokenBudget,
+    context_window_tokens_for,
+    estimate_request_tokens,
     normalize_messages,
     validate_tool_arguments,
 )
@@ -79,6 +82,9 @@ class RuntimeExtensionContext:
     usage: Mapping[str, int | float | None] = field(default_factory=dict)
     usage_sources: Mapping[str, str] = field(default_factory=dict)
     metadata: Mapping[str, object] = field(default_factory=dict)
+    window_id: str | None = None
+    estimated_input_tokens: int = 0
+    context_window_tokens: int | None = None
 
 
 class RuntimeExtension(Protocol):
@@ -462,6 +468,7 @@ class RunInput:
     mcp_tools_by_server: Mapping[str, tuple[Tool, ...]] = field(default_factory=dict)
     listeners: tuple[EventListener, ...] = ()
     runtime_extensions: tuple[RuntimeExtension, ...] = ()
+    token_budget: TokenBudget | None = None
     prepare: RunPreparation | None = None
     session_record: SessionRecord | None = None
     tool_decider: ToolDecision | None = None
@@ -493,6 +500,8 @@ class RunInput:
             raise TypeError(
                 "runtime extensions must provide before_model_call and after_model_call"
             )
+        if self.token_budget is not None and not isinstance(self.token_budget, TokenBudget):
+            raise TypeError("token_budget must be a TokenBudget or None")
 
 
 def build_run_instructions(
@@ -726,6 +735,12 @@ class _RunEngine:
             self.run.required_features,
             self.run.metadata,
         )
+        estimated_input_tokens = estimate_request_tokens(
+            messages, model_request.tools
+        )
+        context_window_tokens = context_window_tokens_for(
+            self.run.model, model_request
+        )
         extension_context = RuntimeExtensionContext(
             self.session.identity,
             self.turns,
@@ -733,6 +748,9 @@ class _RunEngine:
             dict(self.usage),
             dict(self.usage_sources),
             dict(self.run.metadata),
+            self.current_window.window_id,
+            estimated_input_tokens,
+            context_window_tokens,
         )
         control = self._run_extension_before(extension_context)
         if control is not None and control.action == "rollover":
@@ -750,6 +768,12 @@ class _RunEngine:
                 self.run.required_features,
                 self.run.metadata,
             )
+            estimated_input_tokens = estimate_request_tokens(
+                messages, model_request.tools
+            )
+            context_window_tokens = context_window_tokens_for(
+                self.run.model, model_request
+            )
             extension_context = RuntimeExtensionContext(
                 self.session.identity,
                 self.turns,
@@ -757,7 +781,11 @@ class _RunEngine:
                 dict(self.usage),
                 dict(self.usage_sources),
                 dict(self.run.metadata),
+                self.current_window.window_id,
+                estimated_input_tokens,
+                context_window_tokens,
             )
+            self._validate_after_rollover(extension_context)
         yield self.emit(
             "model.call.started",
             {
@@ -878,6 +906,18 @@ class _RunEngine:
     ) -> None:
         for extension in self.run.runtime_extensions:
             extension.after_model_call(context, result)
+
+    def _validate_after_rollover(self, context: RuntimeExtensionContext) -> None:
+        """只调用声明了换窗校验的扩展，避免重复触发普通扩展副作用。"""
+        for extension in self.run.runtime_extensions:
+            validate = getattr(extension, "after_window_rollover", None)
+            if not callable(validate):
+                continue
+            control = validate(context)
+            if control is not None:
+                raise RuntimeControlError(
+                    "runtime extension rejected the new context window"
+                )
 
     def _run_tool(self, call: ToolCall) -> Generator[RunEvent, None, None]:
         self._check_interrupted()

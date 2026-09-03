@@ -11,7 +11,7 @@ from core import require_text as _text
 from core.config import Config, EvolutionConfig, WorkingDirectory, config_from_environment
 from core.context import AgentContext
 from core.event import RunEvent, RunLimits, RunResult
-from core.model import Message, Model, Tool, next_model_profile_name
+from core.model import Message, Model, TokenBudget, Tool, next_model_profile_name
 from core.provider import ModelPricing, ModelProfile, ModelRouter, RouterSettings
 from core.records import (
     AuditPolicy,
@@ -97,6 +97,7 @@ class Agent:
         self._team_runtimes: dict[str, TeamRuntime] = {}
         self._loaded_model_scopes: set[str] = set()
         self._session_record: SessionRecord | None = None
+        self.token_budget: TokenBudget | None = None
         if config is not None:
             self._apply_config(config, model_was_explicit=model is not None)
 
@@ -412,6 +413,12 @@ class Agent:
     def enable_memory(self) -> None:
         """显式选择 Memory 插件并启用其运行工具。"""
         self.enable_plugin(MEMORY_PLUGIN)
+
+    def set_token_budget(self, budget: TokenBudget | None = None) -> None:
+        """显式设置可选窗口插件使用的 token 预算规则。"""
+        if budget is not None and not isinstance(budget, TokenBudget):
+            raise TypeError("budget must be a TokenBudget or None")
+        self.token_budget = budget
 
     def enable_skill_evolution(self, runner: CandidateRunner | None = None) -> None:
         """启用候选和保鲜度工具；更新目标仍需单独授权。"""

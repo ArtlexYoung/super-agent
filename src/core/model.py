@@ -142,6 +142,44 @@ class TokenUsage:
         }
         return value
 
+
+@dataclass(frozen=True)
+class TokenBudget:
+    """描述窗口切换所需预留的输出空间，不负责执行切换。"""
+
+    reserve_output_tokens: int = 1024
+    rollover_threshold: float = 1.0
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.reserve_output_tokens, bool)
+            or not isinstance(self.reserve_output_tokens, int)
+            or self.reserve_output_tokens < 0
+        ):
+            raise ValueError("reserve_output_tokens must be a non-negative integer")
+        if (
+            isinstance(self.rollover_threshold, bool)
+            or not isinstance(self.rollover_threshold, (int, float))
+            or not math.isfinite(self.rollover_threshold)
+            or not 0 < self.rollover_threshold <= 1
+        ):
+            raise ValueError("rollover_threshold must be greater than 0 and at most 1")
+
+    def requires_rollover(
+        self, estimated_input_tokens: int, context_window_tokens: int | None
+    ) -> bool:
+        """判断输入与预留输出是否超过声明容量；未知容量永不猜测。"""
+        if context_window_tokens is None:
+            return False
+        if (
+            isinstance(estimated_input_tokens, bool)
+            or not isinstance(estimated_input_tokens, int)
+            or estimated_input_tokens < 0
+        ):
+            raise ValueError("estimated_input_tokens must be a non-negative integer")
+        available = int(context_window_tokens * self.rollover_threshold)
+        return estimated_input_tokens + self.reserve_output_tokens > available
+
 _OPENAI_RUNTIME_BODY_FIELDS = frozenset(
     {"model", "messages", "tools", "stream", "stream_options"}
 )
@@ -759,6 +797,32 @@ def merge_model_usage(
 def estimate_tokens(value: object) -> int:
     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     return 0 if not text else math.ceil(len(text) / 4)
+
+
+def estimate_request_tokens(
+    messages: Iterable[Message], tools: Iterable[ToolSpec] = ()
+) -> int:
+    """用稳定的 JSON 近似一次模型输入的 token 数，不声称是供应商精确值。"""
+    return estimate_tokens(
+        {
+            "messages": [message.to_dict() for message in messages],
+            "tools": [tool.to_dict() for tool in tools],
+        }
+    )
+
+
+def context_window_tokens_for(model: Model, request: ModelRequest) -> int | None:
+    """读取模型或 Router 的已声明容量；没有声明时返回 None。"""
+    resolver = getattr(model, "context_window_tokens_for", None)
+    if callable(resolver):
+        value = resolver(request)
+    else:
+        value = getattr(model, "context_window_tokens", None)
+    if value is not None and (
+        isinstance(value, bool) or not isinstance(value, int) or value < 1
+    ):
+        raise ValueError("context_window_tokens must be a positive integer or None")
+    return value
 
 
 def _usage_value(usage: Mapping[str, int | float | None], name: str) -> float:

@@ -1,6 +1,6 @@
 schema = 1
 id = "super-agent/policy"
-version = "0.2.75"
+version = "0.2.76"
 description = "Explicit rules for tool effects and protected workspaces"
 entry_skill = "skill:super-agent/policy"
 skills = []

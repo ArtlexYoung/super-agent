@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import replace
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -14,7 +15,8 @@ from core.context import AgentContext
 from core.event import RunCheckpoint, RunIdentity
 from core.records import EventStore, RecordScope
 from core.resources import ResourceCenter
-from core.run import RuntimeExtension
+from core.model import TokenBudget
+from core.run import RuntimeControl, RuntimeExtension, RuntimeExtensionContext
 
 if TYPE_CHECKING:
     from core.config import WorkingDirectory
@@ -27,11 +29,70 @@ if TYPE_CHECKING:
 
 MEMORY_PLUGIN = "plugin:super-agent/memory"
 EVOLUTION_PLUGIN = "plugin:super-agent/evolution"
+CONTEXT_WINDOW_PLUGIN = "plugin:super-agent/context-window"
 
 RuntimeExtensionFactory = Callable[
     [object, RunIdentity, EventStore | None, ResourceCenter | None], RuntimeExtension
 ]
 _RUNTIME_EXTENSION_FACTORIES: dict[str, RuntimeExtensionFactory] = {}
+
+
+class TokenBudgetExtension:
+    """将 TokenBudget 规则作为可选插件接入窗口生命周期。"""
+
+    def __init__(self, budget: TokenBudget | None = None) -> None:
+        self.budget = budget or TokenBudget()
+        self._pending: dict[str, str] = {}
+
+    def before_model_call(
+        self, context: RuntimeExtensionContext
+    ) -> RuntimeControl | None:
+        if not self.budget.requires_rollover(
+            context.estimated_input_tokens, context.context_window_tokens
+        ):
+            return None
+        fingerprint = _request_fingerprint(context)
+        if context.identity.run_id in self._pending:
+            raise RuntimeError(
+                "token budget still cannot fit after an explicit window rollover"
+            )
+        self._pending[context.identity.run_id] = fingerprint
+        return RuntimeControl(
+            "rollover",
+            reason="token budget requires a fresh context window",
+            data={
+                "estimated_input_tokens": context.estimated_input_tokens,
+                "context_window_tokens": context.context_window_tokens,
+                "reserve_output_tokens": self.budget.reserve_output_tokens,
+            },
+        )
+
+    def after_model_call(
+        self, context: RuntimeExtensionContext, _result: Mapping[str, object]
+    ) -> None:
+        self._pending.pop(context.identity.run_id, None)
+
+    def after_window_rollover(
+        self, context: RuntimeExtensionContext
+    ) -> RuntimeControl | None:
+        """确认换窗后的请求能容纳预留输出空间。"""
+        if self.budget.requires_rollover(
+            context.estimated_input_tokens, context.context_window_tokens
+        ):
+            raise RuntimeError(
+                "token budget still cannot fit after an explicit window rollover"
+            )
+        return None
+
+
+def _request_fingerprint(context: RuntimeExtensionContext) -> str:
+    value = [
+        {"role": message.role, "content": message.content}
+        for message in context.request.messages
+    ]
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
+    ).hexdigest()
 
 
 def register_runtime_extension(
@@ -46,6 +107,14 @@ def register_runtime_extension(
     if selected in _RUNTIME_EXTENSION_FACTORIES:
         raise ValueError(f"runtime extension already registered: {selected}")
     _RUNTIME_EXTENSION_FACTORIES[selected] = factory
+
+
+register_runtime_extension(
+    "context-window",
+    lambda agent, _identity, _store, _resources: TokenBudgetExtension(
+        getattr(agent, "token_budget", None)
+    ),
+)
 
 
 def create_runtime_extensions(
@@ -306,6 +375,7 @@ def stream_agent(agent: Agent, prompt: str, context: AgentContext):
         mcp_tools_by_server=mcp_tools,
         listeners=tuple(listeners),
         runtime_extensions=(*runtime_extensions, *runtime_options.runtime_extensions),
+        token_budget=getattr(agent, "token_budget", None),
         prepare=prepare,
         session_record=selected_session,
         tool_decider=runtime_options.tool_decider,
