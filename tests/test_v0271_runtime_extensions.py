@@ -31,10 +31,10 @@ class RuntimeExtensionTests(unittest.TestCase):
         self.assertEqual("answer", result.text)
         self.assertEqual([("before", 1, 1), ("after", 1, True)], observed)
 
-    def test_unsupported_control_is_explicitly_rejected(self):
+    def test_unsupported_stop_control_is_explicitly_rejected(self):
         class Extension:
             def before_model_call(self, _context):
-                return RuntimeControl("rollover", reason="not implemented yet")
+                return RuntimeControl("stop", reason="not implemented yet")
 
             def after_model_call(self, _context, _result):
                 return None

@@ -426,6 +426,17 @@ class _RunState:
         system = "\n\n".join(self.instructions)
         return tuple(([Message("system", system)] if system else []) + self.messages)
 
+    def start_new_window(self, prompt: str) -> None:
+        """清晰地重建当前窗口可见消息，不修改工具注册和 Skill。"""
+        if self.ledger is None:  # pragma: no cover - protected by __post_init__
+            raise RuntimeError("run context ledger is unavailable")
+        self.messages = [Message("user", prompt)]
+        self.ledger.reset()
+        self.context_characters = 0
+        for instruction in self.instructions:
+            self.reserve_context(instruction, kind="instruction", source="request")
+        self.reserve_context(prompt, kind="message", source="user")
+
 
 @dataclass(frozen=True)
 class ToolContext:
@@ -723,7 +734,30 @@ class _RunEngine:
             dict(self.usage_sources),
             dict(self.run.metadata),
         )
-        self._run_extension_before(extension_context)
+        control = self._run_extension_before(extension_context)
+        if control is not None and control.action == "rollover":
+            yield from self._rollover_window(control)
+            messages = self.session.model_messages()
+            _check_model_input(
+                messages,
+                self.session.tools.values(),
+                self.run.limits,
+            )
+            model_request = ModelRequest(
+                messages,
+                tuple(tool.spec for tool in self.session.tools.values()),
+                self.run.purpose,
+                self.run.required_features,
+                self.run.metadata,
+            )
+            extension_context = RuntimeExtensionContext(
+                self.session.identity,
+                self.turns,
+                model_request,
+                dict(self.usage),
+                dict(self.usage_sources),
+                dict(self.run.metadata),
+            )
         yield self.emit(
             "model.call.started",
             {
@@ -821,17 +855,23 @@ class _RunEngine:
         )
         return _ModelTurn(text, tuple(calls), stop_reason)
 
-    def _run_extension_before(self, context: RuntimeExtensionContext) -> None:
+    def _run_extension_before(
+        self, context: RuntimeExtensionContext
+    ) -> RuntimeControl | None:
+        selected: RuntimeControl | None = None
         for extension in self.run.runtime_extensions:
             control = extension.before_model_call(context)
             if control is None:
                 continue
             if not isinstance(control, RuntimeControl):
                 raise TypeError("runtime extension must return RuntimeControl or None")
-            if control.action != "continue":
+            if control.action == "stop":
                 raise RuntimeControlError(
                     f"runtime extension requested unsupported action: {control.action}"
                 )
+            if control.action == "rollover":
+                selected = control
+        return selected
 
     def _run_extension_after(
         self, context: RuntimeExtensionContext, result: Mapping[str, object]
@@ -1018,18 +1058,50 @@ class _RunEngine:
         }
 
     def _close_current_window(
-        self, reason: str
+        self, reason: str, *, turn_end: int | None = None
     ) -> Generator[RunEvent, None, None]:
         if self.current_window.status == "closed":
             return
         self.current_window = self.current_window.close(
-            turn_end=self.turns,
+            turn_end=self.turns if turn_end is None else turn_end,
             context_characters=self.session.context_snapshot()["total_characters"],
             usage={**self.usage, "token_sources": dict(self.usage_sources)},
             reason=reason,
         )
         self.windows[-1] = self.current_window
         yield self.emit("window.closed", self._window_data(self.current_window))
+
+    def _rollover_window(
+        self, control: RuntimeControl
+    ) -> Generator[RunEvent, None, None]:
+        """在模型调用前原子切换窗口，避免重复执行已完成工具。"""
+        previous_window_id = self.current_window.window_id
+        yield self.emit(
+            "window.rollover.requested",
+            {
+                "window_id": previous_window_id,
+                "reason": control.reason,
+            },
+        )
+        yield from self._close_current_window(
+            "rollover", turn_end=max(0, self.turns - 1)
+        )
+        self.session.start_new_window(self.run.prompt.strip())
+        self.current_window = RunWindow(
+            self.session.identity.run_id,
+            sequence=len(self.windows) + 1,
+            turn_start=self.turns,
+            turn_end=self.turns,
+        )
+        self.windows.append(self.current_window)
+        yield self.emit(
+            "window.opened",
+            {
+                **self._window_data(self.current_window),
+                "previous_window_id": previous_window_id,
+                "reason": control.reason,
+            },
+        )
 
     def _window_data(self, window: RunWindow) -> dict[str, object]:
         return {

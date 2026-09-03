@@ -164,6 +164,11 @@ class ContextLedger:
         del self._entries[entry_count:]
         self._total_characters = sum(item.characters for item in self._entries)
 
+    def reset(self) -> None:
+        """显式开始一个新窗口，不保留旧窗口的账本条目。"""
+        self._entries.clear()
+        self._total_characters = 0
+
     def snapshot(self) -> dict[str, object]:
         return {"max_characters": self.max_characters, "total_characters": self.total_characters, "remaining_characters": self.remaining_characters(), "entries": [item.to_dict() for item in self._entries]}
 

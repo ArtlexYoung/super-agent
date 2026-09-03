@@ -4,7 +4,7 @@ description: "Find defects and improvements through independent evidence"
 metadata:
   super-agent-categories: "[\"general/review\",\"quality\"]"
   super-agent-type: "review"
-  super-agent-version: "0.2.74"
+  super-agent-version: "0.2.75"
 ---
 # Review method
 
