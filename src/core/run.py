@@ -25,6 +25,7 @@ from core.model import (
     ModelRequest,
     Tool,
     ToolCall,
+    TokenUsage,
     normalize_messages,
     validate_tool_arguments,
 )
@@ -75,6 +76,7 @@ class RuntimeExtensionContext:
     turn: int
     request: ModelRequest
     usage: Mapping[str, int | float | None] = field(default_factory=dict)
+    usage_sources: Mapping[str, str] = field(default_factory=dict)
     metadata: Mapping[str, object] = field(default_factory=dict)
 
 
@@ -584,6 +586,7 @@ class _RunEngine:
     events: list[RunEvent] = field(default_factory=list)
     listener_failures: list[dict[str, str]] = field(default_factory=list)
     usage: dict[str, int | float | None] = field(default_factory=dict)
+    usage_sources: dict[str, str] = field(default_factory=dict)
     captured_events: list[RunEvent] = field(default_factory=list)
     turns: int = 0
     context: ToolContext = field(init=False)
@@ -709,6 +712,7 @@ class _RunEngine:
             self.turns,
             model_request,
             dict(self.usage),
+            dict(self.usage_sources),
             dict(self.run.metadata),
         )
         self._run_extension_before(extension_context)
@@ -748,10 +752,27 @@ class _RunEngine:
                         },
                     )
                 elif event.event_type == "usage":
-                    _merge_usage(self.usage, event.usage)
+                    normalized = TokenUsage.from_mapping(
+                        event.usage, source=event.usage_source
+                    )
+                    numeric = {
+                        name: value
+                        for name, value in normalized.to_dict().items()
+                        if name != "token_sources"
+                    }
+                    _merge_usage(self.usage, numeric)
+                    for name in normalized.estimated_fields:
+                        self.usage_sources[name] = "estimated"
+                    for name in numeric:
+                        self.usage_sources.setdefault(name, "provider")
                     yield self.emit(
                         "model.usage",
-                        {"turn": self.turns, **dict(event.data), **dict(event.usage)},
+                        {
+                            "turn": self.turns,
+                            **dict(event.data),
+                            **dict(event.usage),
+                            "usage_source": event.usage_source,
+                        },
                     )
                 elif event.event_type == "status":
                     yield self.emit(
@@ -944,7 +965,8 @@ class _RunEngine:
     ) -> Generator[RunEvent, None, RunResult]:
         identity = self.session.identity
         completed = self.runtime_snapshot()
-        completed.update(stop_reason=stop_reason, text=text, usage=dict(self.usage))
+        usage = {**self.usage, "token_sources": dict(self.usage_sources)}
+        completed.update(stop_reason=stop_reason, text=text, usage=usage)
         yield self.emit("run.completed", completed)
         return RunResult(
             text=text,
@@ -954,7 +976,7 @@ class _RunEngine:
             skills=tuple(self.session.active_skills),
             workflow=self.session.workflow,
             warning_messages=self.run.warning_messages,
-            usage=dict(self.usage),
+            usage=usage,
             subscriber_failures=tuple(self.listener_failures),
             parent_run_id=identity.parent_run_id,
             conversation_id=identity.conversation_id,

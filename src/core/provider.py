@@ -21,6 +21,8 @@ from core.model import (
     ModelPerformanceBook,
     ModelRequest,
     ModelRequestOptions,
+    TokenUsage,
+    TOKEN_FIELDS,
     estimate_tokens,
     merge_model_usage,
     model_scope_from_metadata,
@@ -92,6 +94,7 @@ class MockModel:
             yield ModelEvent.usage_event(
                 input_tokens=sum(estimate_tokens(message.content) for message in request.messages),
                 output_tokens=estimate_tokens(selected),
+                usage_source="estimated",
             )
             yield ModelEvent.done()
             return
@@ -109,6 +112,7 @@ class OpenAIModel:
     timeout_seconds: float = 120.0
     request_body: Mapping[str, object] = field(default_factory=dict)
     reasoning_effort: str | None = None
+    context_window_tokens: int | None = None
 
     def __post_init__(self) -> None:
         options = validate_model_request_options(
@@ -120,6 +124,7 @@ class OpenAIModel:
         )
         object.__setattr__(self, "request_body", options.request_body)
         object.__setattr__(self, "reasoning_effort", options.reasoning_effort)
+        _validate_context_window(self.context_window_tokens)
 
     def stream(self, request: ModelRequest) -> Iterator[ModelEvent]:
         payload = {
@@ -150,6 +155,7 @@ class AnthropicModel:
     max_output_tokens: int = 4096
     timeout_seconds: float = 120.0
     request_body: Mapping[str, object] = field(default_factory=dict)
+    context_window_tokens: int | None = None
 
     def __post_init__(self) -> None:
         options = validate_model_request_options(
@@ -157,6 +163,7 @@ class AnthropicModel:
             ModelRequestOptions(request_body=self.request_body),
         )
         object.__setattr__(self, "request_body", options.request_body)
+        _validate_context_window(self.context_window_tokens)
 
     def stream(self, request: ModelRequest) -> Iterator[ModelEvent]:
         system, messages = _to_anthropic_messages(request.messages)
@@ -196,6 +203,7 @@ class ModelProfile:
     features: tuple[str, ...] = ("text", "tools")
     weight: float = 1.0
     pricing: ModelPricing = field(default_factory=ModelPricing)
+    context_window_tokens: int | None = None
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -206,6 +214,7 @@ class ModelProfile:
             raise ValueError("model profile weight must be positive")
         if not self.purposes or not self.features:
             raise ValueError("model profile purposes and features cannot be empty")
+        _validate_context_window(self.context_window_tokens)
         object.__setattr__(self, "description", self.description.strip())
 
     def matches(self, request: ModelRequest) -> bool:
@@ -221,6 +230,7 @@ class ModelProfile:
             "features": list(self.features),
             "weight": self.weight,
             "pricing": self.pricing.to_dict(),
+            "context_window_tokens": self.context_window_tokens,
             "selection_description": performance.selection_description(self.description),
             "performance": performance.to_dict(),
         }
@@ -281,6 +291,7 @@ class ModelRouter:
                 candidate_count=len(candidates),
                 fallback_number=position,
                 pricing=profile.pricing.to_dict(),
+                context_window_tokens=profile.context_window_tokens,
                 weight=profile.weight,
                 performance=performance.to_dict(),
                 selection_description=performance.selection_description(
@@ -295,10 +306,25 @@ class ModelRouter:
                 for event in profile.model.stream(request):
                     emitted_output = emitted_output or event.event_type in {"text", "tool_call"}
                     if event.event_type == "usage":
-                        usage = dict(event.usage)
+                        normalized = TokenUsage.from_mapping(
+                            event.usage, source=event.usage_source
+                        )
+                        usage = normalized.to_dict()
                         usage["estimated_cost"] = profile.pricing.estimate(usage)
-                        merge_model_usage(call_usage, usage)
-                        yield ModelEvent("usage", usage=usage, data={"profile": profile.name})
+                        merge_model_usage(
+                            call_usage,
+                            {
+                                name: value
+                                for name, value in usage.items()
+                                if name != "token_sources"
+                            },
+                        )
+                        yield ModelEvent(
+                            "usage",
+                            usage=usage,
+                            usage_source=event.usage_source,
+                            data={"profile": profile.name},
+                        )
                     else:
                         yield event
                 self._record_outcome(
@@ -361,6 +387,7 @@ class ModelRouter:
                 "available": self._health[profile.name].retry_at <= now,
                 "weight": profile.weight,
                 "pricing": profile.pricing.to_dict(),
+                "context_window_tokens": profile.context_window_tokens,
                 "score": round(self._score(profile, request, scope)[1], 8),
                 "performance": self.get_model_performance(profile.name, purpose, scope=scope).to_dict(),
             }
@@ -375,6 +402,15 @@ class ModelRouter:
         if profile is None:
             raise KeyError(f"model profile not found: {profile_name}")
         return profile.pricing.estimate(usage)
+
+    def context_window_tokens_for(self, request: ModelRequest) -> int | None:
+        """返回匹配候选中最保守的已声明上下文容量。"""
+        values = [
+            profile.context_window_tokens
+            for profile in self.profiles
+            if profile.matches(request) and profile.context_window_tokens is not None
+        ]
+        return min(values) if values else None
 
     def get_model_performance(
         self, profile_name: str, purpose: str = "auto", *, scope: str = "local"
@@ -454,6 +490,7 @@ def create_model(
     api_key_env: str | None = None,
     api_key: str | None = None,
     request_options: ModelRequestOptions | None = None,
+    context_window_tokens: int | None = None,
 ) -> Model:
     """从直白配置创建一个模型，不读取其他配置文件。"""
     selected = provider.strip().lower()
@@ -470,6 +507,7 @@ def create_model(
             api_key_env=api_key_env or "OPENAI_API_KEY",
             request_body=settings.request_body,
             reasoning_effort=settings.reasoning_effort,
+            context_window_tokens=context_window_tokens,
         )
     if selected in {"anthropic", "anthropic-compatible"}:
         return AnthropicModel(
@@ -478,6 +516,7 @@ def create_model(
             api_key=api_key,
             api_key_env=api_key_env or "ANTHROPIC_API_KEY",
             request_body=settings.request_body,
+            context_window_tokens=context_window_tokens,
         )
     raise ValueError(f"unknown model provider: {provider}")
 
@@ -648,7 +687,7 @@ def _append_anthropic_message(
     messages.append({"role": role, "content": blocks})
 
 
-def _normalize_usage(value: Mapping[str, object]) -> dict[str, int | float | None]:
+def _normalize_usage(value: Mapping[str, object]) -> dict[str, object]:
     aliases = {
         "input_tokens": "input_tokens",
         "prompt_tokens": "input_tokens",
@@ -673,6 +712,9 @@ def _normalize_usage(value: Mapping[str, object]) -> dict[str, int | float | Non
             if isinstance(total, (int, float)) and cached <= total:
                 result["total_input_tokens"] = total
                 result["input_tokens"] = total - cached
+    result["token_sources"] = {
+        name: "provider" for name in result if name in TOKEN_FIELDS
+    }
     return result
 
 
@@ -698,6 +740,13 @@ def _join_url(base_url: str, path: str) -> str:
 
 def _is_local_url(value: str) -> bool:
     return urlparse(value).hostname in {"localhost", "127.0.0.1", "::1"}
+
+
+def _validate_context_window(value: int | None) -> None:
+    if value is not None and (
+        isinstance(value, bool) or not isinstance(value, int) or value < 1
+    ):
+        raise ValueError("context_window_tokens must be a positive integer or None")
 
 
 def is_temporary_provider_error(error: Exception) -> bool:

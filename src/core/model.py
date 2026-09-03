@@ -23,6 +23,125 @@ REASONING_EFFORTS = (
     "max",
 )
 
+TOKEN_FIELDS = (
+    "input_tokens",
+    "output_tokens",
+    "cache_creation_tokens",
+    "cache_read_tokens",
+)
+
+
+@dataclass(frozen=True)
+class TokenUsage:
+    """统一表示一次调用的 token 用量及其是否为估算值。"""
+
+    input_tokens: int | float | None = None
+    output_tokens: int | float | None = None
+    cache_creation_tokens: int | float | None = None
+    cache_read_tokens: int | float | None = None
+    estimated_fields: frozenset[str] = frozenset()
+    extra: Mapping[str, int | float | None] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for name in TOKEN_FIELDS:
+            value = getattr(self, name)
+            if value is not None and (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value < 0
+            ):
+                raise ValueError(f"token usage must be non-negative: {name}")
+        if not self.estimated_fields <= set(TOKEN_FIELDS):
+            raise ValueError("estimated token fields are invalid")
+        for name, value in self.extra.items():
+            if not isinstance(name, str) or not name:
+                raise ValueError("token usage extra names must be non-empty text")
+            if value is not None and (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value < 0
+            ):
+                raise ValueError(f"token usage extra must be non-negative: {name}")
+
+    @classmethod
+    def from_mapping(
+        cls,
+        value: Mapping[str, object],
+        *,
+        source: str = "provider",
+    ) -> TokenUsage:
+        """读取供应商别名并转换为统一字段。"""
+        if source not in {"provider", "estimated"}:
+            raise ValueError("token usage source must be provider or estimated")
+        aliases = {
+            "input_tokens": ("input_tokens", "prompt_tokens"),
+            "output_tokens": ("output_tokens", "completion_tokens"),
+            "cache_creation_tokens": (
+                "cache_creation_tokens",
+                "cache_creation_input_tokens",
+            ),
+            "cache_read_tokens": ("cache_read_tokens", "cache_read_input_tokens"),
+        }
+        values: dict[str, int | float | None] = {}
+        estimated: set[str] = set()
+        for name, names in aliases.items():
+            selected = next((value.get(item) for item in names if item in value), None)
+            if selected is not None:
+                if isinstance(selected, bool) or not isinstance(selected, (int, float)):
+                    raise TypeError(f"token usage must be numeric or None: {name}")
+                values[name] = selected
+                if source == "estimated":
+                    estimated.add(name)
+        total_input = value.get("total_input_tokens")
+        if total_input is not None:
+            if isinstance(total_input, bool) or not isinstance(total_input, (int, float)):
+                raise TypeError("total_input_tokens must be numeric or None")
+            extra = {"total_input_tokens": total_input}
+        else:
+            extra = {}
+        return cls(**values, estimated_fields=frozenset(estimated), extra=extra)
+
+    def merge(self, other: TokenUsage) -> TokenUsage:
+        """合并流式响应中的分段用量，并保留每个字段的来源。"""
+        values: dict[str, int | float | None] = {}
+        estimated: set[str] = set()
+        for name in TOKEN_FIELDS:
+            first = getattr(self, name)
+            second = getattr(other, name)
+            if first is None:
+                selected = second
+            elif second is None:
+                selected = first
+            else:
+                selected = first + second
+            values[name] = selected
+            if name in self.estimated_fields or name in other.estimated_fields:
+                estimated.add(name)
+        extra = dict(self.extra)
+        for name, value in other.extra.items():
+            current = extra.get(name)
+            extra[name] = value if current is None or value is None else current + value
+        return TokenUsage(
+            **values,
+            estimated_fields=frozenset(estimated),
+            extra=extra,
+        )
+
+    def to_dict(self) -> dict[str, int | float | None | dict[str, str]]:
+        """导出稳定字段，并明确每个字段来自供应商还是估算。"""
+        value: dict[str, int | float | None | dict[str, str]] = {
+            name: getattr(self, name) for name in TOKEN_FIELDS if getattr(self, name) is not None
+        }
+        value.update(self.extra)
+        value["token_sources"] = {
+            name: "estimated" if name in self.estimated_fields else "provider"
+            for name in TOKEN_FIELDS
+            if getattr(self, name) is not None
+        }
+        return value
+
 _OPENAI_RUNTIME_BODY_FIELDS = frozenset(
     {"model", "messages", "tools", "stream", "stream_options"}
 )
@@ -565,6 +684,7 @@ class ModelEvent:
     text: str = ""
     tool_call: ToolCall | None = None
     usage: Mapping[str, int | float | None] = field(default_factory=dict)
+    usage_source: str = "provider"
     stop_reason: str | None = None
     data: Mapping[str, object] = field(default_factory=dict)
 
@@ -573,6 +693,8 @@ class ModelEvent:
             raise ValueError(f"unknown model event: {self.event_type}")
         if self.event_type == "tool_call" and self.tool_call is None:
             raise ValueError("tool_call events require a ToolCall")
+        if self.usage_source not in {"provider", "estimated"}:
+            raise ValueError("model usage source must be provider or estimated")
 
     @classmethod
     def text_delta(cls, text: str) -> ModelEvent:
@@ -587,8 +709,10 @@ class ModelEvent:
         return cls("done", stop_reason=reason)
 
     @classmethod
-    def usage_event(cls, **usage: int | float | None) -> ModelEvent:
-        return cls("usage", usage=usage)
+    def usage_event(
+        cls, *, usage_source: str = "provider", **usage: int | float | None
+    ) -> ModelEvent:
+        return cls("usage", usage=usage, usage_source=usage_source)
 
     @classmethod
     def status_event(cls, status: str, **data: object) -> ModelEvent:

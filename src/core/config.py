@@ -146,6 +146,7 @@ class ModelConfig:
     features: tuple[str, ...] = ("text", "tools")
     weight: float = 1.0
     pricing: ModelPricing = field(default_factory=ModelPricing)
+    context_window_tokens: int | None = None
     request_body: Mapping[str, object] = field(default_factory=dict)
     reasoning_effort: str | None = None
 
@@ -180,6 +181,7 @@ class ModelConfig:
                 request_body=self.request_body,
                 reasoning_effort=self.reasoning_effort,
             ),
+            context_window_tokens=self.context_window_tokens,
         )
         return ModelProfile(
             self.name,
@@ -189,6 +191,7 @@ class ModelConfig:
             self.features,
             self.weight,
             self.pricing,
+            self.context_window_tokens,
         )
 
     def required_api_key_environment(self) -> str | None:
@@ -421,6 +424,9 @@ def _model_config(value: object) -> ModelConfig:
         features=_strings(data.get("features", ["text", "tools"]), "model features"),
         weight=_number(data.get("weight", 1.0), "model weight"),
         pricing=pricing,
+        context_window_tokens=_optional_integer(
+            data.get("context_window_tokens"), "context_window_tokens", 1
+        ),
     )
 
 
