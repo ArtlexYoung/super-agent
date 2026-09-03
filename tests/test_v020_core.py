@@ -542,7 +542,8 @@ class RecordStorageTests(unittest.TestCase):
             first.append("run", "old", "run.started", {"prompt": "kept"}, created_at=old)
 
             reopened = JsonlStorage(root)
-            EventStore(reopened, "alice", "agent").append(
+            pruner = EventStore(reopened, "alice", "agent")
+            pruner.append(
                 "run",
                 "current",
                 "run.started",
@@ -550,11 +551,12 @@ class RecordStorageTests(unittest.TestCase):
             )
             before_prune = reopened.read(RecordQuery(user_id="alice"))
             self.assertIn("model.usage", {item.event_type for item in before_prune})
-            result = policy.prune(reopened, user_id="alice", apply=True)
+            result = pruner.prune_audit(policy, apply=True)
             self.assertEqual(1, result["deleted"])
             records = reopened.read(RecordQuery(user_id="alice"))
             self.assertNotIn("model.usage", {item.event_type for item in records})
             self.assertEqual(2, sum(item.event_type == "run.started" for item in records))
+            self.assertEqual(1, sum(item.event_type == "audit.pruned" for item in records))
 
     def test_storage_factory_does_not_fallback(self):
         with tempfile.TemporaryDirectory() as directory:

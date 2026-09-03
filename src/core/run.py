@@ -1072,12 +1072,17 @@ class _RunEngine:
         identity = self.session.identity
         state = self.runtime_snapshot()
         state["last_event_type"] = event.event_type
+        previous_sequence = (
+            0
+            if self.run.resume_checkpoint is None
+            else self.run.resume_checkpoint.event_sequence
+        )
         return RunCheckpoint(
             checkpoint_id=identity.run_id,
             run_id=identity.run_id,
             session_id=identity.session_id,
             status=status,
-            event_sequence=len(self.events),
+            event_sequence=previous_sequence + len(self.events),
             turn=self.turns,
             state=state,
             created_at=event.created_at,

@@ -64,9 +64,41 @@ v0.2.71 增加通用 Runtime 扩展契约。扩展只能通过模型调用前后
 
 v0.2.71 adds the generic Runtime extension contract. Extensions participate only through read-only views before and after model calls; the current version does not change the single-window behavior of a plain Agent.
 
-v0.2.79 增加插件到 Runtime 扩展的显式注册边界。插件清单只能声明已注册扩展名称，不能通过配置导入或执行任意代码。
+v0.2.72 增加插件到 Runtime 扩展的显式注册边界。插件清单只能声明已注册扩展名称，不能通过配置导入或执行任意代码。
 
-v0.2.79 adds the explicit registration boundary between plugins and Runtime extensions. A plugin manifest may declare only a registered extension name and cannot import or execute arbitrary code through configuration.
+v0.2.72 adds the explicit registration boundary between plugins and Runtime extensions. A plugin manifest may declare only a registered extension name and cannot import or execute arbitrary code through configuration.
+
+v0.2.73 统一供应商准确 token 用量和带来源标记的估算用量，并让模型容量进入路由画像。
+
+v0.2.73 unifies exact provider token usage and source-marked estimates, and exposes model capacity through routing profiles.
+
+v0.2.74 为一次运行增加可观察的模型窗口生命周期。
+
+v0.2.74 adds observable model-window lifecycles to each run.
+
+v0.2.75 只在模型调用前安全换窗，不重放已经完成的工具副作用。
+
+v0.2.75 rolls windows over only before model calls and never replays completed tool side effects.
+
+v0.2.76 用可选 `context-window` 插件和明确模型容量控制 token 预算；未知容量不猜测。
+
+v0.2.76 controls token budgets through the optional `context-window` plugin and declared model capacity, without guessing unknown limits.
+
+v0.2.77 将窗口正文接入中央内容寻址缓存，只在渐进式历史索引中保留引用和元数据。
+
+v0.2.77 stores window bodies in the central content-addressed cache and retains only references and metadata in the progressive history index.
+
+v0.2.78 支持显式恢复或分叉历史窗口，不修改原始缓存。
+
+v0.2.78 supports explicit history-window restoration and forking without changing the original cache.
+
+v0.2.79 增加独立 `context-compression` 插件；只有模型显式给出摘要时才压缩上下文。
+
+v0.2.79 adds the independent `context-compression` plugin, which compresses context only from a model-supplied explicit summary.
+
+v0.2.80 使用单调检查点防止旧运行覆盖新状态，增加不复制正文的记忆检查点，并将日志清理固定在用户、Agent 和工作目录作用域。
+
+v0.2.80 uses monotonic checkpoints to prevent stale run overwrites, adds memory checkpoints without copied text, and fixes log cleanup to user, Agent, and working-directory scope.
 
 后续演进按风险和可验证性推进：
 

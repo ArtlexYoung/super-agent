@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from core import dataclass_data, require_integer as _integer, require_text as _text
-from core.event import utc_now
+from core.event import MemoryCheckpoint, utc_now
 from core.model import Tool
 from core.records import MemoryStore
 from core.run import ToolContext
@@ -76,6 +76,8 @@ class Memory:
     def __init__(self, store: MemoryStore | None = None) -> None:
         self.store = store
         self._items: dict[str, MemoryItem] = {}
+        self._checkpoints: dict[str, MemoryCheckpoint] = {}
+        self._checkpoint_store = _find_checkpoint_store(store)
 
     def remember_temporary(
         self,
@@ -225,6 +227,54 @@ class Memory:
             return created
         raise ValueError(f"unknown memory organization operation: {operation}")
 
+    def create_checkpoint(
+        self, memory_id: str, *, session_id: str | None = None
+    ) -> MemoryCheckpoint:
+        """显式保存一个记忆索引，不复制记忆正文。"""
+        selected_memory = self._require(_text(memory_id, "memory ID"))
+        checkpoint = MemoryCheckpoint(
+            checkpoint_id=f"memory-checkpoint-{uuid4().hex}",
+            memory_id=selected_memory.memory_id,
+            session_id=_optional_text(session_id),
+        )
+        if self._checkpoint_store is not None:
+            self._checkpoint_store.append_memory_checkpoint(
+                checkpoint.checkpoint_id, checkpoint.to_dict()
+            )
+        self._checkpoints[checkpoint.checkpoint_id] = checkpoint
+        return checkpoint
+
+    def read_checkpoint(self, checkpoint_id: str) -> MemoryCheckpoint:
+        """读取一个检查点的元数据，不读取关联记忆正文。"""
+        selected = _text(checkpoint_id, "memory checkpoint ID")
+        try:
+            return self._load_checkpoints()[selected]
+        except KeyError as error:
+            raise KeyError(f"memory checkpoint not found: {selected}") from error
+
+    def list_checkpoints(
+        self,
+        *,
+        memory_id: str | None = None,
+        session_id: str | None = None,
+        limit: int = 100,
+    ) -> list[MemoryCheckpoint]:
+        """按记忆或会话列出有界检查点索引。"""
+        selected_memory = _optional_text(memory_id)
+        selected_session = _optional_text(session_id)
+        selected_limit = _integer(limit, "memory checkpoint limit", 1, 1000)
+        values = [
+            checkpoint
+            for checkpoint in self._load_checkpoints().values()
+            if (selected_memory is None or checkpoint.memory_id == selected_memory)
+            and (selected_session is None or checkpoint.session_id == selected_session)
+        ]
+        return sorted(
+            values,
+            key=lambda item: (item.created_at, item.checkpoint_id),
+            reverse=True,
+        )[:selected_limit]
+
     def tools(self) -> tuple[Tool, ...]:
         return (
             Tool("remember_temporary", "Remember working context only in this conversation", self._temporary_tool, _remember_schema(False), ("write",)),
@@ -233,6 +283,8 @@ class Memory:
             Tool("promote_temporary_memory", "Promote one temporary item into an abstract long-term item", self._promote_tool, _promote_schema(), ("write",)),
             Tool("organize_long_term_memory", "Revise, forget, restore, relate, contradict, merge, or split long-term experience", self._organize_tool, _organize_schema(), ("write",)),
             Tool("clear_temporary_memory", "Clear only temporary memory for one conversation", self._clear_temporary_tool, _clear_temporary_schema(), ("write",)),
+            Tool("checkpoint_memory", "Save a memory index for this session without copying memory text", self._checkpoint_tool, _checkpoint_schema(), ("write",)),
+            Tool("list_memory_checkpoints", "List memory checkpoint indexes for this session", self._list_checkpoint_tool, _list_checkpoint_schema()),
         )
 
     def _create(
@@ -364,6 +416,48 @@ class Memory:
         context.emit("memory.forgotten", {"lifetime": "temporary", "conversation_id": conversation_id, "count": count})
         return {"conversation_id": conversation_id, "cleared": count}
 
+    def _checkpoint_tool(
+        self, arguments: dict[str, object], context: ToolContext
+    ) -> dict[str, object]:
+        session_id = context.session.identity.session_id
+        if session_id is None:
+            raise RuntimeError("memory checkpoint tools require a session ID")
+        checkpoint = self.create_checkpoint(
+            _text(arguments.get("memory_id"), "memory ID"),
+            session_id=session_id,
+        )
+        context.emit("memory.checkpoint.created", checkpoint.to_dict())
+        return checkpoint.to_dict()
+
+    def _list_checkpoint_tool(
+        self, arguments: dict[str, object], context: ToolContext
+    ) -> dict[str, object]:
+        unknown = sorted(set(arguments) - {"memory_id", "limit"})
+        if unknown:
+            raise ValueError(f"unknown memory checkpoint fields: {', '.join(unknown)}")
+        session_id = context.session.identity.session_id
+        if session_id is None:
+            raise RuntimeError("memory checkpoint tools require a session ID")
+        values = self.list_checkpoints(
+            memory_id=_optional_text(arguments.get("memory_id")),
+            session_id=session_id,
+            limit=_integer(arguments.get("limit", 100), "memory checkpoint limit", 1, 1000),
+        )
+        context.emit(
+            "memory.checkpoints.listed",
+            {"count": len(values), "session_id": session_id},
+        )
+        return {"checkpoints": [item.to_dict() for item in values]}
+
+    def _load_checkpoints(self) -> dict[str, MemoryCheckpoint]:
+        values = dict(self._checkpoints)
+        if self._checkpoint_store is None:
+            return values
+        for data in self._checkpoint_store.read_memory_checkpoints():
+            checkpoint = MemoryCheckpoint.from_dict(data)
+            values[checkpoint.checkpoint_id] = checkpoint
+        return values
+
 
 def _memory_audit_data(item: MemoryItem, operation: str) -> dict[str, object]:
     return {
@@ -422,3 +516,32 @@ def _organize_schema() -> dict[str, object]:
 
 def _clear_temporary_schema() -> dict[str, object]:
     return {"type": "object", "required": ["conversation_id", "reason"], "properties": {"conversation_id": {"type": "string"}, "reason": {"type": "string"}}}
+
+
+def _checkpoint_schema() -> dict[str, object]:
+    return {
+        "type": "object",
+        "required": ["memory_id"],
+        "properties": {"memory_id": {"type": "string"}},
+    }
+
+
+def _list_checkpoint_schema() -> dict[str, object]:
+    return {
+        "type": "object",
+        "properties": {
+            "memory_id": {"type": "string"},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 1000},
+        },
+    }
+
+
+def _find_checkpoint_store(store: object | None) -> object | None:
+    if store is None:
+        return None
+    if all(
+        callable(getattr(store, name, None))
+        for name in ("read_memory_checkpoints", "append_memory_checkpoint")
+    ):
+        return store
+    return None

@@ -433,6 +433,35 @@ class EventStore:
             raise ValueError(f"run ID is ambiguous for user: {run_id}")
         return records
 
+    def prune_audit(
+        self,
+        policy: AuditPolicy,
+        *,
+        apply: bool = False,
+        now: datetime | None = None,
+    ) -> dict[str, object]:
+        """只清理当前用户、Agent 和工作目录作用域，并记录清理事件。"""
+        result = policy.prune(
+            self.backend,
+            scope=self.scope,
+            apply=apply,
+            now=now,
+        )
+        if not apply:
+            return result
+        event = self.append(
+            "audit",
+            f"audit-{uuid4().hex}",
+            "audit.pruned",
+            {
+                "scope": self.scope.to_dict(),
+                "detailed_candidates": result["detailed_candidates"],
+                "critical_candidates": result["critical_candidates"],
+                "deleted": result["deleted"],
+            },
+        )
+        return {**result, "audit_event_id": event.event_id}
+
 
 @dataclass(frozen=True)
 class AuditPolicy:
@@ -465,9 +494,20 @@ class AuditPolicy:
         )
         return value
 
-    def prune(self, backend: RecordBackend, *, user_id: str, apply: bool = False, now: datetime | None = None) -> dict[str, object]:
+    def prune(
+        self,
+        backend: RecordBackend,
+        *,
+        scope: RecordScope,
+        apply: bool = False,
+        now: datetime | None = None,
+    ) -> dict[str, object]:
+        """预览或显式清理当前用户、Agent 和工作目录的到期日志。"""
+        if not isinstance(scope, RecordScope):
+            raise TypeError("audit prune scope must be a RecordScope")
         current = (now or datetime.now(UTC)).astimezone(UTC)
-        records = backend.read(RecordQuery(user_id=user_id))
+        query = _audit_scope_query(scope)
+        records = backend.read(query)
         expired: list[Record] = []
         counts = {"detailed": 0, "critical": 0}
         for record in records:
@@ -479,9 +519,17 @@ class AuditPolicy:
             counts[level] += 1
         deleted = 0
         if apply and expired:
-            deleted = backend.delete(RecordQuery(user_id=user_id, event_ids=tuple(item.event_id for item in expired)))
+            deleted = backend.delete(
+                _audit_scope_query(
+                    scope,
+                    event_ids=tuple(item.event_id for item in expired),
+                )
+            )
         return {
-            "user_id": user_id,
+            "user_id": scope.user_id,
+            "agent_name": scope.agent_name,
+            "working_directory_id": scope.working_directory_id,
+            "scope": scope.to_dict(),
             "applied": apply,
             "detailed_candidates": counts["detailed"],
             "critical_candidates": counts["critical"],
@@ -489,6 +537,20 @@ class AuditPolicy:
             "detailed_days": self.detailed_days,
             "critical_days": self.critical_days,
         }
+
+
+def _audit_scope_query(
+    scope: RecordScope,
+    *,
+    event_ids: tuple[str, ...] = (),
+) -> RecordQuery:
+    """创建与预览和删除完全相同的审计边界。"""
+    return RecordQuery(
+        user_id=scope.user_id,
+        agent_name=scope.agent_name,
+        scope_key=scope.storage_key,
+        event_ids=event_ids,
+    )
 
 
 @dataclass(frozen=True)

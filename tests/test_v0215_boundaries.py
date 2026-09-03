@@ -70,7 +70,10 @@ class V0215BoundaryTests(unittest.TestCase):
             applied = json.loads(apply_output.getvalue())
             self.assertTrue(applied["applied"])
             self.assertEqual(1, applied["deleted"])
-            self.assertEqual([], JsonlStorage(root / "records").read(RecordQuery(user_id="alice")))
+            records = JsonlStorage(root / "records").read(
+                RecordQuery(user_id="alice")
+            )
+            self.assertEqual(["audit.pruned"], [item.event_type for item in records])
 
     def test_audit_policy_preview_does_not_delete_state_records(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -80,8 +83,8 @@ class V0215BoundaryTests(unittest.TestCase):
             store.append("memory", "memory-1", "memory.created", {"text": "kept"}, created_at=old)
             store.append("run", "run-1", "model.usage", {"input_tokens": 1}, created_at=old)
 
-            result = AuditPolicy(detailed_days=1, critical_days=365).prune(
-                backend, user_id="alice"
+            result = store.prune_audit(
+                AuditPolicy(detailed_days=1, critical_days=365)
             )
             self.assertFalse(result["applied"])
             self.assertEqual(0, result["deleted"])

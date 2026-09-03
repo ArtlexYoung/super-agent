@@ -45,6 +45,20 @@ At run start, `AgentLibrary` freezes Skill, MCP, and plugin-reference versions a
 
 Adaptive recording first plans a mode from task position, then checks the actual child result's character and event counts. It compresses only after `max_full_result_characters` or `max_full_result_events` is exceeded, and records the reason; explicit `full` and `summary` modes remain authoritative.
 
+## 长会话窗口 / Long-Running Windows
+
+`TokenUsage` 统一供应商准确用量和显式标记的估算用量。启用 `context-window` 插件并声明模型容量后，`TokenBudget` 只在模型调用前请求换窗；未知容量不会猜测，换窗仍无法容纳请求时会明确失败。
+
+`TokenUsage` normalizes exact provider usage and explicitly marked estimates. After enabling the `context-window` plugin and declaring model capacity, `TokenBudget` requests rollover only before a model call; unknown capacity is never guessed, and a request that still does not fit fails visibly.
+
+关闭窗口的正文使用同一个 `ResourceCenter` 内容寻址缓存，运行结果只保存历史引用和元数据。调用方可以显式恢复或分叉历史窗口；`context-compression` 是独立可选插件，只有模型调用工具并给出摘要时才压缩，不自动总结或静默删除上下文。
+
+Closed-window content uses the same content-addressed `ResourceCenter`, while run results retain only history references and metadata. Callers may explicitly restore or fork a prior window; `context-compression` is a separate optional plugin and compresses only when the model calls its tool with a summary, never through automatic summarization or silent deletion.
+
+运行检查点使用单调事件序号，旧版本不能覆盖新状态，同序号不同内容会报告冲突。记忆检查点只保留记忆 ID、会话 ID 和时间；创建是显式写操作，列出检查点不会读取或复制记忆正文。
+
+Run checkpoints use monotonic event sequences: stale versions cannot replace newer state, and different content at the same sequence reports a conflict. Memory checkpoints retain only memory IDs, session IDs, and timestamps; creation is an explicit write, while listing never reads or copies memory text.
+
 ## 身份与嵌套 / Identity and Nesting
 
 `RunIdentity` 固定 `user_id`、`agent_name`、`run_id`、父运行和调用深度。`Agent.add_group` 和 `Agent.add_subagent` 在代码中组合树；根组是第 1 层，省略 Agent 名称时自动使用 `subagent01`、`subagent02` 等名称。

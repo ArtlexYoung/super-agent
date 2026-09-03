@@ -11,7 +11,7 @@ from uuid import uuid4
 from core import dataclass_data
 
 EVENT_CATEGORIES = frozenset({"run", "model", "tool", "action", "content", "plugin", "skill", "memory", "session", "checkpoint", "agent_task", "audit", "window"})
-CRITICAL_EVENT_TYPES = frozenset({"run.started", "run.completed", "run.failed", "action.applied", "action.blocked", "skill.created", "skill.updated", "skill.removed", "skill_change.applied", "skill_change.undone", "memory.created", "memory.revised", "memory.forgotten", "memory.organized", "model.evaluated", "skill.evaluated", "audit.pruned"})
+CRITICAL_EVENT_TYPES = frozenset({"run.started", "run.completed", "run.failed", "action.applied", "action.blocked", "skill.created", "skill.updated", "skill.removed", "skill_change.applied", "skill_change.undone", "memory.created", "memory.revised", "memory.forgotten", "memory.organized", "memory.checkpoint.created", "model.evaluated", "skill.evaluated", "audit.pruned"})
 
 
 def event_category(event_type: str) -> str:
@@ -116,6 +116,11 @@ class RunWindow:
 
     def to_dict(self) -> dict[str, object]:
         return dataclass_data(self)
+
+
+class CheckpointConflictError(RuntimeError):
+    """表示较旧或不同版本的检查点覆盖了更新状态。"""
+
 
 class ContextLedger:
     """统一记录历史、Skill、工具结果和子 Agent 摘要的预算。"""
@@ -244,6 +249,40 @@ class RunCheckpoint:
             event_sequence=int(value.get("event_sequence", 0)),
             turn=int(value.get("turn", 0)),
             state=dict(state),
+            created_at=str(value.get("created_at", utc_now())),
+        )
+
+
+@dataclass(frozen=True)
+class MemoryCheckpoint:
+    """记忆检查点只保存索引元数据，不复制记忆正文。"""
+
+    checkpoint_id: str
+    memory_id: str
+    session_id: str | None
+    created_at: str = field(default_factory=utc_now)
+
+    def __post_init__(self) -> None:
+        for name in ("checkpoint_id", "memory_id", "created_at"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"memory checkpoint {name} cannot be empty")
+        if self.session_id is not None and (
+            not isinstance(self.session_id, str) or not self.session_id.strip()
+        ):
+            raise ValueError("memory checkpoint session_id must be text or None")
+
+    def to_dict(self) -> dict[str, object]:
+        return dataclass_data(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, object]) -> MemoryCheckpoint:
+        return cls(
+            checkpoint_id=str(value.get("checkpoint_id", "")),
+            memory_id=str(value.get("memory_id", "")),
+            session_id=(
+                None if value.get("session_id") is None else str(value["session_id"])
+            ),
             created_at=str(value.get("created_at", utc_now())),
         )
 

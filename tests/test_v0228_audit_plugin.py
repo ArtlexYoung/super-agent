@@ -46,7 +46,7 @@ class AuditPluginTests(unittest.TestCase):
         events.append("run", "old", "model.usage", {"input_tokens": 1}, created_at="2020-01-01T00:00:00+00:00")
         policy = AuditPolicy(detailed_days=1, critical_days=365)
 
-        preview = policy.prune(store, user_id="alice", apply=False)
+        preview = events.prune_audit(policy, apply=False)
         self.assertEqual(1, preview["detailed_candidates"])
         self.assertEqual(1, len(events.read("run", "old")))
 

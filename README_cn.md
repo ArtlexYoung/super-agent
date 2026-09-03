@@ -143,11 +143,11 @@ JSONL 是可直接阅读的默认存储。SQLite 同样只用标准库；MySQL �
 审计记录有保留期限且可以配置。详细记录默认保留 180 天，关键记录默认保留 365 天。原始事件完整
 保存，供学习和复盘使用；`alice.runs.explain(run_id)` 默认动态将 prompt、模型输出、工具参数/结果
 和错误消息替换为哈希与大小摘要，只有代码中显式传入 `include_sensitive=True` 才会读取原文。
-动态脱敏不是存储加密，因此仍需保护存储后端；记录清理默认只预览，必须使用 `--apply` 才会删除到期记录。
+动态脱敏不是存储加密，因此仍需保护存储后端；记录清理默认只预览，必须使用 `--apply` 才会删除当前用户、Agent 和工作目录中的到期记录。
 
 检查点不会自动启用。可以把 `MemoryCheckpointStore` 或 `EventCheckpointStore` 放入运行上下文，先通过
 `checkpoint_store.read(run_id)` 读取，再用
-`AgentContext(checkpoint_store=..., resume_checkpoint=...)` 显式恢复。
+`AgentContext(checkpoint_store=..., resume_checkpoint=...)` 显式恢复。恢复后的事件序号继续递增，旧检查点或同序号的冲突内容不能覆盖新状态。Memory 插件另提供 `checkpoint_memory` 和 `list_memory_checkpoints`，只保存记忆 ID、会话 ID 和时间，不复制记忆正文。
 
 ## 显式更新 Skill
 

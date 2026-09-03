@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from pathlib import Path
 from threading import RLock
 
-from core.event import RunCheckpoint
+from core.event import CheckpointConflictError, RunCheckpoint
 from core.records import EventStore, Record, RecordBackend, RecordQuery
 
 
@@ -47,19 +48,26 @@ class MemoryCheckpointStore:
 
     def __init__(self) -> None:
         self._checkpoints: dict[str, RunCheckpoint] = {}
+        self._lock = RLock()
 
     def save(self, checkpoint: RunCheckpoint) -> RunCheckpoint:
-        self._checkpoints[checkpoint.checkpoint_id] = checkpoint
-        return checkpoint
+        with self._lock:
+            current = self._checkpoints.get(checkpoint.checkpoint_id)
+            if not _checkpoint_write_required(current, checkpoint):
+                return checkpoint
+            self._checkpoints[checkpoint.checkpoint_id] = checkpoint
+            return checkpoint
 
     def read(self, checkpoint_id: str) -> RunCheckpoint:
-        try:
-            return self._checkpoints[checkpoint_id]
-        except KeyError as error:
-            raise KeyError(f"checkpoint not found: {checkpoint_id}") from error
+        with self._lock:
+            try:
+                return self._checkpoints[checkpoint_id]
+            except KeyError as error:
+                raise KeyError(f"checkpoint not found: {checkpoint_id}") from error
 
     def delete(self, checkpoint_id: str) -> bool:
-        return self._checkpoints.pop(checkpoint_id, None) is not None
+        with self._lock:
+            return self._checkpoints.pop(checkpoint_id, None) is not None
 
 
 class EventMemoryStore:
@@ -76,30 +84,77 @@ class EventMemoryStore:
     ) -> object:
         return self.store.append("memory", memory_id, event_type, data)
 
+    def read_memory_checkpoints(self) -> list[dict[str, object]]:
+        """读取独立的记忆检查点流，不读取记忆正文。"""
+        return [dict(record.data) for record in self.store.read("memory_checkpoint")]
+
+    def append_memory_checkpoint(
+        self, checkpoint_id: str, data: Mapping[str, object]
+    ) -> object:
+        """把检查点元数据写入现有记录后端。"""
+        return self.store.append(
+            "memory_checkpoint", checkpoint_id, "memory.checkpoint.created", data
+        )
+
 
 class EventCheckpointStore:
     """将检查点适配到现有 JSONL、SQLite 或远程记录后端。"""
 
     def __init__(self, store: EventStore) -> None:
         self.store = store
+        self._lock = RLock()
 
     def save(self, checkpoint: RunCheckpoint) -> RunCheckpoint:
-        self.store.replace_state(
-            "checkpoint",
-            checkpoint.checkpoint_id,
-            "checkpoint.saved",
-            checkpoint.to_dict(),
-        )
-        return checkpoint
+        with self._lock:
+            records = self.store.read("checkpoint", checkpoint.checkpoint_id)
+            current, _ = _latest_checkpoint(records)
+            if not _checkpoint_write_required(current, checkpoint):
+                return checkpoint
+            event_id = _checkpoint_event_id(self.store, checkpoint)
+            try:
+                self.store.append(
+                    "checkpoint",
+                    checkpoint.checkpoint_id,
+                    "checkpoint.saved",
+                    checkpoint.to_dict(),
+                    event_id=event_id,
+                )
+            except ValueError:
+                duplicate = next(
+                    (
+                        item
+                        for item in self.store.read("checkpoint", checkpoint.checkpoint_id)
+                        if item.event_id == event_id
+                    ),
+                    None,
+                )
+                if duplicate is None:
+                    raise
+                _checkpoint_write_required(
+                    RunCheckpoint.from_dict(duplicate.data), checkpoint
+                )
+                return checkpoint
+            records = self.store.read("checkpoint", checkpoint.checkpoint_id)
+            latest, latest_record = _latest_checkpoint(records)
+            stale_ids = tuple(
+                item.event_id for item in records if item is not latest_record
+            )
+            if stale_ids:
+                _delete_checkpoint_records(self.store, checkpoint.checkpoint_id, stale_ids)
+            _checkpoint_write_required(latest, checkpoint)
+            return checkpoint
 
     def read(self, checkpoint_id: str) -> RunCheckpoint:
-        records = self.store.read("checkpoint", checkpoint_id)
-        if not records:
-            raise KeyError(f"checkpoint not found: {checkpoint_id}")
-        return RunCheckpoint.from_dict(records[-1].data)
+        with self._lock:
+            records = self.store.read("checkpoint", checkpoint_id)
+            checkpoint, _ = _latest_checkpoint(records)
+            if checkpoint is None:
+                raise KeyError(f"checkpoint not found: {checkpoint_id}")
+            return checkpoint
 
     def delete(self, checkpoint_id: str) -> bool:
-        return bool(self.store.delete("checkpoint", checkpoint_id))
+        with self._lock:
+            return bool(self.store.delete("checkpoint", checkpoint_id))
 
 
 class JsonlMemoryStore(EventMemoryStore):
@@ -300,6 +355,53 @@ def verify_storage(backend: RecordBackend) -> dict[str, object]:
         return {"backend": type(backend).__name__, "ok": True, "sample_records": len(records)}
     except Exception as error:
         return {"backend": type(backend).__name__, "ok": False, "error": str(error)}
+
+
+def _checkpoint_write_required(
+    current: RunCheckpoint | None, incoming: RunCheckpoint
+) -> bool:
+    if current is None:
+        return True
+    if incoming.event_sequence < current.event_sequence:
+        raise CheckpointConflictError(f"checkpoint is older: {incoming.checkpoint_id}")
+    if incoming.event_sequence == current.event_sequence:
+        if incoming.to_dict() != current.to_dict():
+            raise CheckpointConflictError(f"checkpoint conflicts: {incoming.checkpoint_id}")
+        return False
+    return True
+
+
+def _latest_checkpoint(
+    records: list[Record],
+) -> tuple[RunCheckpoint | None, Record | None]:
+    values = [(RunCheckpoint.from_dict(item.data), item) for item in records]
+    if not values:
+        return None, None
+    latest, record = max(values, key=lambda item: item[0].event_sequence)
+    for candidate, _ in values:
+        if candidate.event_sequence == latest.event_sequence:
+            _checkpoint_write_required(latest, candidate)
+    return latest, record
+
+
+def _checkpoint_event_id(store: EventStore, checkpoint: RunCheckpoint) -> str:
+    identity = json.dumps(
+        [store.scope.storage_key, store.agent_name,
+         checkpoint.checkpoint_id, checkpoint.event_sequence],
+        ensure_ascii=False, separators=(",", ":"),
+    )
+    return f"checkpoint-{hashlib.sha256(identity.encode()).hexdigest()}"
+
+
+def _delete_checkpoint_records(
+    store: EventStore, checkpoint_id: str, event_ids: tuple[str, ...]
+) -> None:
+    query = RecordQuery(
+        user_id=store.user_id, agent_name=store.agent_name,
+        scope_key=store.scope.storage_key, stream="checkpoint",
+        stream_id=checkpoint_id, event_ids=event_ids,
+    )
+    store.backend.delete(query)
 
 
 def _select(records: list[Record], query: RecordQuery) -> list[Record]:

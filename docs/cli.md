@@ -66,9 +66,9 @@ super-agent data storage prune --config common.toml --user alice --apply
 super-agent data conversations list --config common.toml --user alice
 ```
 
-`data` 需要显式存储后端。`storage prune` 默认只预览到期详细和关键记录，只有 `--apply` 才删除；`--apply` 用于其他动作会直接失败。
+`data` 需要显式存储后端。`storage prune` 默认只预览当前用户、Agent 和工作目录中到期的详细和关键记录，只有 `--apply` 才删除并写入一条关键审计事件；`--apply` 用于其他动作会直接失败。
 
-`data` requires an explicit storage backend. `storage prune` previews expired detailed and critical records by default and deletes only with `--apply`; using `--apply` with another action fails.
+`data` requires an explicit storage backend. `storage prune` previews expired detailed and critical records in the current user, Agent, and working-directory scope, and only `--apply` deletes them and records a critical audit event; using `--apply` with another action fails.
 
 ## 配置查找 / Configuration Lookup
 

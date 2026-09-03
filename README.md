@@ -24,9 +24,9 @@ Prompts, tool-use methods, memory methods, workflows, and task policies share on
 
 The central library manages Skills and MCP definitions; plugins keep canonical references only, so shared content is never installed twice.
 
-内置插件按场景拆分：`common`、`code`、`session`、`audit`、`policy`、`research`、`knowledge`、`automation`、`memory`、`evolution`、`task`、`team`、`review` 和 `model-routing`；只启用当前任务需要的插件。
+内置插件按场景拆分：`common`、`code`、`session`、`audit`、`policy`、`research`、`knowledge`、`automation`、`memory`、`evolution`、`task`、`team`、`review`、`model-routing`、`context-window` 和 `context-compression`；只启用当前任务需要的插件。
 
-Builtin plugins are split by purpose: `common`, `code`, `session`, `audit`, `policy`, `research`, `knowledge`, `automation`, `memory`, `evolution`, `task`, `team`, `review`, and `model-routing`; enable only what the current task needs.
+Builtin plugins are split by purpose: `common`, `code`, `session`, `audit`, `policy`, `research`, `knowledge`, `automation`, `memory`, `evolution`, `task`, `team`, `review`, `model-routing`, `context-window`, and `context-compression`; enable only what the current task needs.
 
 `enable_memory()` 和 `enable_skill_evolution()` 只选择对应内置插件；`list_enabled_features()` 直接报告由此启用的可选功能，不维护另一套开关。
 
@@ -166,6 +166,8 @@ super-agent data conversations list --config common.toml --user alice
   Run inputs, selections, tool calls, evaluations, and Skill changes are traceable without duplicating model text in audit summaries.
 - 日志清理先预览，只有 `--apply` 才删除到期详细或关键记录；检查点恢复也必须由调用方显式提供。
   Retention cleanup previews first and deletes only with `--apply`; checkpoint recovery also requires an explicit caller-provided store.
+- 日志清理固定在当前用户、Agent 和工作目录；运行检查点拒绝旧状态覆盖，记忆检查点只保存 ID 与会话索引。
+  Log cleanup is fixed to the current user, Agent, and working directory; run checkpoints reject stale overwrites, and memory checkpoints retain only IDs and session indexes.
 
 ## 评测成绩
 
@@ -238,5 +240,5 @@ Third-party projects retain their own copyrights and licenses; this project is l
 The full release gate checks Python tests, compilation, package contents, offline evaluation, and build.
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.79 --full
+python3.11 scripts/verify_release.py --version 0.2.80 --full
 ```

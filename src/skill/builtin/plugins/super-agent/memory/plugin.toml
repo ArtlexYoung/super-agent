@@ -1,7 +1,7 @@
 schema = 1
 id = "super-agent/memory"
-version = "0.2.79"
-description = "Explicit temporary and long-term memory methods"
+version = "0.2.80"
+description = "Explicit temporary, long-term, and memory checkpoint methods"
 entry_skill = "skill:super-agent/memory"
 skills = []
 included_plugins = []

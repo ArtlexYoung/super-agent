@@ -264,9 +264,10 @@ def _data_command(arguments: list[str]) -> int:
                 config.storage.detailed_log_days,
                 config.storage.critical_log_days,
             )
-            value = policy.prune(
-                backend,
-                user_id=_text(parsed.user, "data user"),
+            value = agent.get_record_store(
+                _text(parsed.user, "data user")
+            ).prune_audit(
+                policy,
                 apply=parsed.apply,
             )
         else:

@@ -157,11 +157,15 @@ review, while `alice.runs.explain(run_id)` dynamically replaces prompts, model o
 payloads, and errors with hashes and size summaries. Passing `include_sensitive=True` in code
 is required to read the original fields. Dynamic redaction is not storage encryption, so
 protect access to the selected backend. Retention cleanup previews by default and deletes
-expired records only with `--apply`.
+expired records in the current user, Agent, and working-directory scope only with `--apply`.
 
 Checkpoints are opt-in. Pass a `MemoryCheckpointStore` or `EventCheckpointStore` through the
 run context. Read with `checkpoint_store.read(run_id)`, then pass
-`AgentContext(checkpoint_store=..., resume_checkpoint=...)` for explicit recovery.
+`AgentContext(checkpoint_store=..., resume_checkpoint=...)` for explicit recovery. Event
+sequences continue after recovery, so stale or conflicting equal-sequence checkpoints cannot
+replace newer state. The Memory plugin also provides `checkpoint_memory` and
+`list_memory_checkpoints`; these store only memory IDs, session IDs, and timestamps, never a
+copy of memory text.
 
 ## Update a Skill Explicitly
 
