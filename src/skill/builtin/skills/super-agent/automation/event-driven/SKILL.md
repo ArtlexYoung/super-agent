@@ -4,7 +4,7 @@ description: "Wait for explicit events and resume work without model polling"
 metadata:
   super-agent-categories: "[\"automation/events\",\"waiting\"]"
   super-agent-type: "method"
-  super-agent-version: "0.2.78"
+  super-agent-version: "0.2.79"
 ---
 # Event-driven method
 

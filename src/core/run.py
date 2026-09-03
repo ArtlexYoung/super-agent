@@ -417,6 +417,26 @@ class _RunState:
             return {}
         return self.ledger.snapshot()
 
+    def list_context_entries(self) -> tuple[dict[str, object], ...]:
+        """返回可用于显式压缩的上下文元数据，不暴露正文。"""
+        if self.ledger is None:  # pragma: no cover - protected by __post_init__
+            return ()
+        return tuple(item.to_dict() for item in self.ledger.entries())
+
+    def compress_context(
+        self,
+        item_ids: Iterable[str],
+        summary: str,
+        *,
+        source: str = "context-compression",
+    ) -> dict[str, object]:
+        """应用模型明确提交的摘要，不自行判断或删除上下文。"""
+        if self.ledger is None:  # pragma: no cover - protected by __post_init__
+            raise RuntimeError("run context ledger is unavailable")
+        entry = self.ledger.compress_entries(item_ids, summary, source=source)
+        self.context_characters = self.ledger.total_characters
+        return entry.to_dict()
+
     def add_tool(self, tool: Tool) -> None:
         self.tool_registry.register(tool, exposure="always")
 

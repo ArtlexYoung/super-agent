@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 MEMORY_PLUGIN = "plugin:super-agent/memory"
 EVOLUTION_PLUGIN = "plugin:super-agent/evolution"
 CONTEXT_WINDOW_PLUGIN = "plugin:super-agent/context-window"
+CONTEXT_COMPRESSION_PLUGIN = "plugin:super-agent/context-compression"
 
 RuntimeExtensionFactory = Callable[
     [object, RunIdentity, EventStore | None, ResourceCenter | None], RuntimeExtension
@@ -166,6 +167,10 @@ def agent_features(agent: Agent) -> tuple[str, ...]:
     ]
     if isinstance(agent.model, ModelRouter):
         values.append("model-routing")
+    if _plugin_is_enabled(agent, CONTEXT_WINDOW_PLUGIN):
+        values.append("context-window")
+    if _plugin_is_enabled(agent, CONTEXT_COMPRESSION_PLUGIN):
+        values.append("context-compression")
     return tuple(values)
 
 
@@ -175,6 +180,8 @@ def agent_feature_status(agent: Agent) -> dict[str, bool]:
         "memory": "memory" in enabled,
         "evolution": "evolution" in enabled,
         "model_routing": "model-routing" in enabled,
+        "context_window": "context-window" in enabled,
+        "context_compression": "context-compression" in enabled,
     }
 
 
@@ -265,7 +272,65 @@ def agent_tools(
         if library is None:
             raise RuntimeError("Skill evolution requires an AgentLibrary")
         registry.register_many(agent_evolution(agent, library, store).tools(), exposure="after_skill")
+    if _plugin_is_enabled(agent, CONTEXT_COMPRESSION_PLUGIN):
+        registry.register_many(
+            context_compression_tools(),
+            exposure="after_skill" if library is not None else "always",
+        )
     return registry, mcp_by_server
+
+
+def context_compression_tools() -> tuple[Tool, ...]:
+    """返回模型压缩插件的两个显式上下文动作。"""
+    from core.model import Tool
+
+    return (
+        Tool(
+            "list_context_entries",
+            "List context entry metadata without returning context text",
+            _list_context_entries,
+            {"type": "object", "properties": {}},
+        ),
+        Tool(
+            "compress_context",
+            "Replace selected context entries with an explicitly supplied summary",
+            _compress_context,
+            {
+                "type": "object",
+                "required": ["item_ids", "summary"],
+                "properties": {
+                    "item_ids": {"type": "array"},
+                    "summary": {"type": "string"},
+                },
+            },
+            effects=("context",),
+        ),
+    )
+
+
+def _list_context_entries(
+    _arguments: dict[str, object], context: ToolContext
+) -> dict[str, object]:
+    entries = list(context.session.list_context_entries())
+    context.emit("context.entries_listed", {"count": len(entries)})
+    return {"entries": entries}
+
+
+def _compress_context(
+    arguments: dict[str, object], context: ToolContext
+) -> dict[str, object]:
+    item_ids = arguments.get("item_ids")
+    summary = arguments.get("summary")
+    if not isinstance(item_ids, list) or any(not isinstance(item, str) for item in item_ids):
+        raise TypeError("context item_ids must be a text array")
+    if not isinstance(summary, str) or not summary.strip():
+        raise ValueError("context summary cannot be empty")
+    entry = context.session.compress_context(item_ids, summary)
+    context.emit(
+        "context.compressed",
+        {"item_count": len(item_ids), "summary_characters": len(summary)},
+    )
+    return {"compressed": entry}
 
 
 def stream_agent(agent: Agent, prompt: str, context: AgentContext):

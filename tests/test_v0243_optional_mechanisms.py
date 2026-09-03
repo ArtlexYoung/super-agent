@@ -47,7 +47,13 @@ class EnabledFeatureTests(unittest.TestCase):
 
         started = next(item for item in run.events if item.event_type == "run.started")
         self.assertEqual(
-            {"memory": True, "evolution": False, "model_routing": False},
+            {
+                "memory": True,
+                "evolution": False,
+                "model_routing": False,
+                "context_window": False,
+                "context_compression": False,
+            },
             started.data["enabled_features"],
         )
 
