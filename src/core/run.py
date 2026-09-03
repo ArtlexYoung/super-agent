@@ -469,6 +469,8 @@ class RunInput:
     listeners: tuple[EventListener, ...] = ()
     runtime_extensions: tuple[RuntimeExtension, ...] = ()
     token_budget: TokenBudget | None = None
+    restore_window_reference: str | None = None
+    fork_window: bool = False
     prepare: RunPreparation | None = None
     session_record: SessionRecord | None = None
     tool_decider: ToolDecision | None = None
@@ -502,6 +504,12 @@ class RunInput:
             )
         if self.token_budget is not None and not isinstance(self.token_budget, TokenBudget):
             raise TypeError("token_budget must be a TokenBudget or None")
+        if self.restore_window_reference is not None and not isinstance(
+            self.restore_window_reference, str
+        ):
+            raise TypeError("restore_window_reference must be text or None")
+        if self.fork_window and self.restore_window_reference is None:
+            raise ValueError("fork_window requires restore_window_reference")
 
 
 def build_run_instructions(
@@ -562,7 +570,13 @@ def _create_state(run: RunInput) -> _RunState:
     registry = run.tool_registry or ToolRegistry()
     registry.register_many(run.available_tools.values(), exposure="after_skill")
     registry.register_many(run.tools, exposure="always")
+    resource_center = run.resource_center or ResourceCenter()
     history = normalize_messages(run.messages)
+    if run.restore_window_reference is not None:
+        history = _restore_window_messages(
+            resource_center.read_cached_resource_content(run.restore_window_reference),
+            run.restore_window_reference,
+        )
     history.append(Message("user", run.prompt.strip()))
     identity = run.identity
     if run.session_record is not None:
@@ -579,7 +593,7 @@ def _create_state(run: RunInput) -> _RunState:
         messages=history,
         instructions=[item.strip() for item in run.instructions if item.strip()],
         tool_registry=registry,
-        resource_center=run.resource_center or ResourceCenter(),
+        resource_center=resource_center,
         working_directory=run.working_directory,
         library_snapshot=run.library_snapshot,
         mcp_tools_by_server=run.mcp_tools_by_server,
@@ -708,6 +722,14 @@ class _RunEngine:
             enabled_features=self.run.metadata.get("_super_agent_enabled_features", {}),
         )
         yield self.emit("run.started", started)
+        if self.run.restore_window_reference is not None:
+            yield self.emit(
+                "window.forked" if self.run.fork_window else "window.restored",
+                {
+                    "history_reference": self.run.restore_window_reference,
+                    "fork": self.run.fork_window,
+                },
+            )
         yield self.emit("window.opened", self._window_data(self.current_window))
         for warning in self.run.warning_messages:
             yield self.emit("run.warning", {"message": warning})
@@ -1172,6 +1194,20 @@ def collect_run(events: Generator[RunEvent, None, RunResult]) -> RunResult:
             next(events)
         except StopIteration as completed:
             return completed.value
+
+
+def _restore_window_messages(content: str, reference: str) -> list[Message]:
+    """严格读取历史窗口消息；损坏或非消息内容直接失败。"""
+    try:
+        value = json.loads(content)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"window history is not valid JSON: {reference}") from error
+    if not isinstance(value, list):
+        raise TypeError(f"window history must be an array: {reference}")
+    try:
+        return normalize_messages(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"window history contains an invalid message: {reference}") from error
 
 
 def _prepare_tool_output(

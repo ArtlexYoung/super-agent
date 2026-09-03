@@ -149,6 +149,19 @@ class ResourceCenter:
             self._remember(value, "content.cache_read")
             return value
 
+    def read_cached_resource_content(self, cache_path: str) -> str:
+        """显式读取缓存的完整正文，供恢复操作使用。"""
+        with self._lock:
+            resource = self._load(_text(cache_path, "disclosure cache path"))
+            value = _page(
+                resource,
+                cache_path,
+                0,
+                min(MAX_PAGE_CHARACTERS, max(1, len(resource.content))),
+            )
+            self._remember(value, "content.cache_read")
+            return resource.content
+
     def read_history(self) -> tuple[Mapping[str, object], ...]:
         with self._lock:
             return tuple(MappingProxyType(dict(item)) for item in self._history)

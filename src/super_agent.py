@@ -493,6 +493,8 @@ class Agent:
         plugin: str | None = None,
         skill: str | None = None,
         working_directory: str | Path | WorkingDirectory | None = None,
+        restore_window_reference: str | None = None,
+        fork_window: bool = False,
     ) -> Iterator[RunEvent]:
         """构造一次运行并交给唯一 Runtime 循环。"""
         if context is not None and any(
@@ -502,6 +504,8 @@ class Agent:
                 skill is not None,
                 user_id != "local",
                 working_directory is not None,
+                restore_window_reference is not None,
+                fork_window,
             )
         ):
             raise ValueError(
@@ -513,6 +517,8 @@ class Agent:
             plugin=plugin,
             skill=skill,
             working_directory=working_directory,
+            restore_window_reference=restore_window_reference,
+            fork_window=fork_window,
         )
         return (yield from stream_agent(self, prompt, selected_context))
 
@@ -526,6 +532,8 @@ class Agent:
         plugin: str | None = None,
         skill: str | None = None,
         working_directory: str | Path | WorkingDirectory | None = None,
+        restore_window_reference: str | None = None,
+        fork_window: bool = False,
     ) -> RunResult:
         """只收集 stream()，不存在第二条同步模型调用链。"""
         return collect_run(
@@ -537,6 +545,8 @@ class Agent:
                 plugin=plugin,
                 skill=skill,
                 working_directory=working_directory,
+                restore_window_reference=restore_window_reference,
+                fork_window=fork_window,
             )
         )
 

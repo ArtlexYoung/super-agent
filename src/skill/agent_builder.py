@@ -376,6 +376,8 @@ def stream_agent(agent: Agent, prompt: str, context: AgentContext):
         listeners=tuple(listeners),
         runtime_extensions=(*runtime_extensions, *runtime_options.runtime_extensions),
         token_budget=getattr(agent, "token_budget", None),
+        restore_window_reference=runtime_options.restore_window_reference,
+        fork_window=runtime_options.fork_window,
         prepare=prepare,
         session_record=selected_session,
         tool_decider=runtime_options.tool_decider,

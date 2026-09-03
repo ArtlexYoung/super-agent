@@ -77,12 +77,22 @@ class RunOptions:
     listeners: tuple[EventListener, ...] = ()
     runtime_extensions: tuple[RuntimeExtension, ...] = ()
     session: SessionRecord | None = None
+    restore_window_reference: str | None = None
+    fork_window: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.save_conversation, bool):
             raise TypeError("save_conversation must be a boolean")
         if not isinstance(self.persist_run_events, bool):
             raise TypeError("persist_run_events must be a boolean")
+        if self.restore_window_reference is not None and not isinstance(
+            self.restore_window_reference, str
+        ):
+            raise TypeError("restore_window_reference must be text or None")
+        if not isinstance(self.fork_window, bool):
+            raise TypeError("fork_window must be a boolean")
+        if self.fork_window and self.restore_window_reference is None:
+            raise ValueError("fork_window requires restore_window_reference")
         if self.tool_timeout_seconds is not None and self.tool_timeout_seconds <= 0:
             raise ValueError("tool timeout must be positive or None")
         if any(not callable(listener) for listener in self.listeners):
@@ -130,6 +140,8 @@ class AgentContext:
     resume_checkpoint: RunCheckpoint | None = None
     interrupt_check: CancelCheck | None = None
     runtime_extensions: tuple[RuntimeExtension, ...] = ()
+    restore_window_reference: str | None = None
+    fork_window: bool = False
 
     def scope(self, agent_name: str = "super-agent") -> RunScope:
         """返回 Runtime 和插件可见的稳定作用域。"""
@@ -159,6 +171,8 @@ class AgentContext:
             listeners=self.listeners,
             runtime_extensions=self.runtime_extensions,
             session=self.session,
+            restore_window_reference=self.restore_window_reference,
+            fork_window=self.fork_window,
         )
 
 
