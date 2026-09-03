@@ -17,6 +17,7 @@ from core.records import SessionRecord
 from core.run import (
     CancelCheck,
     EventListener,
+    RuntimeExtension,
     RuntimeLifecycle,
     ToolDecision,
 )
@@ -74,6 +75,7 @@ class RunOptions:
     resume_checkpoint: RunCheckpoint | None = None
     interrupt_check: CancelCheck | None = None
     listeners: tuple[EventListener, ...] = ()
+    runtime_extensions: tuple[RuntimeExtension, ...] = ()
     session: SessionRecord | None = None
 
     def __post_init__(self) -> None:
@@ -85,6 +87,14 @@ class RunOptions:
             raise ValueError("tool timeout must be positive or None")
         if any(not callable(listener) for listener in self.listeners):
             raise TypeError("run listeners must be callable")
+        if any(
+            not hasattr(extension, "before_model_call")
+            or not hasattr(extension, "after_model_call")
+            for extension in self.runtime_extensions
+        ):
+            raise TypeError(
+                "runtime extensions must provide before_model_call and after_model_call"
+            )
 
 
 @dataclass(frozen=True)
@@ -119,6 +129,7 @@ class AgentContext:
     checkpoint_store: CheckpointStore | None = None
     resume_checkpoint: RunCheckpoint | None = None
     interrupt_check: CancelCheck | None = None
+    runtime_extensions: tuple[RuntimeExtension, ...] = ()
 
     def scope(self, agent_name: str = "super-agent") -> RunScope:
         """返回 Runtime 和插件可见的稳定作用域。"""
@@ -146,6 +157,7 @@ class AgentContext:
             resume_checkpoint=self.resume_checkpoint,
             interrupt_check=self.interrupt_check,
             listeners=self.listeners,
+            runtime_extensions=self.runtime_extensions,
             session=self.session,
         )
 

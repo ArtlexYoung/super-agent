@@ -240,6 +240,7 @@ def stream_agent(agent: Agent, prompt: str, context: AgentContext):
         library_snapshot={} if library is None else library.snapshot().to_dict(),
         mcp_tools_by_server=mcp_tools,
         listeners=tuple(listeners),
+        runtime_extensions=runtime_options.runtime_extensions,
         prepare=prepare,
         session_record=selected_session,
         tool_decider=runtime_options.tool_decider,

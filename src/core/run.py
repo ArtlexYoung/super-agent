@@ -6,7 +6,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass, field, replace
 from threading import RLock
-from typing import Callable, Generator, Iterable, Mapping
+from typing import Callable, Generator, Iterable, Mapping, Protocol
 
 from core.event import (
     CheckpointStore,
@@ -44,6 +44,50 @@ class FatalToolError(RuntimeError):
 
 class RunInterrupted(RuntimeError):
     """表示调用方显式要求暂停当前运行。"""
+
+
+class RuntimeControlError(RuntimeError):
+    """表示 Runtime 扩展返回了当前版本不支持的控制结果。"""
+
+
+@dataclass(frozen=True)
+class RuntimeControl:
+    """Runtime 扩展对下一步执行的显式意见。"""
+
+    action: str = "continue"
+    reason: str = ""
+    data: Mapping[str, object] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.action not in {"continue", "rollover", "stop"}:
+            raise ValueError("runtime control action must be continue, rollover, or stop")
+        if not isinstance(self.reason, str):
+            raise TypeError("runtime control reason must be text")
+        if not isinstance(self.data, Mapping):
+            raise TypeError("runtime control data must be a mapping")
+
+
+@dataclass(frozen=True)
+class RuntimeExtensionContext:
+    """给 Runtime 扩展的只读模型调用视图，不暴露可变运行状态。"""
+
+    identity: RunIdentity
+    turn: int
+    request: ModelRequest
+    usage: Mapping[str, int | float | None] = field(default_factory=dict)
+    metadata: Mapping[str, object] = field(default_factory=dict)
+
+
+class RuntimeExtension(Protocol):
+    """可选运行扩展的最小契约；扩展不能绕过唯一 Runtime 循环。"""
+
+    def before_model_call(
+        self, context: RuntimeExtensionContext
+    ) -> RuntimeControl | None: ...
+
+    def after_model_call(
+        self, context: RuntimeExtensionContext, result: Mapping[str, object]
+    ) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -403,6 +447,7 @@ class RunInput:
     library_snapshot: Mapping[str, object] = field(default_factory=dict)
     mcp_tools_by_server: Mapping[str, tuple[Tool, ...]] = field(default_factory=dict)
     listeners: tuple[EventListener, ...] = ()
+    runtime_extensions: tuple[RuntimeExtension, ...] = ()
     prepare: RunPreparation | None = None
     session_record: SessionRecord | None = None
     tool_decider: ToolDecision | None = None
@@ -426,6 +471,14 @@ class RunInput:
             self.resource_center, ResourceCenter
         ):
             raise TypeError("run resource center must be a ResourceCenter")
+        if any(
+            not hasattr(extension, "before_model_call")
+            or not hasattr(extension, "after_model_call")
+            for extension in self.runtime_extensions
+        ):
+            raise TypeError(
+                "runtime extensions must provide before_model_call and after_model_call"
+            )
 
 
 def build_run_instructions(
@@ -651,6 +704,14 @@ class _RunEngine:
             self.run.required_features,
             self.run.metadata,
         )
+        extension_context = RuntimeExtensionContext(
+            self.session.identity,
+            self.turns,
+            model_request,
+            dict(self.usage),
+            dict(self.run.metadata),
+        )
+        self._run_extension_before(extension_context)
         yield self.emit(
             "model.call.started",
             {
@@ -662,43 +723,65 @@ class _RunEngine:
         text_parts: list[str] = []
         calls: list[ToolCall] = []
         stop_reason = "model_finished"
-        for event in self.run.model.stream(model_request):
-            if not isinstance(event, ModelEvent):
-                raise TypeError("Model.stream() must yield ModelEvent values")
-            if event.event_type == "text":
-                text_parts.append(event.text)
-                yield self.emit(
-                    "model.text.delta",
-                    {"turn": self.turns, "delta": event.text},
-                )
-            elif event.event_type == "tool_call":
-                call = event.tool_call
-                if call is None:
-                    raise ValueError("tool_call event must contain a ToolCall")
-                calls.append(call)
-                yield self.emit(
-                    "model.tool.requested",
-                    {
-                        "turn": self.turns,
-                        "call_id": call.call_id,
-                        "name": call.name,
-                        "arguments": dict(call.arguments),
-                    },
-                )
-            elif event.event_type == "usage":
-                _merge_usage(self.usage, event.usage)
-                yield self.emit(
-                    "model.usage",
-                    {"turn": self.turns, **dict(event.data), **dict(event.usage)},
-                )
-            elif event.event_type == "status":
-                yield self.emit(
-                    "model.status",
-                    {"turn": self.turns, **dict(event.data)},
-                )
-            else:
-                stop_reason = event.stop_reason or "model_finished"
+        try:
+            for event in self.run.model.stream(model_request):
+                if not isinstance(event, ModelEvent):
+                    raise TypeError("Model.stream() must yield ModelEvent values")
+                if event.event_type == "text":
+                    text_parts.append(event.text)
+                    yield self.emit(
+                        "model.text.delta",
+                        {"turn": self.turns, "delta": event.text},
+                    )
+                elif event.event_type == "tool_call":
+                    call = event.tool_call
+                    if call is None:
+                        raise ValueError("tool_call event must contain a ToolCall")
+                    calls.append(call)
+                    yield self.emit(
+                        "model.tool.requested",
+                        {
+                            "turn": self.turns,
+                            "call_id": call.call_id,
+                            "name": call.name,
+                            "arguments": dict(call.arguments),
+                        },
+                    )
+                elif event.event_type == "usage":
+                    _merge_usage(self.usage, event.usage)
+                    yield self.emit(
+                        "model.usage",
+                        {"turn": self.turns, **dict(event.data), **dict(event.usage)},
+                    )
+                elif event.event_type == "status":
+                    yield self.emit(
+                        "model.status",
+                        {"turn": self.turns, **dict(event.data)},
+                    )
+                else:
+                    stop_reason = event.stop_reason or "model_finished"
+        except BaseException:
+            self._run_extension_after(
+                extension_context,
+                {
+                    "success": False,
+                    "usage": dict(self.usage),
+                    "text_characters": sum(map(len, text_parts)),
+                    "tool_call_count": len(calls),
+                },
+            )
+            raise
         text = "".join(text_parts)
+        self._run_extension_after(
+            extension_context,
+            {
+                "success": True,
+                "usage": dict(self.usage),
+                "text_characters": len(text),
+                "tool_call_count": len(calls),
+                "stop_reason": stop_reason,
+            },
+        )
         yield self.emit(
             "model.call.completed",
             {
@@ -708,6 +791,24 @@ class _RunEngine:
             },
         )
         return _ModelTurn(text, tuple(calls), stop_reason)
+
+    def _run_extension_before(self, context: RuntimeExtensionContext) -> None:
+        for extension in self.run.runtime_extensions:
+            control = extension.before_model_call(context)
+            if control is None:
+                continue
+            if not isinstance(control, RuntimeControl):
+                raise TypeError("runtime extension must return RuntimeControl or None")
+            if control.action != "continue":
+                raise RuntimeControlError(
+                    f"runtime extension requested unsupported action: {control.action}"
+                )
+
+    def _run_extension_after(
+        self, context: RuntimeExtensionContext, result: Mapping[str, object]
+    ) -> None:
+        for extension in self.run.runtime_extensions:
+            extension.after_model_call(context, result)
 
     def _run_tool(self, call: ToolCall) -> Generator[RunEvent, None, None]:
         self._check_interrupted()

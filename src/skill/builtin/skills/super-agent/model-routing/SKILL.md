@@ -4,7 +4,7 @@ description: "Select models from explicit task requirements and measured evidenc
 metadata:
   super-agent-categories: "[\"model\",\"routing\",\"cost\"]"
   super-agent-type: "method"
-  super-agent-version: "0.2.70"
+  super-agent-version: "0.2.71"
 ---
 # Model routing method
 

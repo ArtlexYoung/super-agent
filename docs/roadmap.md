@@ -60,6 +60,10 @@ v0.2.70 用真实资源快照固定插件清单、引用、版本与去重发布
 
 v0.2.70 fixes plugin manifest, reference, version, and deduplication release contracts through the real resource snapshot.
 
+v0.2.71 增加通用 Runtime 扩展契约。扩展只能通过模型调用前后的只读视图参与运行，当前版本不改变普通 Agent 的单窗口行为。
+
+v0.2.71 adds the generic Runtime extension contract. Extensions participate only through read-only views before and after model calls; the current version does not change the single-window behavior of a plain Agent.
+
 后续演进按风险和可验证性推进：
 
 Future work should proceed by risk and verifiability:
