@@ -399,6 +399,7 @@ class AgentLibrary:
             Tool("read_skill_resource", "Read one bounded text resource inside a Skill", self._resource_tool, _read_schema("skill", resource=True)),
             Tool("list_mcp_servers", "List passive MCP server definitions", partial(self._list_tool, "mcp"), _list_schema()),
             Tool("read_mcp_server", "Read one passive MCP server definition", partial(self._read_tool, "mcp"), _read_schema("mcp")),
+            self.resources.create_history_tool(),
             self.resources.create_read_tool(),
             Tool("activate_skill", "Activate one disclosed Skill", partial(self._activate_tool, "skill"), _activate_schema("skill")),
         )

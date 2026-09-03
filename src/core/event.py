@@ -60,6 +60,7 @@ class RunWindow:
     opened_at: str = field(default_factory=utc_now)
     closed_at: str | None = None
     close_reason: str | None = None
+    history_reference: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("run_id", "window_id", "status", "opened_at"):
@@ -70,6 +71,10 @@ class RunWindow:
             raise TypeError("window closed_at must be text or None")
         if self.close_reason is not None and not isinstance(self.close_reason, str):
             raise TypeError("window close_reason must be text or None")
+        if self.history_reference is not None and not isinstance(
+            self.history_reference, str
+        ):
+            raise TypeError("window history_reference must be text or None")
         for name in ("sequence", "turn_start", "turn_end", "context_characters"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -90,6 +95,7 @@ class RunWindow:
         context_characters: int,
         usage: Mapping[str, object],
         reason: str,
+        history_reference: str | None = None,
         closed_at: str | None = None,
     ) -> RunWindow:
         """返回关闭后的不可变窗口，不改变原窗口。"""
@@ -105,6 +111,7 @@ class RunWindow:
             opened_at=self.opened_at,
             closed_at=closed_at or utc_now(),
             close_reason=reason,
+            history_reference=history_reference,
         )
 
     def to_dict(self) -> dict[str, object]:

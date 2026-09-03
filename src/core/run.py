@@ -1098,7 +1098,11 @@ class _RunEngine:
         }
 
     def _close_current_window(
-        self, reason: str, *, turn_end: int | None = None
+        self,
+        reason: str,
+        *,
+        turn_end: int | None = None,
+        history_reference: str | None = None,
     ) -> Generator[RunEvent, None, None]:
         if self.current_window.status == "closed":
             return
@@ -1107,6 +1111,7 @@ class _RunEngine:
             context_characters=self.session.context_snapshot()["total_characters"],
             usage={**self.usage, "token_sources": dict(self.usage_sources)},
             reason=reason,
+            history_reference=history_reference,
         )
         self.windows[-1] = self.current_window
         yield self.emit("window.closed", self._window_data(self.current_window))
@@ -1116,6 +1121,14 @@ class _RunEngine:
     ) -> Generator[RunEvent, None, None]:
         """在模型调用前原子切换窗口，避免重复执行已完成工具。"""
         previous_window_id = self.current_window.window_id
+        history_reference = self.session.resource_center.cache_resource(
+            f"window:{self.session.identity.run_id}:{previous_window_id}",
+            json.dumps(
+                [message.to_dict() for message in self.session.messages],
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+        )
         yield self.emit(
             "window.rollover.requested",
             {
@@ -1124,7 +1137,9 @@ class _RunEngine:
             },
         )
         yield from self._close_current_window(
-            "rollover", turn_end=max(0, self.turns - 1)
+            "rollover",
+            turn_end=max(0, self.turns - 1),
+            history_reference=history_reference,
         )
         self.session.start_new_window(self.run.prompt.strip())
         self.current_window = RunWindow(

@@ -12,6 +12,7 @@ from pathlib import Path
 from threading import RLock
 from types import MappingProxyType
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from core import dataclass_data, require_integer as _integer, require_text as _text
 from core.model import Tool
@@ -120,6 +121,21 @@ class ResourceCenter:
             self._remember(value, "content.disclosed")
             return value
 
+    def cache_resource(self, reference: str, content: str) -> str:
+        """把完整正文写入中央缓存，只把元数据加入历史索引。"""
+        with self._lock:
+            resource = self._resource(reference, content)
+            cache_path = self._cache_path(resource)
+            self._store(resource, cache_path)
+            page = _page(
+                resource,
+                cache_path,
+                0,
+                min(MAX_PAGE_CHARACTERS, max(1, len(resource.content))),
+            )
+            self._remember(page, "content.cached")
+            return cache_path
+
     def read_cached_resource(
         self,
         cache_path: str,
@@ -137,12 +153,34 @@ class ResourceCenter:
         with self._lock:
             return tuple(MappingProxyType(dict(item)) for item in self._history)
 
+    def list_history(
+        self, *, page: int = 1, page_size: int = 20
+    ) -> DisclosurePage:
+        """返回不含正文的有界历史索引页。"""
+        if page < 1 or not 1 <= page_size <= 100:
+            raise ValueError("history page and page_size are outside their limits")
+        with self._lock:
+            values = list(reversed(self._history))
+        start = (page - 1) * page_size
+        items = tuple(
+            MappingProxyType(dict(item)) for item in values[start : start + page_size]
+        )
+        return DisclosurePage(items, page, page_size, len(values))
+
     def create_read_tool(self) -> Tool:
         return Tool(
             "read_disclosed_content",
             "Read one bounded page from a disclosed cache path",
             self._read_tool,
             _read_schema(),
+        )
+
+    def create_history_tool(self) -> Tool:
+        return Tool(
+            "list_disclosure_history",
+            "List bounded metadata for cached disclosure paths without reading content",
+            self._history_tool,
+            _history_schema(),
         )
 
     def _read_tool(
@@ -169,6 +207,21 @@ class ResourceCenter:
                 "next_offset": value.next_offset,
                 "sha256": value.sha256,
             },
+        )
+        return value.to_dict()
+
+    def _history_tool(
+        self,
+        arguments: dict[str, object],
+        context: ToolContext,
+    ) -> dict[str, object]:
+        value = self.list_history(
+            page=_integer(arguments.get("page", 1), "page", 1, 1_000_000),
+            page_size=_integer(arguments.get("page_size", 20), "page_size", 1, 100),
+        )
+        context.emit(
+            "content.history_listed",
+            {"page": value.page, "page_size": value.page_size, "total": value.total},
         )
         return value.to_dict()
 
@@ -248,6 +301,8 @@ class ResourceCenter:
 
     def _remember(self, value: DisclosedContent, event_type: str) -> None:
         event = {
+            "history_id": f"history-{uuid4().hex}",
+            "event_type": event_type,
             "reference": value.reference,
             "cache_path": value.cache_path,
             "offset": value.offset,
@@ -366,6 +421,16 @@ def _read_schema() -> dict[str, object]:
                 "minimum": 1,
                 "maximum": MAX_PAGE_CHARACTERS,
             },
+        },
+    }
+
+
+def _history_schema() -> dict[str, object]:
+    return {
+        "type": "object",
+        "properties": {
+            "page": {"type": "integer", "minimum": 1},
+            "page_size": {"type": "integer", "minimum": 1, "maximum": 100},
         },
     }
 
