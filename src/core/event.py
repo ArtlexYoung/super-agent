@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from core import dataclass_data
 
-EVENT_CATEGORIES = frozenset({"run", "model", "tool", "action", "content", "plugin", "skill", "memory", "session", "checkpoint", "agent_task", "audit"})
+EVENT_CATEGORIES = frozenset({"run", "model", "tool", "action", "content", "plugin", "skill", "memory", "session", "checkpoint", "agent_task", "audit", "window"})
 CRITICAL_EVENT_TYPES = frozenset({"run.started", "run.completed", "run.failed", "action.applied", "action.blocked", "skill.created", "skill.updated", "skill.removed", "skill_change.applied", "skill_change.undone", "memory.created", "memory.revised", "memory.forgotten", "memory.organized", "model.evaluated", "skill.evaluated", "audit.pruned"})
 
 
@@ -40,6 +40,72 @@ class ContextEntry:
     sha256: str
     summary: str | None = None
     cache_reference: str | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        return dataclass_data(self)
+
+
+@dataclass(frozen=True)
+class RunWindow:
+    """记录一个模型上下文窗口的生命周期元数据，不保存消息正文。"""
+
+    run_id: str
+    window_id: str = field(default_factory=lambda: f"window-{uuid4().hex}")
+    sequence: int = 1
+    status: str = "open"
+    turn_start: int = 0
+    turn_end: int = 0
+    context_characters: int = 0
+    usage: Mapping[str, object] = field(default_factory=dict)
+    opened_at: str = field(default_factory=utc_now)
+    closed_at: str | None = None
+    close_reason: str | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("run_id", "window_id", "status", "opened_at"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"window {name} cannot be empty")
+        if self.closed_at is not None and not isinstance(self.closed_at, str):
+            raise TypeError("window closed_at must be text or None")
+        if self.close_reason is not None and not isinstance(self.close_reason, str):
+            raise TypeError("window close_reason must be text or None")
+        for name in ("sequence", "turn_start", "turn_end", "context_characters"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"window {name} must be non-negative")
+        if self.sequence < 1 or self.turn_end < self.turn_start:
+            raise ValueError("window sequence and turns are invalid")
+        if self.status not in {"open", "closed"}:
+            raise ValueError("window status must be open or closed")
+        if self.status == "closed" and (self.closed_at is None or not self.close_reason):
+            raise ValueError("closed window requires time and reason")
+        if not isinstance(self.usage, Mapping):
+            raise TypeError("window usage must be a mapping")
+
+    def close(
+        self,
+        *,
+        turn_end: int,
+        context_characters: int,
+        usage: Mapping[str, object],
+        reason: str,
+        closed_at: str | None = None,
+    ) -> RunWindow:
+        """返回关闭后的不可变窗口，不改变原窗口。"""
+        return RunWindow(
+            run_id=self.run_id,
+            window_id=self.window_id,
+            sequence=self.sequence,
+            status="closed",
+            turn_start=self.turn_start,
+            turn_end=turn_end,
+            context_characters=context_characters,
+            usage=dict(usage),
+            opened_at=self.opened_at,
+            closed_at=closed_at or utc_now(),
+            close_reason=reason,
+        )
 
     def to_dict(self) -> dict[str, object]:
         return dataclass_data(self)
@@ -304,6 +370,7 @@ class RunResult:
     context_ledger: Mapping[str, object] = field(default_factory=dict)
     runtime_lifecycle: Mapping[str, object] = field(default_factory=dict)
     library_snapshot: Mapping[str, object] = field(default_factory=dict)
+    windows: tuple[RunWindow, ...] = ()
 
     @property
     def model_turns(self) -> int:
@@ -330,4 +397,5 @@ class RunResult:
             "context_ledger": dict(self.context_ledger),
             "runtime_lifecycle": dict(self.runtime_lifecycle),
             "library_snapshot": dict(self.library_snapshot),
+            "windows": [window.to_dict() for window in self.windows],
         }

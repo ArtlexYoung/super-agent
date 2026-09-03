@@ -64,9 +64,9 @@ v0.2.71 增加通用 Runtime 扩展契约。扩展只能通过模型调用前后
 
 v0.2.71 adds the generic Runtime extension contract. Extensions participate only through read-only views before and after model calls; the current version does not change the single-window behavior of a plain Agent.
 
-v0.2.73 增加插件到 Runtime 扩展的显式注册边界。插件清单只能声明已注册扩展名称，不能通过配置导入或执行任意代码。
+v0.2.74 增加插件到 Runtime 扩展的显式注册边界。插件清单只能声明已注册扩展名称，不能通过配置导入或执行任意代码。
 
-v0.2.73 adds the explicit registration boundary between plugins and Runtime extensions. A plugin manifest may declare only a registered extension name and cannot import or execute arbitrary code through configuration.
+v0.2.74 adds the explicit registration boundary between plugins and Runtime extensions. A plugin manifest may declare only a registered extension name and cannot import or execute arbitrary code through configuration.
 
 后续演进按风险和可验证性推进：
 

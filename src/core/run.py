@@ -16,6 +16,7 @@ from core.event import (
     RunIdentity,
     RunLimits,
     RunResult,
+    RunWindow,
     utc_now,
 )
 from core.model import (
@@ -589,11 +590,15 @@ class _RunEngine:
     usage_sources: dict[str, str] = field(default_factory=dict)
     captured_events: list[RunEvent] = field(default_factory=list)
     turns: int = 0
+    windows: list[RunWindow] = field(default_factory=list)
+    current_window: RunWindow = field(init=False)
     context: ToolContext = field(init=False)
     event_bus: EventBus = field(init=False)
     tool_center: ToolExecutionCenter = field(init=False)
 
     def __post_init__(self) -> None:
+        self.current_window = RunWindow(self.session.identity.run_id)
+        self.windows.append(self.current_window)
         self.context = ToolContext(self.session, self.capture)
         self.tool_center = ToolExecutionCenter(
             self.run.tool_decider,
@@ -650,6 +655,7 @@ class _RunEngine:
         except GeneratorExit:
             raise
         except RunInterrupted as error:
+            yield from self._close_current_window("interrupted")
             yield self.emit(
                 "run.interrupted",
                 {"message": str(error)},
@@ -657,6 +663,7 @@ class _RunEngine:
             raise
         except Exception as error:
             try:
+                yield from self._close_current_window("failed")
                 yield self.emit(
                     "run.failed",
                     {"error_type": type(error).__name__, "message": str(error)},
@@ -681,6 +688,7 @@ class _RunEngine:
             enabled_features=self.run.metadata.get("_super_agent_enabled_features", {}),
         )
         yield self.emit("run.started", started)
+        yield self.emit("window.opened", self._window_data(self.current_window))
         for warning in self.run.warning_messages:
             yield self.emit("run.warning", {"message": warning})
         if self.run.prepare is not None:
@@ -964,6 +972,7 @@ class _RunEngine:
         stop_reason: str,
     ) -> Generator[RunEvent, None, RunResult]:
         identity = self.session.identity
+        yield from self._close_current_window("completed")
         completed = self.runtime_snapshot()
         usage = {**self.usage, "token_sources": dict(self.usage_sources)}
         completed.update(stop_reason=stop_reason, text=text, usage=usage)
@@ -984,6 +993,7 @@ class _RunEngine:
             context_ledger=self.session.context_snapshot(),
             runtime_lifecycle=self.session.runtime_lifecycle.snapshot(),
             library_snapshot=self.session.library_snapshot or {},
+            windows=tuple(self.windows),
         )
 
     def runtime_snapshot(self) -> dict[str, object]:
@@ -1004,6 +1014,28 @@ class _RunEngine:
             "context_ledger": self.session.context_snapshot(),
             "runtime_lifecycle": self.session.runtime_lifecycle.snapshot(),
             "library_snapshot": self.session.library_snapshot or {},
+            "windows": [window.to_dict() for window in self.windows],
+        }
+
+    def _close_current_window(
+        self, reason: str
+    ) -> Generator[RunEvent, None, None]:
+        if self.current_window.status == "closed":
+            return
+        self.current_window = self.current_window.close(
+            turn_end=self.turns,
+            context_characters=self.session.context_snapshot()["total_characters"],
+            usage={**self.usage, "token_sources": dict(self.usage_sources)},
+            reason=reason,
+        )
+        self.windows[-1] = self.current_window
+        yield self.emit("window.closed", self._window_data(self.current_window))
+
+    def _window_data(self, window: RunWindow) -> dict[str, object]:
+        return {
+            **window.to_dict(),
+            "active": window.status == "open",
+            "context_limit": self.session.context_limit,
         }
 
 
