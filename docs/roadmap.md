@@ -124,6 +124,10 @@ v0.2.86 统一到 `super_agent.*` 命名空间；在仓库外安装 wheel 可 `i
 
 v0.2.86 unifies the codebase under the `super_agent.*` namespace; a wheel installed outside the repo supports `import super_agent` and coexists with a host project's own `core`/`skill` packages.
 
+v0.2.87 让基础 Agent 运行只载入必要模块：未启用的团队、存储与 MCP 实现不再被普通运行导入；启用这些能力时仍正常加载与工作。
+
+v0.2.87 makes a base Agent run load only necessary modules: unenabled team, storage, and MCP implementations are no longer imported by a plain run, while they still load and work when enabled.
+
 后续演进按风险和可验证性推进：
 
 Future work should proceed by risk and verifiability:

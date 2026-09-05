@@ -1,4 +1,4 @@
-"""Run the local release checks for v0.2.86."""
+"""Run the local release checks for v0.2.87."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-VERSION = "0.2.86"
+VERSION = "0.2.87"
 MAX_SOURCE_FILES = 28
 # 源码非空行预算随功能按需增长：CLI 连续聊天、会话保存恢复、模型诊断、编码验证、Skill 管理。
 # 按 development-plan P0-00 调整，保留增长预算但不取消版本、依赖与资源一致性检查。

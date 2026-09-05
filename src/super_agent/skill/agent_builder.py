@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from collections.abc import Mapping
 
-from super_agent.adapter.storage import EventMemoryStore, JsonlMemoryStore
 from super_agent.core.context import AgentContext
 from super_agent.core.event import RunCheckpoint, RunIdentity
 from super_agent.core.records import EventStore, RecordScope
@@ -224,6 +223,8 @@ def agent_memory(
         return agent._memories[key]
     selected_store: RecordBackend | EventStore | None = store
     if working_directory is not None:
+        from super_agent.adapter.storage import JsonlMemoryStore
+
         scope = hashlib.sha256(f"{identity.user_id}\0{identity.agent_name}".encode()).hexdigest()[:24]
         selected_store = JsonlMemoryStore(
             working_directory.path / ".super-agent" / "memory" / "users" / f"{scope}.jsonl",
@@ -231,6 +232,8 @@ def agent_memory(
             identity.agent_name,
         )
     elif store is not None:
+        from super_agent.adapter.storage import EventMemoryStore
+
         selected_store = EventMemoryStore(store)
     from super_agent.skill.memory import Memory
 
@@ -251,18 +254,20 @@ def agent_tools(
     store: EventStore | None,
     working_directory: WorkingDirectory | None,
 ) -> tuple[ToolRegistry, dict[str, tuple[Tool, ...]]]:
-    from super_agent.adapter.tools import mcp_tools
     from super_agent.core.run import ToolRegistry
 
     registry = ToolRegistry(agent._tool_registry.active.values(), agent._tool_registry.available.values())
     mcp_by_server: dict[str, tuple[Tool, ...]] = {}
     if library is not None:
         registry.register_many(library.tools(), exposure="always")
-        for reference, (server, effects) in agent._mcp_servers.items():
-            definition = library.find_mcp_server(reference)
-            mcp_by_server[definition.reference] = mcp_tools(
-                definition.mcp_id, server, effects, declared_tools=definition.tools
-            )
+        if agent._mcp_servers:
+            from super_agent.adapter.tools import mcp_tools
+
+            for reference, (server, effects) in agent._mcp_servers.items():
+                definition = library.find_mcp_server(reference)
+                mcp_by_server[definition.reference] = mcp_tools(
+                    definition.mcp_id, server, effects, declared_tools=definition.tools
+                )
     if _plugin_is_enabled(agent, MEMORY_PLUGIN):
         registry.register_many(
             agent_memory(agent, identity, store, working_directory).tools(),
@@ -526,17 +531,29 @@ def _required_features(features: tuple[str, ...], has_tools: bool) -> tuple[str,
     return tuple(dict.fromkeys((*features, *(('tools',) if has_tools else ()))))
 
 
-def _agent_group_id(agent: Agent) -> str:
-    from super_agent.skill.organization import team_node
+@dataclass(frozen=True)
+class _MinimalTreeSettings:
+    """普通 Agent 没有显式团队设置时的最小默认约束。"""
 
+    warn_level: int = 8
+    max_level: int | None = None
+    max_call_depth: int | None = None
+
+
+def _agent_group_id(agent: Agent) -> str:
     node = getattr(agent, "_team_node", None)
     if node is None:
-        node = team_node(agent)
-        agent._team_node = node
+        # 普通 Agent 无团队结构，使用稳定默认分组，不导入 organization 实现。
+        return f"group-{hashlib.sha256(agent.name.encode()).hexdigest()[:24]}"
+    from super_agent.skill.organization import team_node
+
     return node.group_id
 
 
 def _team_runtime(agent: Agent, user_id: str) -> object | None:
+    if getattr(agent, "_team_node", None) is None:
+        # 无子 Agent/组时不需要团队运行时，避免载入 organization 实现。
+        return None
     from super_agent.skill.organization_runtime import get_or_create_team_runtime
 
     return get_or_create_team_runtime(agent, user_id)
@@ -548,11 +565,8 @@ def _tree_settings(agent: Agent, tree: object | None) -> object:
     settings = getattr(agent, "team_settings", None)
     if settings is not None:
         return settings
-    from super_agent.skill.organization import TeamSettings
-
-    settings = TeamSettings()
-    agent.team_settings = settings
-    return settings
+    # 普通 Agent 无显式团队设置时返回最小默认值，避免导入 organization.TeamSettings。
+    return _MinimalTreeSettings()
 
 
 def _check_call_depth(settings: object, depth: int) -> None:
