@@ -297,10 +297,11 @@ def _run_prompt(
     plugin: str | None,
     skill: str | None,
 ) -> int:
+    resolved = _ensure_conversation(agent, cli, conversation_id, prompt)
     result = _stream_to_terminal(
         agent,
         prompt,
-        _context(cli, conversation_id, plugin, skill),
+        _context(cli, resolved, plugin, skill),
         print_text=cli.output == "text",
     )
     if cli.output == "json":
@@ -308,6 +309,27 @@ def _run_prompt(
     elif cli.show_summary:
         print(f"\n[{result.run_id}] {result.stop_reason}")
     return 0
+
+
+def _ensure_conversation(
+    agent: Agent,
+    cli: CliConfig,
+    conversation_id: str | None,
+    title: str,
+) -> str | None:
+    """保存模式下创建或校验会话，返回可用 ID。
+
+    恢复模式（显式传入 ID）校验会话存在与作用域；不存在则明确失败，不静默新建。
+    未传入 ID 且未开启保存时返回 None，保持单次无状态调用语义。
+    """
+    if conversation_id is not None:
+        if cli.save:
+            agent.for_user(cli.user_id).conversations.read(conversation_id)
+        return conversation_id
+    if not cli.save:
+        return None
+    conversation = agent.for_user(cli.user_id).conversations.create(title.strip())
+    return conversation.conversation_id
 
 
 def _run_chat(
@@ -319,6 +341,7 @@ def _run_chat(
 ) -> int:
     current = conversation_id
     history: list[Message] = []
+    announced_id: str | None = None
     print("Super Agent. 输入 /help 查看命令，输入 /exit 退出。")
     while True:
         try:
@@ -347,8 +370,13 @@ def _run_chat(
                 agent.for_user(cli.user_id).conversations.clear(current)
             current = None
             history.clear()
+            announced_id = None
             print("当前会话上下文已清除。")
             continue
+        current = _ensure_conversation(agent, cli, current, prompt)
+        if current is not None and current != announced_id:
+            print(f"会话 ID: {current}")
+            announced_id = current
         result = _stream_to_terminal(
             agent,
             prompt,

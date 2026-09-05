@@ -104,6 +104,10 @@ v0.2.81 让默认 CLI 连续聊天在内存中携带前序用户消息与助手�
 
 v0.2.81 lets the default CLI chat carry prior user messages and assistant answers in memory, keeping one history source.
 
+v0.2.82 让 `--save` 自动创建会话并显示 ID，保存与恢复共用存储作为唯一历史来源。
+
+v0.2.82 makes `--save` auto-create a conversation and show its ID, with save and restore sharing storage as the single history source.
+
 后续演进按风险和可验证性推进：
 
 Future work should proceed by risk and verifiability:
