@@ -17,3 +17,6 @@ src/frontend/mac/.build/
 
 # Desktop is maintained and versioned as a separate repository.
 /desktop/
+
+# Local design and development handoff documents.
+/development-plan/
