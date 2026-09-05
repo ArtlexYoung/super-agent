@@ -162,9 +162,46 @@ def _check_command(arguments: list[str]) -> int:
         "mcp_server_count": library.list_mcp_servers().total,
         "model_count": len(config.models),
         "model_ready": model_ready,
+        "model_diagnostics": _model_diagnostics(config),
     }
     _print_value(result, parsed.output or cli.output)
     return 0 if model_ready else 1
+
+
+def _model_diagnostics(config: Config) -> list[dict[str, object]]:
+    """逐模型返回可行动的诊断，不读取或泄露密钥。"""
+    if not config.models:
+        return [
+            {
+                "ready": False,
+                "action": "设置 SUPER_AGENT_PROVIDER / SUPER_AGENT_MODEL 或提供 common.toml 的 models",
+            }
+        ]
+    values: list[dict[str, object]] = []
+    for item in config.models:
+        key_environment = item.required_api_key_environment()
+        key_present = key_environment is None or bool(os.environ.get(key_environment))
+        if item.provider == "mock":
+            action = "使用离线 Mock 模型，无需真实凭证"
+        elif key_environment is None:
+            action = "本地端点，无需外部模型密钥"
+        elif not key_present:
+            action = f"设置环境变量 {key_environment} 为你的模型密钥"
+        else:
+            action = "模型密钥已就绪，检查 base_url 与网络连通性"
+        values.append(
+            {
+                "name": item.name,
+                "provider": item.provider,
+                "model": item.model,
+                "base_url": item.base_url,
+                "api_key_env": key_environment,
+                "api_key_present": key_present,
+                "ready": key_present,
+                "action": action,
+            }
+        )
+    return values
 
 
 def _config_command(arguments: list[str]) -> int:

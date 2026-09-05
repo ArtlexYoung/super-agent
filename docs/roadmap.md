@@ -108,6 +108,10 @@ v0.2.82 让 `--save` 自动创建会话并显示 ID，保存与恢复共用存�
 
 v0.2.82 makes `--save` auto-create a conversation and show its ID, with save and restore sharing storage as the single history source.
 
+v0.2.83 统一模型配置诊断：`check` 逐模型报告密钥状态与下一步，不泄露密钥，也不静默切换 Provider。
+
+v0.2.83 unifies model-configuration diagnostics: `check` reports per-model credential status and the next step, without leaking secrets or silently switching Provider.
+
 后续演进按风险和可验证性推进：
 
 Future work should proceed by risk and verifiability:
