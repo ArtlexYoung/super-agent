@@ -4,7 +4,7 @@ description: "Methods for explicit model-directed context compression"
 metadata:
   super-agent-categories: "[\"context\",\"compression\"]"
   super-agent-type: "method"
-  super-agent-version: "0.2.83"
+  super-agent-version: "0.2.84"
 ---
 # Explicit context compression method
 

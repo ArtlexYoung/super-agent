@@ -498,9 +498,17 @@ def _load_code(path: str | None) -> CodeConfig:
     if not source.is_file():
         if path:
             raise FileNotFoundError(f"code configuration not found: {source}")
-        return CodeConfig(
-            WorkspaceSettings(Path.cwd(), allow_write=True, allow_delete=True),
+        root = Path.cwd()
+        workspaces = WorkspaceSettings(root, allow_write=True, allow_delete=True)
+        candidates = _candidate_verification_commands(root)
+        # 无配置时默认执行策略为 ask；候选命令仍受 ToolPolicy 逐次确认约束，
+        # 非交互模式不会自动放行。
+        process = (
+            ProcessSettings(root, candidates)
+            if candidates
+            else None
         )
+        return CodeConfig(workspaces, process)
     with source.open("rb") as stream:
         value = tomllib.load(stream)
     _reject_fields(
@@ -590,6 +598,30 @@ def _load_code(path: str | None) -> CodeConfig:
         if action == "allow"
     )
     return CodeConfig(settings, process, frozenset(allowed))
+
+
+def _candidate_verification_commands(root: Path) -> tuple[tuple[str, ...], ...]:
+    """按项目标记探测少量候选验证命令，只读文件不执行任何脚本。
+
+    候选命令仍走 ``ProcessTools`` 白名单与 ``ToolPolicy`` 逐次确认，不因存在
+    标记就自动放行。
+    """
+    root = root.expanduser().resolve()
+    candidates: list[tuple[str, ...]] = []
+
+    def marker(*names: str) -> bool:
+        return any((root / name).is_file() for name in names)
+
+    if marker("pyproject.toml", "pytest.ini", "setup.py"):
+        candidates.append(("python", "-m", "pytest"))
+    if marker("package.json"):
+        candidates.append(("npm", "test"))
+    if marker("Cargo.toml"):
+        candidates.append(("cargo", "test"))
+    if marker("go.mod"):
+        candidates.append(("go", "test", "./..."))
+    # 保留唯一来源，避免重复命令。
+    return tuple(dict.fromkeys(candidates))
 
 
 def _context(

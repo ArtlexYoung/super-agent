@@ -112,6 +112,10 @@ v0.2.83 统一模型配置诊断：`check` 逐模型报告密钥状态与下一�
 
 v0.2.83 unifies model-configuration diagnostics: `check` reports per-model credential status and the next step, without leaking secrets or silently switching Provider.
 
+v0.2.84 按项目标记探测候选验证命令；候选仍走命令白名单与逐次确认，并返回 argv、cwd 与退出状态。
+
+v0.2.84 probes candidate verification commands by project markers; candidates still pass the command whitelist and per-action confirmation, and return argv, cwd, and exit status.
+
 后续演进按风险和可验证性推进：
 
 Future work should proceed by risk and verifiability:

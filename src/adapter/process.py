@@ -175,6 +175,7 @@ class ProcessTools:
         return {
             "process_id": item.process_id,
             "command": list(item.command),
+            "cwd": str(self.root),
             "state": state,
             "returncode": returncode,
             "stdout": stdout,
