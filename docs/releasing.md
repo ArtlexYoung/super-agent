@@ -11,7 +11,7 @@ PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
 python3.11 -m unittest discover -s tests -p 'test_*.py' -v
 
 PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
-python3.11 scripts/verify_release.py --version 0.2.80 --full
+python3.11 scripts/verify_release.py --version 0.2.81 --full
 ```
 
 发布检查验证版本、Python 最低版本、零默认依赖、源码布局、旧目录删除、构建范围、内置插件去重关系和离线评测资产。
@@ -23,6 +23,10 @@ The release gate checks version, Python minimum, zero default dependencies, sour
 Log writes never trigger retention cleanup. Run `super-agent data storage prune --config common.toml --user alice` to preview, then add `--apply` to delete expired logs in the current user, Agent, and working-directory scope and record the cleanup; state streams are not expired by this policy.
 
 ## 版本 / Version
+
+v0.2.81 让默认 CLI 连续聊天在内存中携带前序用户消息与助手回答，第二轮能看到第一轮。
+
+v0.2.81 lets the default CLI chat carry prior user messages and assistant answers in memory, so the second turn sees the first.
 
 v0.2.80 完成长会话治理：单调检查点、记忆索引检查点和严格作用域的显式日志清理。
 

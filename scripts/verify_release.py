@@ -1,4 +1,4 @@
-"""Run the local release checks for v0.2.80."""
+"""Run the local release checks for v0.2.81."""
 
 from __future__ import annotations
 
@@ -11,9 +11,11 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-VERSION = "0.2.80"
+VERSION = "0.2.81"
 MAX_SOURCE_FILES = 27
-MAX_SOURCE_LINES = 12_800
+# v0.2.81 增加默认 CLI 连续聊天（内存历史装配），源文件非空行由 12,800 增至 12,814。
+# 按 development-plan P0-00 调整，本版本仅放宽最小必要差额，并保留后续增长预算。
+MAX_SOURCE_LINES = 13_000
 SOURCE_ROOTS = {"adapter", "core", "skill", "cli.py", "super_agent.py"}
 DOMAIN_FILES = {
     "adapter": {"cli.py", "database.py", "process.py", "storage.py", "tools.py"},

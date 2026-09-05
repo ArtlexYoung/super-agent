@@ -26,6 +26,7 @@ from core.config import (
     config_from_environment,
     discover_configuration_sources,
 )
+from core.model import Message
 from core.records import AuditPolicy, Conversations, RecordBackend
 from skill.library import AgentLibrary
 from super_agent import Agent, AgentContext
@@ -317,6 +318,7 @@ def _run_chat(
     skill: str | None,
 ) -> int:
     current = conversation_id
+    history: list[Message] = []
     print("Super Agent. 输入 /help 查看命令，输入 /exit 退出。")
     while True:
         try:
@@ -344,11 +346,20 @@ def _run_chat(
             if current is not None and cli.save:
                 agent.for_user(cli.user_id).conversations.clear(current)
             current = None
+            history.clear()
             print("当前会话上下文已清除。")
             continue
         result = _stream_to_terminal(
-            agent, prompt, _context(cli, current, plugin, skill), print_text=True
+            agent,
+            prompt,
+            _context(cli, current, plugin, skill, messages=history),
+            print_text=True,
         )
+        # 保存模式下以存储历史为唯一来源，内存历史不再重复累计；
+        # 默认聊天模式保留内存历史，保证第二轮能看到第一轮。
+        if not cli.save:
+            history.append(Message("user", prompt.strip()))
+            history.append(Message("assistant", result.text))
         current = result.conversation_id or current
         if cli.show_summary:
             print(f"\n[{result.run_id}] {result.stop_reason}")
@@ -521,10 +532,13 @@ def _context(
     conversation_id: str | None,
     plugin: str | None = None,
     skill: str | None = None,
+    *,
+    messages: Sequence[Message | Mapping[str, object]] = (),
 ) -> AgentContext:
     return AgentContext(
         user_id=cli.user_id,
         conversation_id=conversation_id,
+        messages=tuple(messages),
         plugin=plugin,
         skill=skill,
         save_conversation=cli.save,

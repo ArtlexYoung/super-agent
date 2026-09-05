@@ -100,6 +100,10 @@ v0.2.80 使用单调检查点防止旧运行覆盖新状态，增加不复制正
 
 v0.2.80 uses monotonic checkpoints to prevent stale run overwrites, adds memory checkpoints without copied text, and fixes log cleanup to user, Agent, and working-directory scope.
 
+v0.2.81 让默认 CLI 连续聊天在内存中携带前序用户消息与助手回答，保持单一历史来源。
+
+v0.2.81 lets the default CLI chat carry prior user messages and assistant answers in memory, keeping one history source.
+
 后续演进按风险和可验证性推进：
 
 Future work should proceed by risk and verifiability:
