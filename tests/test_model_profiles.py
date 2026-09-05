@@ -1,12 +1,12 @@
 import unittest
 
-from adapter.storage import MemoryStorage
-from core.config import config_from_dict
-from core.model import Message, ModelPerformance, ModelRequest
-from core.provider import MockModel, ModelProfile, ModelRouter
-from core.records import AuditPolicy, EventStore
-from skill.organization import team_node
-from skill.organization_runtime import TeamRuntime
+from super_agent.adapter.storage import MemoryStorage
+from super_agent.core.config import config_from_dict
+from super_agent.core.model import Message, ModelPerformance, ModelRequest
+from super_agent.core.provider import MockModel, ModelProfile, ModelRouter
+from super_agent.core.records import AuditPolicy, EventStore
+from super_agent.skill.organization import team_node
+from super_agent.skill.organization_runtime import TeamRuntime
 from super_agent import Agent
 
 

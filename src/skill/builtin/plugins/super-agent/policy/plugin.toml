@@ -1,9 +1,0 @@
-schema = 1
-id = "super-agent/policy"
-version = "0.2.85"
-description = "Explicit rules for tool effects and protected workspaces"
-entry_skill = "skill:super-agent/policy"
-skills = []
-included_plugins = []
-required_mcp_servers = []
-optional_mcp_servers = []

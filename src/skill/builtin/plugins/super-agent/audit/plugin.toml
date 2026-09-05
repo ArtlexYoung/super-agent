@@ -1,9 +1,0 @@
-schema = 1
-id = "super-agent/audit"
-version = "0.2.85"
-description = "Explicit run tracing, redaction, retention, and audit queries"
-entry_skill = "skill:super-agent/audit"
-skills = []
-included_plugins = []
-required_mcp_servers = []
-optional_mcp_servers = []

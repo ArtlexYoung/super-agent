@@ -1,14 +1,14 @@
 import unittest
 from pathlib import Path
 
-from adapter.storage import MemoryStorage
-from core import __version__
-from core.records import AuditPolicy, EventStore
-from skill.library import AgentLibrary
+from super_agent.adapter.storage import MemoryStorage
+from super_agent.core import __version__
+from super_agent.core.records import AuditPolicy, EventStore
+from super_agent.skill.library import AgentLibrary
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILTIN = ROOT / "src" / "skill" / "builtin"
+BUILTIN = ROOT / "src" / "super_agent" / "skill" / "builtin"
 
 
 class AuditPluginTests(unittest.TestCase):

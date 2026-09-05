@@ -1,7 +1,7 @@
 import unittest
 
-from core.records import MemoryStore
-from skill.memory import Memory
+from super_agent.core.records import MemoryStore
+from super_agent.skill.memory import Memory
 
 
 class ListMemoryStore:

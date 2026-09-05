@@ -1,8 +1,8 @@
 import unittest
 
-from adapter.storage import MemoryStorage
-from core.records import Conversations, EventStore, SessionRecord
-from core.provider import MockModel
+from super_agent.adapter.storage import MemoryStorage
+from super_agent.core.records import Conversations, EventStore, SessionRecord
+from super_agent.core.provider import MockModel
 from super_agent import Agent, AgentContext
 from tests.run_state import make_run_state
 

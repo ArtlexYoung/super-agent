@@ -4,12 +4,12 @@ import time
 import unittest
 from pathlib import Path
 
-from adapter.cli import CliConfig, _build_agent, _storage_from_config
-from adapter.database import DatabaseStorage
-from adapter.process import ProcessSettings, ProcessTools
-from adapter.storage import JsonlStorage, create_storage, verify_storage
-from core.config import Config, StorageConfig
-from core.provider import MockModel
+from super_agent.adapter.cli import CliConfig, _build_agent, _storage_from_config
+from super_agent.adapter.database import DatabaseStorage
+from super_agent.adapter.process import ProcessSettings, ProcessTools
+from super_agent.adapter.storage import JsonlStorage, create_storage, verify_storage
+from super_agent.core.config import Config, StorageConfig
+from super_agent.core.provider import MockModel
 
 
 class AdapterBoundaryTests(unittest.TestCase):

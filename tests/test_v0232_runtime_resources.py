@@ -1,7 +1,7 @@
 import unittest
 
-from core.model import Tool
-from core.provider import MockModel
+from super_agent.core.model import Tool
+from super_agent.core.provider import MockModel
 from super_agent import Agent
 from tests.run_state import make_run_state
 

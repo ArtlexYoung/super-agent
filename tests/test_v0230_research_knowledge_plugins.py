@@ -1,11 +1,11 @@
 import unittest
 from pathlib import Path
 
-from skill.library import AgentLibrary
+from super_agent.skill.library import AgentLibrary
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILTIN = ROOT / "src" / "skill" / "builtin"
+BUILTIN = ROOT / "src" / "super_agent" / "skill" / "builtin"
 
 
 class ResearchKnowledgePluginTests(unittest.TestCase):

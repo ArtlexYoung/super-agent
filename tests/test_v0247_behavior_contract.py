@@ -1,7 +1,7 @@
 import unittest
 
-from core.model import ModelEvent, Tool
-from core.provider import MockModel
+from super_agent.core.model import ModelEvent, Tool
+from super_agent.core.provider import MockModel
 from super_agent import Agent
 
 

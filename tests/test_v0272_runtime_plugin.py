@@ -2,11 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.event import RunIdentity
-from core.resources import ResourceCenter
-from skill.agent_builder import create_runtime_extensions, register_runtime_extension
-from skill.document import format_skill
-from skill.library import AgentLibrary
+from super_agent.core.event import RunIdentity
+from super_agent.core.resources import ResourceCenter
+from super_agent.skill.agent_builder import create_runtime_extensions, register_runtime_extension
+from super_agent.skill.document import format_skill
+from super_agent.skill.library import AgentLibrary
 
 
 class RuntimePluginTests(unittest.TestCase):

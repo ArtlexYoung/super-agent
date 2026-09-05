@@ -1,7 +1,7 @@
 import unittest
 
-from core.context import AgentContext, RunOptions, RunScope
-from core.event import RunIdentity, RunResult
+from super_agent.core.context import AgentContext, RunOptions, RunScope
+from super_agent.core.event import RunIdentity, RunResult
 
 
 class RuntimeContextTests(unittest.TestCase):

@@ -5,8 +5,8 @@ import unittest
 from contextlib import redirect_stdout
 from unittest import mock
 
-import adapter.cli as cli
-from core.provider import MockModel
+import super_agent.adapter.cli as cli
+from super_agent.core.provider import MockModel
 from super_agent import Agent
 
 

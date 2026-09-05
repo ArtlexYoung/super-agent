@@ -1,10 +1,10 @@
 import unittest
 
-from adapter.storage import MemoryCheckpointStore
-from core.event import RunCheckpoint, RunEvent, RunIdentity
-from core.model import Tool
-from core.records import SessionRecord
-from core.run import EventBus, ToolRegistry
+from super_agent.adapter.storage import MemoryCheckpointStore
+from super_agent.core.event import RunCheckpoint, RunEvent, RunIdentity
+from super_agent.core.model import Tool
+from super_agent.core.records import SessionRecord
+from super_agent.core.run import EventBus, ToolRegistry
 
 
 class CentralRuntimeBoundaryTests(unittest.TestCase):

@@ -1,9 +1,9 @@
 import unittest
 
-from core.event import RunIdentity
-from core.provider import MockModel
-from skill.organization import team_node
-from skill.organization_runtime import TeamRuntime
+from super_agent.core.event import RunIdentity
+from super_agent.core.provider import MockModel
+from super_agent.skill.organization import team_node
+from super_agent.skill.organization_runtime import TeamRuntime
 from super_agent import Agent, AgentContext
 
 

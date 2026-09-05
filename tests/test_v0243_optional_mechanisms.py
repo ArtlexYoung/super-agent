@@ -1,6 +1,6 @@
 import unittest
 
-from core.provider import ModelProfile, MockModel, ModelRouter
+from super_agent.core.provider import ModelProfile, MockModel, ModelRouter
 from super_agent import Agent
 
 

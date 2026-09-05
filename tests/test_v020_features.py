@@ -6,16 +6,16 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.error import URLError
 
-from adapter.process import ProcessSettings, ProcessTools
-from adapter.storage import MemoryStorage
-from adapter.tools import CodeWorkspace, ToolPolicy, WorkspaceSettings
-from core.event import RunIdentity
-from core.provider import MockModel, ModelPricing
-from core.records import compact_child_result
-from core.run import FatalToolError
-from skill.memory import Memory
-from skill.organization import TeamMemberSettings, TeamSettings, team_node
-from skill.organization_runtime import TeamRuntime
+from super_agent.adapter.process import ProcessSettings, ProcessTools
+from super_agent.adapter.storage import MemoryStorage
+from super_agent.adapter.tools import CodeWorkspace, ToolPolicy, WorkspaceSettings
+from super_agent.core.event import RunIdentity
+from super_agent.core.provider import MockModel, ModelPricing
+from super_agent.core.records import compact_child_result
+from super_agent.core.run import FatalToolError
+from super_agent.skill.memory import Memory
+from super_agent.skill.organization import TeamMemberSettings, TeamSettings, team_node
+from super_agent.skill.organization_runtime import TeamRuntime
 from super_agent import Agent
 
 

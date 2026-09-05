@@ -1,10 +1,10 @@
 import unittest
 
-from core.event import RunIdentity
-from core.provider import MockModel
-from core.run import RuntimeLifecycle, ToolContext
-from skill.organization import TeamSettings, team_node
-from skill.organization_runtime import TeamRuntime
+from super_agent.core.event import RunIdentity
+from super_agent.core.provider import MockModel
+from super_agent.core.run import RuntimeLifecycle, ToolContext
+from super_agent.skill.organization import TeamSettings, team_node
+from super_agent.skill.organization_runtime import TeamRuntime
 from super_agent import Agent
 from tests.run_state import make_run_state
 

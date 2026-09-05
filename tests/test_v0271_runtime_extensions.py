@@ -1,7 +1,7 @@
 import unittest
 
-from core.provider import MockModel
-from core.run import (
+from super_agent.core.provider import MockModel
+from super_agent.core.run import (
     RuntimeControl,
     RuntimeControlError,
     RunInput,

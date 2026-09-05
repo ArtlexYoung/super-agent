@@ -2,11 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from adapter.storage import MemoryStorage
-from core.model import ModelEvent
-from core.provider import MockModel
-from skill.document import format_skill
-from skill.library import AgentLibrary
+from super_agent.adapter.storage import MemoryStorage
+from super_agent.core.model import ModelEvent
+from super_agent.core.provider import MockModel
+from super_agent.skill.document import format_skill
+from super_agent.skill.library import AgentLibrary
 from super_agent import Agent
 
 
@@ -55,7 +55,7 @@ class LearningRecordTests(unittest.TestCase):
                 encoding="utf-8",
             )
             agent = Agent(MockModel("answer"))
-            builtin = Path(__file__).resolve().parents[1] / "src" / "skill" / "builtin"
+            builtin = Path(__file__).resolve().parents[1] / "src" / "super_agent" / "skill" / "builtin"
             agent.use_agent_library(AgentLibrary((builtin, root)))
             agent.enable_skill_evolution()
             agent.use_storage(MemoryStorage())

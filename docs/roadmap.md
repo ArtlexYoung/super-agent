@@ -120,6 +120,10 @@ v0.2.85 让 CLI 直接安装、打包、列出、读取与移除本地 Skill，�
 
 v0.2.85 lets the CLI install, pack, list, read, and remove local Skills directly, reusing AgentLibrary conflict checks and rollback, and fixes the idempotent content-hash basis for same-content reinstalls.
 
+v0.2.86 统一到 `super_agent.*` 命名空间；在仓库外安装 wheel 可 `import super_agent`，并与宿主自己的 `core`/`skill` 包共存。
+
+v0.2.86 unifies the codebase under the `super_agent.*` namespace; a wheel installed outside the repo supports `import super_agent` and coexists with a host project's own `core`/`skill` packages.
+
 后续演进按风险和可验证性推进：
 
 Future work should proceed by risk and verifiability:

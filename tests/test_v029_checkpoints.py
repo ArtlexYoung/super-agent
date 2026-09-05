@@ -1,10 +1,10 @@
 import unittest
 
-from adapter.storage import EventCheckpointStore, MemoryCheckpointStore, MemoryStorage
-from core.event import RunCheckpoint, RunIdentity
-from core.records import EventStore
-from core.provider import MockModel
-from core.run import RunInput, RunInterrupted, collect_run, stream_run
+from super_agent.adapter.storage import EventCheckpointStore, MemoryCheckpointStore, MemoryStorage
+from super_agent.core.event import RunCheckpoint, RunIdentity
+from super_agent.core.records import EventStore
+from super_agent.core.provider import MockModel
+from super_agent.core.run import RunInput, RunInterrupted, collect_run, stream_run
 from super_agent import Agent, AgentContext
 
 

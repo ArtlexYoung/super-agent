@@ -1,0 +1,598 @@
+"""实现 Agent 树中统一任务队列的创建、选择、执行和等待。"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import replace
+from threading import Condition, RLock, Thread
+from uuid import uuid4
+
+from super_agent.core import require_text as _text
+from super_agent.core.event import RunIdentity, RunResult, utc_now
+from super_agent.core.records import compact_child_result
+from super_agent.core.run import RuntimeLifecycle
+from super_agent.skill.organization import (
+    TeamNode,
+    TeamMember,
+    Task,
+    TeamSettings,
+)
+from super_agent.skill.organization_tools import strings
+from super_agent.skill.organization_workers import AgentWorkerPool, candidate_members
+
+TERMINAL = frozenset({"completed", "failed", "cancelled"})
+TASK_TRANSITIONS = {
+    None: frozenset({"created"}),
+    "created": frozenset({"queued", "cancelled"}),
+    "queued": frozenset({"running", "cancelled"}),
+    "running": frozenset({"queued", "completed", "failed"}),
+    "completed": frozenset(),
+    "failed": frozenset(),
+    "cancelled": frozenset(),
+}
+TASK_EVENTS = {
+    "created": "agent_task.created",
+    "queued": "agent_task.queued",
+    "running": "agent_task.running",
+    "completed": "agent_task.completed",
+    "failed": "agent_task.failed",
+    "cancelled": "agent_task.cancelled",
+}
+RecordEvent = Callable[[str, Mapping[str, object]], object]
+
+
+class TaskQueue:
+    """保存整棵树共用的任务状态；具体运行器在其上增加共享板和决策。"""
+
+    def __init__(
+        self,
+        root: TeamNode,
+        settings: TeamSettings,
+        record_event: RecordEvent | None,
+    ) -> None:
+        self.root = root
+        self.settings = settings
+        self.record_event = record_event
+        self._tasks: dict[str, Task] = {}
+        self._version = 0
+        self._condition = Condition(RLock())
+        self._workers = AgentWorkerPool(settings, self._record)
+        self._task_lifecycles: dict[str, RuntimeLifecycle] = {}
+
+    @property
+    def version(self) -> int:
+        return self._version
+
+    def create_task(
+        self,
+        prompt: str,
+        *,
+        source_group_id: str,
+        target_group_id: str | None = None,
+        purpose: str = "auto",
+        required_features: Iterable[str] = ("text",),
+        shared_context: Mapping[str, object] | None = None,
+        runtime_lifecycle: RuntimeLifecycle | None = None,
+    ) -> Task:
+        with self._condition:
+            source = self._require_group(source_group_id)
+            target = self._target_group(source, target_group_id)
+            if len(self._tasks) >= self.settings.max_tasks:
+                raise RuntimeError(
+                    f"Agent task limit reached: {self.settings.max_tasks}"
+                )
+            task = Task(
+                task_id=f"task-{uuid4().hex}",
+                prompt=_text(prompt, "Agent task prompt"),
+                source_group_id=source.group_id,
+                target_group_id=target.group_id,
+                purpose=_text(purpose, "Agent task purpose"),
+                required_features=strings(required_features, "required features"),
+                shared_context=(
+                    None if shared_context is None else dict(shared_context)
+                ),
+            )
+            if runtime_lifecycle is not None:
+                self._task_lifecycles[task.task_id] = runtime_lifecycle
+            return self._change(task)
+
+    def dispatch_task(
+        self,
+        task_id: str,
+        *,
+        source_group_id: str,
+        agent_name: str | None = None,
+        parent_identity: RunIdentity | None = None,
+        runtime_lifecycle: RuntimeLifecycle | None = None,
+    ) -> Task:
+        with self._condition:
+            task = self._require_task(task_id)
+            if runtime_lifecycle is not None:
+                self._task_lifecycles[task_id] = runtime_lifecycle
+            if task.source_group_id != source_group_id:
+                raise PermissionError("a group can dispatch only its own tasks")
+            _validate_task_transition(task.status, "queued")
+            worker = self._choose(task, agent_name, set())
+            queued = self._change(
+                task,
+                status="queued",
+                agent_name=worker.name,
+                worker_link_id=worker.link_id,
+                parent_identity=parent_identity,
+            )
+            self._start(queued.task_id, worker)
+            return queued
+
+    def dispatch_tasks(
+        self,
+        task_ids: Iterable[str],
+        *,
+        source_group_id: str,
+        different_models: bool = False,
+        parent_identity: RunIdentity | None = None,
+        runtime_lifecycle: RuntimeLifecycle | None = None,
+    ) -> tuple[Task, ...]:
+        """原子选择不同 Agent，再并行派发一组路由条件相同的任务。"""
+        selected_ids = tuple(dict.fromkeys(task_ids))
+        if len(selected_ids) < 2:
+            raise ValueError("batch dispatch requires at least two different task IDs")
+        with self._condition:
+            tasks = tuple(self._require_task(task_id) for task_id in selected_ids)
+            if runtime_lifecycle is not None:
+                for task in tasks:
+                    self._task_lifecycles[task.task_id] = runtime_lifecycle
+            for task in tasks:
+                if task.source_group_id != source_group_id:
+                    raise PermissionError("a group can dispatch only its own tasks")
+                _validate_task_transition(task.status, "queued")
+            routes = {
+                (task.target_group_id, task.purpose, task.required_features)
+                for task in tasks
+            }
+            if len(routes) != 1:
+                raise ValueError(
+                    "batch-dispatched Agent tasks must share target, purpose, and features"
+                )
+            workers = self._choose_many(tasks[0], len(tasks), different_models)
+            if len(workers) != len(tasks):
+                diversity = " with different models" if different_models else ""
+                raise RuntimeError(
+                    f"not enough distinct Agents{diversity} for batch dispatch"
+                )
+            queued: list[Task] = []
+            for task, worker in zip(tasks, workers, strict=True):
+                self._record(
+                    "agent_task.dispatched",
+                    {
+                        "task_id": task.task_id,
+                        "agent_name": worker.name,
+                        "group_id": worker.group_id,
+                        "model_name": worker.model_name,
+                        "weight": worker.weight,
+                        "pricing": worker.pricing.to_dict(),
+                        "selection": "batch-distinct",
+                    },
+                )
+                queued.append(
+                    self._change(
+                        task,
+                        status="queued",
+                        agent_name=worker.name,
+                        worker_link_id=worker.link_id,
+                        parent_identity=parent_identity,
+                    )
+                )
+        for task, worker in zip(queued, workers, strict=True):
+            self._start(task.task_id, worker)
+        return tuple(queued)
+
+    def list_tasks(
+        self, group_id: str, *, include_results: bool = True
+    ) -> list[dict[str, object]]:
+        with self._condition:
+            return [
+                task.to_dict(include_result=include_results)
+                for task in self._tasks.values()
+                if task.source_group_id == group_id
+            ]
+
+    def get_task(
+        self, task_id: str, *, source_group_id: str | None = None, include_result: bool = True
+    ) -> dict[str, object]:
+        """读取一条任务的当前状态，不改变队列。"""
+        with self._condition:
+            task = self._require_task(task_id)
+            if source_group_id is not None and task.source_group_id != source_group_id:
+                raise PermissionError("a group can read only its own task")
+            return task.to_dict(include_result=include_result)
+
+    def wait_for_task(
+        self, task_id: str, *, source_group_id: str, timeout_seconds: float
+    ) -> dict[str, object]:
+        """等待一条任务进入完成、失败或取消状态。"""
+        value = self.wait_for_tasks(
+            "selected_tasks_finished",
+            group_id=source_group_id,
+            timeout_seconds=timeout_seconds,
+            task_ids=(task_id,),
+        )
+        value["task"] = self.get_task(task_id, source_group_id=source_group_id)
+        return value
+
+    def collect_independent_task_results(
+        self, task_ids: Iterable[str], *, source_group_id: str, minimum: int = 2
+    ) -> dict[str, object]:
+        """收集不同 Agent 的完整结果；证据不足时明确失败。"""
+        selected = tuple(dict.fromkeys(task_ids))
+        if minimum < 2 or len(selected) < minimum:
+            raise ValueError("independent task collection requires at least two tasks")
+        with self._condition:
+            tasks = tuple(self._require_task(task_id) for task_id in selected)
+            if any(task.source_group_id != source_group_id for task in tasks):
+                raise PermissionError("a group can collect only its own tasks")
+            if any(task.status not in TERMINAL for task in tasks):
+                raise RuntimeError("independent task collection requires terminal tasks")
+            completed = tuple(task for task in tasks if task.status == "completed")
+            reviewers = {task.worker_link_id for task in completed if task.worker_link_id}
+            if len(reviewers) < minimum:
+                raise RuntimeError("not enough independent completed Agent results")
+            return {
+                "reviewer_count": len(reviewers),
+                "completed_count": len(completed),
+                "failed_reviewers": [task.agent_name for task in tasks if task.status != "completed"],
+                "tasks": [task.to_dict() for task in tasks],
+            }
+
+    def wait_for_tasks(
+        self,
+        trigger: str,
+        *,
+        group_id: str,
+        timeout_seconds: float,
+        task_ids: Iterable[str] = (),
+        after_version: int = 0,
+    ) -> dict[str, object]:
+        timeout = min(max(0.0, timeout_seconds), self.settings.max_wait_seconds)
+        selected_ids = tuple(dict.fromkeys(task_ids))
+        if trigger == "selected_tasks_finished" and not selected_ids:
+            raise ValueError("selected_tasks_finished requires task IDs")
+        with self._condition:
+            for task_id in selected_ids:
+                if self._require_task(task_id).source_group_id != group_id:
+                    raise PermissionError(
+                        "a group can wait only for its own selected tasks"
+                    )
+            self._record(
+                "agent_task.wait.started",
+                {
+                    "group_id": group_id,
+                    "trigger": trigger,
+                    "timeout_seconds": timeout,
+                    "after_version": after_version,
+                },
+            )
+            matched = self._condition.wait_for(
+                lambda: self._task_triggered(
+                    trigger, group_id, selected_ids, after_version
+                ),
+                timeout=timeout,
+            )
+            scoped = [
+                task
+                for task in self._tasks.values()
+                if task.source_group_id == group_id
+            ]
+            changed = [task for task in scoped if task.version > after_version]
+            reason = trigger if matched else "timeout"
+            value = {
+                "reason": reason,
+                "version": self._version,
+                "tasks": [task.to_dict() for task in changed],
+                "all_tasks_finished": bool(scoped)
+                and all(task.status in TERMINAL for task in scoped),
+            }
+            self._record(
+                "agent_task.wait.woke",
+                {
+                    "group_id": group_id,
+                    "reason": reason,
+                    "version": self._version,
+                    "changed_tasks": len(changed),
+                },
+            )
+            return value
+
+    def cancel_task(self, task_id: str, *, source_group_id: str) -> Task:
+        with self._condition:
+            task = self._require_task(task_id)
+            if task.source_group_id != source_group_id:
+                raise PermissionError("a group can cancel only its own tasks")
+            return self._change(task, status="cancelled")
+
+    def _consume(self, task_id: str, worker: TeamMember) -> None:
+        with self._workers.lock_for(worker):
+            with self._condition:
+                task = self._require_task(task_id)
+                if task.status == "cancelled":
+                    return
+                task = self._change(
+                    task,
+                    status="running",
+                    attempts=task.attempts + 1,
+                )
+            planned_mode = self._record_mode(task_id)
+            shared = {**(task.shared_context or {}), "record_mode": planned_mode}
+            try:
+                result = self._run_worker(worker, task, shared)
+            except Exception as error:  # noqa: BLE001 - 子 Agent 错误需进入任务状态。
+                self._handle_failure(task_id, worker, error)
+                return
+            raw = result.to_dict()
+            mode, reason = self._select_record_mode(raw, planned_mode)
+            compacted = compact_child_result(
+                raw,
+                mode=mode,
+                summary_characters=self.settings.summary_characters,
+                nested_results=self.settings.nested_results,
+            )
+            compacted.update(record_mode=mode, compression_reason=reason)
+            with self._condition:
+                self._workers.mark_success(worker)
+                self._change(
+                    self._require_task(task_id),
+                    status="completed",
+                    result=compacted,
+                )
+
+    def _run_worker(
+        self,
+        worker: TeamMember,
+        task: Task,
+        shared: Mapping[str, object],
+    ) -> RunResult:
+        from super_agent import AgentContext
+
+        parent = task.parent_identity or RunIdentity(
+            agent_name=getattr(worker.agent, "name", worker.name)
+        )
+        identity = parent.child(worker.name, conversation_id=parent.conversation_id)
+        lifecycle = self._task_lifecycles.get(task.task_id)
+        if lifecycle is None:
+            lifecycle = RuntimeLifecycle(parent.run_id)
+            self._task_lifecycles[task.task_id] = lifecycle
+        context = AgentContext(
+            user_id=identity.user_id,
+            conversation_id=identity.conversation_id,
+            identity=identity,
+            purpose=task.purpose,
+            required_features=task.required_features,
+            save_conversation=False,
+            persist_run_events=shared.get("record_mode") != "summary",
+            shared_context=shared,
+            team_runtime=self,
+            agent_group_id=worker.group_id,
+            runtime_lifecycle=lifecycle,
+        )
+        return worker.agent.run(task.prompt, context=context)
+
+    def _handle_failure(
+        self, task_id: str, worker: TeamMember, error: Exception
+    ) -> None:
+        with self._condition:
+            temporary = self._workers.mark_failure(worker, error)
+            task = self._require_task(task_id)
+            if (
+                temporary
+                and task.fallback_count < self.settings.retry_unavailable_times
+            ):
+                try:
+                    next_worker = self._choose(task, None, {worker.link_id})
+                except RuntimeError:
+                    next_worker = worker
+                delay = (
+                    self._workers.retry_delay(worker) if next_worker is worker else 0.0
+                )
+                retried = self._change(
+                    task,
+                    event_type="agent_task.retry_scheduled",
+                    status="queued",
+                    agent_name=next_worker.name,
+                    worker_link_id=next_worker.link_id,
+                    fallback_count=task.fallback_count + 1,
+                    error_type=type(error).__name__,
+                    error_message=str(error),
+                )
+                self._start_after(retried.task_id, next_worker, delay)
+                return
+            self._change(
+                task,
+                status="failed",
+                error_type=type(error).__name__,
+                error_message=str(error),
+            )
+
+    def _choose(
+        self, task: Task, requested: str | None, excluded: set[str]
+    ) -> TeamMember:
+        candidates = self._candidates(task)
+        return self._workers.choose(
+            task,
+            candidates,
+            active=self._active_counts(candidates),
+            requested=requested,
+            excluded=excluded,
+        )
+
+    def _choose_many(
+        self, task: Task, count: int, different_models: bool
+    ) -> list[TeamMember]:
+        candidates = self._candidates(task)
+        return self._workers.choose_many(
+            task,
+            candidates,
+            count,
+            active=self._active_counts(candidates),
+            different_models=different_models,
+        )
+
+    def _candidates(self, task: Task) -> list[TeamMember]:
+        source = self._require_group(task.source_group_id)
+        target = self._require_group(task.target_group_id)
+        return candidate_members(target, source)
+
+    def _active_counts(self, candidates: Iterable[TeamMember]) -> dict[str, int]:
+        active = {worker.link_id: 0 for worker in candidates}
+        for task in self._tasks.values():
+            if task.worker_link_id in active and task.status in {
+                "queued",
+                "running",
+            }:
+                active[task.worker_link_id] += 1
+        return active
+
+    def _start(self, task_id: str, worker: TeamMember) -> None:
+        Thread(
+            target=self._consume,
+            args=(task_id, worker),
+            name=f"super-agent-{worker.name}",
+            daemon=True,
+        ).start()
+
+    def _start_after(
+        self, task_id: str, worker: TeamMember, delay_seconds: float
+    ) -> None:
+        if delay_seconds <= 0:
+            self._start(task_id, worker)
+            return
+
+        def wait_and_start() -> None:
+            with self._condition:
+                cancelled = self._condition.wait_for(
+                    lambda: self._require_task(task_id).status == "cancelled",
+                    timeout=delay_seconds,
+                )
+            if not cancelled:
+                self._start(task_id, worker)
+
+        Thread(
+            target=wait_and_start,
+            name=f"super-agent-retry-{worker.name}",
+            daemon=True,
+        ).start()
+
+    def _change(
+        self,
+        task: Task,
+        *,
+        event_type: str | None = None,
+        **changes: object,
+    ) -> Task:
+        with self._condition:
+            current = self._tasks.get(task.task_id)
+            if current is not None and current.version != task.version:
+                raise RuntimeError(f"Agent task changed concurrently: {task.task_id}")
+            previous = None if current is None else current.status
+            target = changes.get("status", task.status)
+            if not isinstance(target, str):
+                raise TypeError("Agent task status must be text")
+            _validate_task_transition(previous, target)
+            self._version += 1
+            updated = replace(
+                task, version=self._version, updated_at=utc_now(), **changes
+            )
+            self._tasks[task.task_id] = updated
+            lifecycle = self._task_lifecycles.get(task.task_id)
+            if lifecycle is not None:
+                lifecycle.record_task_event(
+                    task.task_id,
+                    status=updated.status,
+                    agent_name=updated.agent_name,
+                    worker_link_id=updated.worker_link_id,
+                )
+            self._record(
+                event_type or TASK_EVENTS[target],
+                updated.to_dict(
+                    include_result=target == "completed"
+                ),
+            )
+            self._condition.notify_all()
+            return updated
+
+    def _task_triggered(
+        self,
+        trigger: str,
+        group_id: str,
+        task_ids: tuple[str, ...],
+        after_version: int,
+    ) -> bool:
+        tasks = [
+            task for task in self._tasks.values() if task.source_group_id == group_id
+        ]
+        changed = [task for task in tasks if task.version > after_version]
+        if trigger == "timeout":
+            return False
+        if trigger == "any_task_finished":
+            return any(task.status in TERMINAL for task in changed)
+        if trigger == "any_task_completed":
+            return any(task.status == "completed" for task in changed)
+        if trigger == "any_task_failed":
+            return any(task.status == "failed" for task in changed)
+        if trigger == "all_tasks_finished":
+            return bool(tasks) and all(task.status in TERMINAL for task in tasks)
+        if trigger == "selected_tasks_finished":
+            return all(
+                self._require_task(task_id).status in TERMINAL for task_id in task_ids
+            )
+        raise ValueError(f"unknown Agent task wake trigger: {trigger}")
+
+    def _record_mode(self, task_id: str) -> str:
+        if self.settings.record_mode != "adaptive":
+            return self.settings.record_mode
+        position = list(self._tasks).index(task_id) + 1
+        return "full" if position <= self.settings.compress_after_tasks else "summary"
+
+    def _select_record_mode(self, result: Mapping[str, object], planned_mode: str) -> tuple[str, str]:
+        if self.settings.record_mode != "adaptive": return planned_mode, "configured"
+        if planned_mode == "summary": return "summary", "adaptive_task_position"
+        size = len(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+        events = result.get("events")
+        count = len(events) if isinstance(events, list) else 0
+        if size > self.settings.max_full_result_characters or count > self.settings.max_full_result_events:
+            reason = "adaptive_result_size" if size > self.settings.max_full_result_characters else "adaptive_event_count"
+            return "summary", reason
+        return "full", "adaptive_within_limits"
+
+    def _target_group(
+        self, source: TeamNode, target_group_id: str | None
+    ) -> TeamNode:
+        target = (
+            source if target_group_id is None else self._require_group(target_group_id)
+        )
+        if not source.contains(target):
+            raise PermissionError("a group can assign only within its own subtree")
+        return target
+
+    def _require_group(self, group_id: str) -> TeamNode:
+        return self.root.find(group_id)
+
+    def _require_task(self, task_id: str) -> Task:
+        try:
+            return self._tasks[task_id]
+        except KeyError as error:
+            raise KeyError(f"Agent task not found: {task_id}") from error
+
+    def _record(self, event_type: str, data: Mapping[str, object]) -> None:
+        if self.record_event is not None:
+            self.record_event(event_type, data)
+
+
+def _validate_task_transition(previous: str | None, target: str) -> None:
+    allowed = TASK_TRANSITIONS.get(previous)
+    if allowed is None or target not in allowed:
+        raise ValueError(f"invalid Agent task transition: {previous} -> {target}")
+
+
+
+
+__all__ = ["TERMINAL", "TaskQueue", "RecordEvent"]

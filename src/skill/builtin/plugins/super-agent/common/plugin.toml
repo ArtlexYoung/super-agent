@@ -1,9 +1,0 @@
-schema = 1
-id = "super-agent/common"
-version = "0.2.85"
-description = "General task methods"
-entry_skill = "skill:super-agent/common"
-skills = []
-included_plugins = ["plugin:super-agent/task", "plugin:super-agent/team", "plugin:super-agent/review"]
-required_mcp_servers = []
-optional_mcp_servers = []

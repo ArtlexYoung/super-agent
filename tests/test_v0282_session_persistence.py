@@ -5,11 +5,11 @@ import unittest
 from contextlib import redirect_stdout
 from unittest import mock
 
-import adapter.cli as cli
-from adapter.storage import MemoryStorage
-from core.model import Message
-from core.provider import MockModel
-from core.records import Conversations
+import super_agent.adapter.cli as cli
+from super_agent.adapter.storage import MemoryStorage
+from super_agent.core.model import Message
+from super_agent.core.provider import MockModel
+from super_agent.core.records import Conversations
 from super_agent import Agent
 
 

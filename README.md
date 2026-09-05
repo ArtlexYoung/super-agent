@@ -102,11 +102,11 @@ Groups and subagents compose naturally in code. Level 1 is the root group, struc
 ```python
 from pathlib import Path
 from super_agent import Agent, model_from_environment
-from skill.library import AgentLibrary
+from super_agent.skill.library import AgentLibrary
 
 main = Agent(model_from_environment())
 coder = Agent(model_from_environment())
-main.use_agent_library(AgentLibrary((Path("src/skill/builtin"),)))
+main.use_agent_library(AgentLibrary((Path("src/super_agent/skill/builtin"),)))
 engineering = main.add_group("engineering")
 engineering.add_subagent(coder, name="coder", description="实现并验证代码修改")
 result = main.run(
@@ -240,5 +240,5 @@ Third-party projects retain their own copyrights and licenses; this project is l
 The full release gate checks Python tests, compilation, package contents, offline evaluation, and build.
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.85 --full
+python3.11 scripts/verify_release.py --version 0.2.86 --full
 ```

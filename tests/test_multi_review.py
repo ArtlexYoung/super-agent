@@ -2,12 +2,12 @@ import json
 import unittest
 from pathlib import Path
 
-from core.event import RunIdentity
-from core.provider import MockModel
-from core.run import ToolContext
-from skill.library import AgentLibrary
-from skill.organization import TeamMemberSettings, TeamSettings, team_node
-from skill.organization_runtime import TeamRuntime
+from super_agent.core.event import RunIdentity
+from super_agent.core.provider import MockModel
+from super_agent.core.run import ToolContext
+from super_agent.skill.library import AgentLibrary
+from super_agent.skill.organization import TeamMemberSettings, TeamSettings, team_node
+from super_agent.skill.organization_runtime import TeamRuntime
 from super_agent import Agent
 from tests.run_state import make_run_state
 
@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class MultiAgentReviewTests(unittest.TestCase):
     def test_review_skill_mounts_the_shared_multi_agent_tools(self):
-        library = AgentLibrary((ROOT / "src" / "skill" / "builtin",))
+        library = AgentLibrary((ROOT / "src" / "super_agent" / "skill" / "builtin",))
         root = Agent(MockModel("root"), name="root")
         root.add_subagent(Agent(MockModel("first")), name="reviewer-a")
         root.add_subagent(Agent(MockModel("second")), name="reviewer-b")

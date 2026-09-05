@@ -1,6 +1,6 @@
 [project]
 name = "super-agent"
-version = "0.2.85"
+version = "0.2.86"
 description = "A simple, lightweight, highly intelligent, self-evolving, skill-first agent runtime."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,14 +12,14 @@ mysql = ["PyMySQL>=1.1,<2"]
 postgresql = ["psycopg[binary]>=3.2,<4"]
 
 [project.scripts]
-super-agent = "adapter.cli:main"
+super-agent = "super_agent.adapter.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-only-include = ["src/adapter", "src/core", "src/skill", "src/cli.py", "src/super_agent.py"]
+only-include = ["src/super_agent"]
 sources = ["src"]
 
 [tool.hatch.build.targets.sdist]

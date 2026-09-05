@@ -1,7 +1,7 @@
 """在代码中组合组、Agent 和已有子树。"""
 
-from core.provider import MockModel
-from skill.organization import TeamMemberSettings
+from super_agent.core.provider import MockModel
+from super_agent.skill.organization import TeamMemberSettings
 from super_agent import Agent
 
 master = Agent(MockModel("The team is ready."), name="master")

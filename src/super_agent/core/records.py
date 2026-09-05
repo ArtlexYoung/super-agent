@@ -1,0 +1,745 @@
+"""定义可选持久化所需的中立记录、审计和对话契约。"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from threading import RLock
+from types import MappingProxyType
+from typing import Protocol, runtime_checkable
+from uuid import uuid4
+
+from super_agent.core import dataclass_data, require_integer as _integer, require_text as _text
+from super_agent.core.event import CRITICAL_EVENT_TYPES, RunEvent, RunIdentity, event_category, utc_now
+from super_agent.core.model import Message
+
+
+STATE_STREAMS = frozenset(
+    {"conversation", "memory", "model_profile", "skill_change", "checkpoint"}
+)
+CRITICAL_EVENTS = CRITICAL_EVENT_TYPES
+SENSITIVE_NAMES = frozenset(
+    {"api_key", "apikey", "authorization", "cookie", "password", "secret", "token", "access_token", "refresh_token"}
+)
+CONTENT_FIELDS = frozenset(
+    {"content", "prompt", "text", "arguments", "result", "message", "messages", "body", "reason", "error"}
+)
+SESSION_OMITTED_EVENTS = frozenset({"model.text.delta"})
+
+
+class SessionRecord:
+    """显式创建的内存会话记录，使用与持久化事件相同的 Record 形状。"""
+
+    def __init__(
+        self,
+        session_id: str | None = None,
+        *,
+        scope: RecordScope | None = None,
+    ) -> None:
+        self.session_id = session_id or f"session-{uuid4().hex}"
+        _text(self.session_id, "session_id")
+        if scope is not None and not isinstance(scope, RecordScope):
+            raise TypeError("session scope must be a RecordScope")
+        if scope is not None and scope.session_id not in {None, self.session_id}:
+            raise ValueError("session ID does not match session scope")
+        self.scope = scope
+        self._entries: list[Record] = []
+        self._status = "running"
+        self._lock = RLock()
+
+    @property
+    def status(self) -> str:
+        with self._lock:
+            return self._status
+
+    def append_record(
+        self,
+        event_type: str,
+        data: Mapping[str, object] | None = None,
+        *,
+        created_at: str | None = None,
+        run_id: str | None = None,
+    ) -> Record:
+        """追加一条记录；结束后拒绝继续写入。"""
+        with self._lock:
+            if self._status != "running":
+                raise RuntimeError("session record is already finished")
+            selected = dict(data or {})
+            selected_run_id = run_id or _run_id(selected)
+            if selected_run_id is not None:
+                selected["run_id"] = selected_run_id
+            scope = self.scope or RecordScope(session_id=self.session_id)
+            entry = Record(
+                event_id=f"session-{uuid4().hex}",
+                user_id=scope.user_id,
+                agent_name=scope.agent_name,
+                scope_key=scope.storage_key,
+                stream="session",
+                stream_id=self.session_id,
+                event_type=_text(event_type, "session event_type"),
+                data=compact_session_data(selected),
+                created_at=created_at or utc_now(),
+                position=len(self._entries) + 1,
+            )
+            self._entries.append(entry)
+            return entry
+
+    def append_event(self, event: RunEvent) -> Record | None:
+        """追加统一格式的运行事件，并省略高频文本增量。"""
+        if event.event_type in SESSION_OMITTED_EVENTS:
+            return None
+        return self.append_record(
+            event.event_type,
+            compact_session_data(event.data),
+            created_at=event.created_at,
+            run_id=event.run_id,
+        )
+
+    def read_records(self) -> tuple[Record, ...]:
+        with self._lock:
+            return tuple(self._entries)
+
+    def finish(
+        self,
+        status: str = "completed",
+        data: Mapping[str, object] | None = None,
+    ) -> Record:
+        """显式结束会话，并记录最终状态。"""
+        selected = _text(status, "session status")
+        with self._lock:
+            if self._status != "running":
+                raise RuntimeError("session record is already finished")
+            entry = self.append_record(
+                "session.finished",
+                {"status": selected, **dict(data or {})},
+                created_at=utc_now(),
+            )
+            self._status = selected
+            return entry
+
+
+@dataclass(frozen=True)
+class RecordScope:
+    """统一描述记录所属的用户、Agent、工作目录、会话和运行。"""
+
+    user_id: str = "local"
+    agent_name: str = "super-agent"
+    working_directory_id: str | None = None
+    conversation_id: str | None = None
+    session_id: str | None = None
+    run_id: str | None = None
+
+    def __post_init__(self) -> None:
+        _text(self.user_id, "record scope user_id")
+        _text(self.agent_name, "record scope agent_name")
+        for name in (
+            "working_directory_id",
+            "conversation_id",
+            "session_id",
+            "run_id",
+        ):
+            value = getattr(self, name)
+            if value is not None:
+                _text(value, f"record scope {name}")
+
+    @classmethod
+    def from_identity(cls, identity: RunIdentity) -> RecordScope:
+        """从运行身份创建完整记录边界。"""
+        return cls(
+            user_id=identity.user_id,
+            agent_name=identity.agent_name,
+            working_directory_id=identity.working_directory_id,
+            conversation_id=identity.conversation_id,
+            session_id=identity.session_id,
+            run_id=identity.run_id,
+        )
+
+    def for_agent(self, agent_name: str) -> RecordScope:
+        """保留用户及其他上下文，只切换记录所属 Agent。"""
+        return RecordScope(
+            user_id=self.user_id,
+            agent_name=_text(agent_name, "record scope agent_name"),
+            working_directory_id=self.working_directory_id,
+            conversation_id=self.conversation_id,
+            session_id=self.session_id,
+            run_id=self.run_id,
+        )
+
+    @property
+    def storage_key(self) -> str:
+        """返回用户与工作目录的稳定存储边界键。"""
+        value = json.dumps([self.user_id, self.working_directory_id], ensure_ascii=False, separators=(",", ":"))
+        return hashlib.sha256(value.encode()).hexdigest()
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "user_id": self.user_id,
+            "agent_name": self.agent_name,
+            "working_directory_id": self.working_directory_id,
+            "conversation_id": self.conversation_id,
+            "session_id": self.session_id,
+            "run_id": self.run_id,
+            "storage_key": self.storage_key,
+        }
+
+
+@dataclass(frozen=True)
+class Record:
+    event_id: str
+    user_id: str
+    agent_name: str
+    scope_key: str
+    stream: str
+    stream_id: str
+    event_type: str
+    data: Mapping[str, object]
+    created_at: str
+    position: int = 0
+
+    def __post_init__(self) -> None:
+        for name in ("event_id", "user_id", "agent_name", "scope_key", "stream", "stream_id", "event_type", "created_at"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"record {name} cannot be empty")
+        if isinstance(self.position, bool) or not isinstance(self.position, int) or self.position < 0:
+            raise ValueError("record position must be a non-negative integer")
+        object.__setattr__(self, "data", MappingProxyType(_json_copy(self.data)))
+
+    def to_dict(self) -> dict[str, object]:
+        return dataclass_data(self)
+
+    @property
+    def sequence(self) -> int:
+        """返回记录在所属流内的顺序。"""
+        return self.position
+
+    @property
+    def session_id(self) -> str | None:
+        """仅为内存会话流返回会话 ID。"""
+        return self.stream_id if self.stream == "session" else None
+
+    @property
+    def run_id(self) -> str | None:
+        value = self.data.get("run_id")
+        return value if isinstance(value, str) and value.strip() else None
+
+    @property
+    def category(self) -> str:
+        return event_category(self.event_type)
+
+    @property
+    def critical(self) -> bool:
+        return self.event_type in CRITICAL_EVENTS
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, object]) -> Record:
+        data = value.get("data")
+        if not isinstance(data, Mapping):
+            raise TypeError("record data must be an object")
+        return cls(
+            event_id=_text(value.get("event_id"), "record event_id"),
+            user_id=_text(value.get("user_id"), "record user_id"),
+            agent_name=_text(value.get("agent_name"), "record agent_name"),
+            scope_key=_text(value.get("scope_key"), "record scope_key"),
+            stream=_text(value.get("stream"), "record stream"),
+            stream_id=_text(value.get("stream_id"), "record stream_id"),
+            event_type=_text(value.get("event_type"), "record event_type"),
+            data=dict(data),
+            created_at=_text(value.get("created_at"), "record created_at"),
+            position=_integer(value.get("position", 0), "record position", 0),
+        )
+
+
+@dataclass(frozen=True)
+class RecordQuery:
+    user_id: str | None = None
+    agent_name: str | None = None
+    scope_key: str | None = None
+    stream: str | None = None
+    stream_id: str | None = None
+    event_types: tuple[str, ...] = ()
+    event_ids: tuple[str, ...] = ()
+    before: str | None = None
+    limit: int | None = None
+    descending: bool = False
+
+    def matches(self, record: Record) -> bool:
+        checks = (
+            self.user_id is None or record.user_id == self.user_id,
+            self.agent_name is None or record.agent_name == self.agent_name,
+            self.scope_key is None or record.scope_key == self.scope_key,
+            self.stream is None or record.stream == self.stream,
+            self.stream_id is None or record.stream_id == self.stream_id,
+            not self.event_types or record.event_type in self.event_types,
+            not self.event_ids or record.event_id in self.event_ids,
+            self.before is None or record.created_at < self.before,
+        )
+        return all(checks)
+
+
+class RecordBackend(Protocol):
+    def append(self, record: Record) -> Record: ...
+
+    def read(self, query: RecordQuery) -> list[Record]: ...
+
+    def delete(self, query: RecordQuery) -> int: ...
+
+
+@runtime_checkable
+class MemoryStore(Protocol):
+    """Memory Skill 使用的最小持久化契约。"""
+
+    def read_items(self) -> list[Mapping[str, object]]: ...
+
+    def append_item(
+        self, memory_id: str, event_type: str, data: Mapping[str, object]
+    ) -> object: ...
+
+
+class EventStore:
+    """把可信用户和 Agent 作用域固定在所有存储操作上。"""
+
+    def __init__(
+        self,
+        backend: RecordBackend,
+        user_id: str | None = None,
+        agent_name: str | None = None,
+        *,
+        scope: RecordScope | None = None,
+    ) -> None:
+        self.backend = backend
+        if scope is not None and not isinstance(scope, RecordScope):
+            raise TypeError("event store scope must be a RecordScope")
+        if scope is not None:
+            if user_id is not None and _text(user_id, "store user_id") != scope.user_id:
+                raise ValueError("event store user_id does not match scope")
+            if agent_name is not None and _text(agent_name, "store agent_name") != scope.agent_name:
+                raise ValueError("event store agent_name does not match scope")
+            selected = scope
+        else:
+            selected = RecordScope(
+                user_id="local" if user_id is None else user_id,
+                agent_name="super-agent" if agent_name is None else agent_name,
+            )
+        self.scope = selected
+        self.user_id = selected.user_id
+        self.agent_name = selected.agent_name
+
+    def append(
+        self,
+        stream: str,
+        stream_id: str,
+        event_type: str,
+        data: Mapping[str, object],
+        *,
+        event_id: str | None = None,
+        created_at: str | None = None,
+    ) -> Record:
+        if self.scope.run_id is not None and stream == "run" and stream_id != self.scope.run_id:
+            raise ValueError("run record ID does not match event store scope")
+        record = Record(
+            event_id=event_id or f"event-{uuid4().hex}",
+            user_id=self.user_id,
+            agent_name=self.agent_name,
+            scope_key=self.scope.storage_key,
+            stream=_text(stream, "record stream"),
+            stream_id=_text(stream_id, "record stream_id"),
+            event_type=_text(event_type, "record event_type"),
+            data=data,
+            created_at=created_at or utc_now(),
+        )
+        return self.backend.append(record)
+
+    def read(
+        self,
+        stream: str | None = None,
+        stream_id: str | None = None,
+        *,
+        event_types: Sequence[str] = (),
+        limit: int | None = None,
+        descending: bool = False,
+    ) -> list[Record]:
+        query = RecordQuery(
+            user_id=self.user_id,
+            agent_name=self.agent_name,
+            scope_key=self.scope.storage_key,
+            stream=stream,
+            stream_id=stream_id,
+            event_types=tuple(event_types),
+            limit=limit,
+            descending=descending,
+        )
+        return self.backend.read(query)
+
+    def delete(self, stream: str, stream_id: str) -> int:
+        return self.backend.delete(
+            RecordQuery(user_id=self.user_id, agent_name=self.agent_name, scope_key=self.scope.storage_key, stream=stream, stream_id=stream_id)
+        )
+
+    def replace_state(
+        self,
+        stream: str,
+        stream_id: str,
+        event_type: str,
+        data: Mapping[str, object],
+    ) -> Record:
+        """先写入新状态再清除旧状态，写入失败时保留原值。"""
+        if stream not in STATE_STREAMS:
+            raise ValueError(f"replace_state requires a state stream: {stream}")
+        previous = self.read(stream, stream_id)
+        stored = self.append(stream, stream_id, event_type, data)
+        if previous:
+            deleted = self.backend.delete(
+                RecordQuery(
+                    user_id=self.user_id,
+                    agent_name=self.agent_name,
+                    scope_key=self.scope.storage_key,
+                    event_ids=tuple(item.event_id for item in previous),
+                )
+            )
+            if deleted != len(previous):
+                raise RuntimeError("state replacement did not remove every previous record")
+        return stored
+
+    def for_agent(self, agent_name: str) -> EventStore:
+        return EventStore(self.backend, scope=self.scope.for_agent(agent_name))
+
+    def for_identity(self, identity: RunIdentity) -> EventStore:
+        """为一个运行创建完整边界的记录视图。"""
+        selected = RecordScope.from_identity(identity)
+        if selected.user_id != self.user_id:
+            raise ValueError("run identity user does not match event store scope")
+        return EventStore(self.backend, scope=selected)
+
+    def run_listener(self, identity: RunIdentity) -> Callable[[RunEvent], Record]:
+        if identity.user_id != self.user_id or identity.agent_name != self.agent_name:
+            raise ValueError("run identity does not match event store scope")
+        if self.scope.run_id is not None and identity.run_id != self.scope.run_id:
+            raise ValueError("run identity run ID does not match event store scope")
+
+        def record(event: RunEvent) -> Record:
+            return self.append("run", identity.run_id, event.event_type, event.data, created_at=event.created_at)
+
+        return record
+
+    def find_user_run(self, run_id: str) -> list[Record]:
+        """按用户读取主或子 Agent 运行；方法名显式标明会跨 Agent。"""
+        records = self.backend.read(RecordQuery(user_id=self.user_id, scope_key=self.scope.storage_key, stream="run", stream_id=run_id))
+        owners = {record.agent_name for record in records}
+        if len(owners) > 1:
+            raise ValueError(f"run ID is ambiguous for user: {run_id}")
+        return records
+
+    def prune_audit(
+        self,
+        policy: AuditPolicy,
+        *,
+        apply: bool = False,
+        now: datetime | None = None,
+    ) -> dict[str, object]:
+        """只清理当前用户、Agent 和工作目录作用域，并记录清理事件。"""
+        result = policy.prune(
+            self.backend,
+            scope=self.scope,
+            apply=apply,
+            now=now,
+        )
+        if not apply:
+            return result
+        event = self.append(
+            "audit",
+            f"audit-{uuid4().hex}",
+            "audit.pruned",
+            {
+                "scope": self.scope.to_dict(),
+                "detailed_candidates": result["detailed_candidates"],
+                "critical_candidates": result["critical_candidates"],
+                "deleted": result["deleted"],
+            },
+        )
+        return {**result, "audit_event_id": event.event_id}
+
+
+@dataclass(frozen=True)
+class AuditPolicy:
+    """详细日志默认保留六个月，关键日志默认保留十二个月。"""
+
+    detailed_days: int = 180
+    critical_days: int = 365
+
+    def __post_init__(self) -> None:
+        if self.detailed_days < 1 or self.critical_days < 1:
+            raise ValueError("audit retention days must be positive")
+
+    def retention_days(self, record: Record) -> int | None:
+        if record.stream in STATE_STREAMS:
+            return None
+        return self.critical_days if record.event_type in CRITICAL_EVENTS else self.detailed_days
+
+    def audit_view(self, records: Sequence[Record], *, include_sensitive: bool = False) -> list[dict[str, object]]:
+        return [self.record_view(record, include_sensitive=include_sensitive) for record in records]
+
+    def record_view(self, record: Record, *, include_sensitive: bool = False) -> dict[str, object]:
+        """创建单条记录的统一审计视图，默认动态脱敏正文。"""
+        value = record.to_dict()
+        if not include_sensitive:
+            value["data"] = _redact(record.data)
+        value.update(
+            category=record.category,
+            critical=record.critical,
+            retention=("state" if record.stream in STATE_STREAMS else "critical" if record.critical else "detailed"),
+        )
+        return value
+
+    def prune(
+        self,
+        backend: RecordBackend,
+        *,
+        scope: RecordScope,
+        apply: bool = False,
+        now: datetime | None = None,
+    ) -> dict[str, object]:
+        """预览或显式清理当前用户、Agent 和工作目录的到期日志。"""
+        if not isinstance(scope, RecordScope):
+            raise TypeError("audit prune scope must be a RecordScope")
+        current = (now or datetime.now(UTC)).astimezone(UTC)
+        query = _audit_scope_query(scope)
+        records = backend.read(query)
+        expired: list[Record] = []
+        counts = {"detailed": 0, "critical": 0}
+        for record in records:
+            days = self.retention_days(record)
+            if days is None or _parse_time(record.created_at) >= current - timedelta(days=days):
+                continue
+            expired.append(record)
+            level = "critical" if record.event_type in CRITICAL_EVENTS else "detailed"
+            counts[level] += 1
+        deleted = 0
+        if apply and expired:
+            deleted = backend.delete(
+                _audit_scope_query(
+                    scope,
+                    event_ids=tuple(item.event_id for item in expired),
+                )
+            )
+        return {
+            "user_id": scope.user_id,
+            "agent_name": scope.agent_name,
+            "working_directory_id": scope.working_directory_id,
+            "scope": scope.to_dict(),
+            "applied": apply,
+            "detailed_candidates": counts["detailed"],
+            "critical_candidates": counts["critical"],
+            "deleted": deleted,
+            "detailed_days": self.detailed_days,
+            "critical_days": self.critical_days,
+        }
+
+
+def _audit_scope_query(
+    scope: RecordScope,
+    *,
+    event_ids: tuple[str, ...] = (),
+) -> RecordQuery:
+    """创建与预览和删除完全相同的审计边界。"""
+    return RecordQuery(
+        user_id=scope.user_id,
+        agent_name=scope.agent_name,
+        scope_key=scope.storage_key,
+        event_ids=event_ids,
+    )
+
+
+@dataclass(frozen=True)
+class ConversationMessage:
+    role: str
+    content: str
+    run_id: str
+    created_at: str
+
+
+@dataclass(frozen=True)
+class Conversation:
+    conversation_id: str
+    title: str
+    messages: tuple[ConversationMessage, ...]
+    created_at: str
+    updated_at: str
+
+    def model_messages(self) -> tuple[Message, ...]:
+        return tuple(Message(item.role, item.content) for item in self.messages)
+
+
+class Conversations:
+    """在一个 EventStore 内提供显式对话变更。"""
+
+    def __init__(self, store: EventStore) -> None:
+        self.store = store
+
+    def create(self, title: str = "", *, conversation_id: str | None = None) -> Conversation:
+        selected = conversation_id or f"conversation-{uuid4().hex}"
+        if self.store.read("conversation", selected):
+            raise ValueError(f"conversation already exists: {selected}")
+        self.store.append("conversation", selected, "conversation.created", {"title": title.strip()})
+        return self.read(selected)
+
+    def add_turn(self, conversation_id: str, prompt: str, response: str, *, run_id: str) -> Conversation:
+        try:
+            current = self.read(conversation_id)
+        except KeyError:
+            current = self.create(prompt.strip()[:48], conversation_id=conversation_id)
+        self.store.append(
+            "conversation",
+            current.conversation_id,
+            "conversation.turn_added",
+            {"prompt": _text(prompt, "conversation prompt"), "response": _text(response, "conversation response"), "run_id": _text(run_id, "conversation run_id")},
+        )
+        return self.read(current.conversation_id)
+
+    def clear(self, conversation_id: str) -> Conversation:
+        """清空消息但保留会话身份和标题。"""
+        self.read(conversation_id)
+        self.store.append("conversation", conversation_id, "conversation.cleared", {})
+        return self.read(conversation_id)
+
+    def read(self, conversation_id: str) -> Conversation:
+        events = self.store.read("conversation", conversation_id)
+        if not events:
+            raise KeyError(f"conversation not found: {conversation_id}")
+        return _conversation_from_records(events)
+
+    def list(self) -> list[Conversation]:
+        grouped: dict[str, list[Record]] = {}
+        for event in self.store.read("conversation"):
+            grouped.setdefault(event.stream_id, []).append(event)
+        return sorted((_conversation_from_records(events) for events in grouped.values()), key=lambda item: item.updated_at, reverse=True)
+
+    def rename(self, conversation_id: str, title: str) -> Conversation:
+        self.read(conversation_id)
+        self.store.append("conversation", conversation_id, "conversation.renamed", {"title": _text(title, "conversation title")})
+        return self.read(conversation_id)
+
+    def delete(self, conversation_id: str) -> int:
+        self.read(conversation_id)
+        return self.store.delete("conversation", conversation_id)
+
+
+def compact_child_result(
+    value: Mapping[str, object],
+    *,
+    mode: str,
+    summary_characters: int = 2000,
+    nested_results: int = 8,
+) -> dict[str, object]:
+    """按显式模式压缩大量子 Agent 记录，不修改实际返回值。"""
+    if mode not in {"full", "summary"}:
+        raise ValueError("record mode must be full or summary")
+    if mode == "full":
+        return _json_copy(value)
+    compacted = {
+        key: item
+        for key, item in value.items()
+        if key not in CONTENT_FIELDS and key != "events"
+    }
+    text = str(value.get("text", ""))
+    compacted.update(
+        text=text[:summary_characters],
+        text_characters=len(text),
+        text_sha256=hashlib.sha256(text.encode()).hexdigest(),
+        text_truncated=len(text) > summary_characters,
+        record_mode="summary",
+    )
+    events = value.get("events")
+    if isinstance(events, list):
+        event_types: dict[str, int] = {}
+        for event in events:
+            if not isinstance(event, Mapping):
+                continue
+            event_type = str(event.get("event_type", "unknown"))
+            event_types[event_type] = event_types.get(event_type, 0) + 1
+        compacted["event_count"] = len(events)
+        compacted["event_types"] = event_types
+    nested = value.get("subagent_results")
+    if isinstance(nested, list):
+        compacted["subagent_results"] = nested[:nested_results]
+        compacted["subagent_results_count"] = len(nested)
+    return _json_copy(compacted)
+
+
+def _conversation_from_records(records: Sequence[Record]) -> Conversation:
+    ordered = sorted(records, key=lambda item: item.position)
+    title = ""
+    messages: list[ConversationMessage] = []
+    for event in ordered:
+        if event.event_type in {"conversation.created", "conversation.renamed"}:
+            title = str(event.data.get("title", ""))
+        elif event.event_type == "conversation.turn_added":
+            run_id = _text(event.data.get("run_id"), "stored conversation run_id")
+            messages.extend(
+                (
+                    ConversationMessage("user", _text(event.data.get("prompt"), "stored prompt"), run_id, event.created_at),
+                    ConversationMessage("assistant", _text(event.data.get("response"), "stored response"), run_id, event.created_at),
+                )
+            )
+        elif event.event_type == "conversation.cleared":
+            messages.clear()
+        else:
+            raise ValueError(f"unknown conversation event: {event.event_type}")
+    first = ordered[0]
+    return Conversation(first.stream_id, title, tuple(messages), first.created_at, ordered[-1].created_at)
+
+
+def _redact(value: object, key: str = "") -> object:
+    normalized = key.lower().replace("-", "_")
+    if normalized in SENSITIVE_NAMES or any(name in normalized for name in ("password", "secret", "api_key")):
+        return "[redacted]"
+    if normalized in CONTENT_FIELDS:
+        raw = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, sort_keys=True)
+        return {
+            "redacted": True,
+            "sha256": hashlib.sha256(raw.encode()).hexdigest(),
+            "characters": len(raw),
+        }
+    if isinstance(value, Mapping):
+        return {str(name): _redact(item, str(name)) for name, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_redact(item) for item in value]
+    return value
+
+
+def compact_session_data(data: Mapping[str, object]) -> dict[str, object]:
+    """生成不含模型正文和敏感值的统一 Session 数据。"""
+    compacted = _redact(data)
+    if not isinstance(compacted, Mapping):
+        raise TypeError("session data must remain a mapping")
+    return {str(key): value for key, value in compacted.items()}
+
+
+def _run_id(data: Mapping[str, object] | None) -> str | None:
+    if data is None:
+        return None
+    value = data.get("run_id")
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _json_copy(value: object):
+    """复制 JSON 值，并拒绝会被悄悄字符串化的对象。"""
+    if isinstance(value, Mapping):
+        if any(not isinstance(key, str) for key in value):
+            raise TypeError("record object keys must be text")
+        return {key: _json_copy(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_copy(item) for item in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise TypeError(f"record values must be JSON-compatible: {type(value).__name__}")
+
+
+def _parse_time(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError("record timestamp must include a timezone")
+    return parsed.astimezone(UTC)

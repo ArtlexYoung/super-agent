@@ -2,10 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from adapter.storage import MemoryStorage
-from core.event import RunIdentity
-from core.provider import MockModel
-from skill.agent_builder import agent_event_store, agent_memory
+from super_agent.adapter.storage import MemoryStorage
+from super_agent.core.event import RunIdentity
+from super_agent.core.provider import MockModel
+from super_agent.skill.agent_builder import agent_event_store, agent_memory
 from super_agent import Agent
 
 

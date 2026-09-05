@@ -5,9 +5,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import adapter.cli as cli
-from adapter.process import ProcessTools
-from adapter.tools import FatalToolError, ToolPolicy
+import super_agent.adapter.cli as cli
+from super_agent.adapter.process import ProcessTools
+from super_agent.adapter.tools import FatalToolError, ToolPolicy
 
 
 def _project(marks: dict[str, str]) -> tuple[Path, tempfile.TemporaryDirectory]:

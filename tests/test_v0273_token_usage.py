@@ -1,9 +1,9 @@
 import unittest
 
-from core.config import Config, ModelConfig, config_from_dict
-from core.model import Message, ModelEvent, ModelRequest, TokenUsage
-from core.provider import MockModel, ModelProfile, ModelRouter
-from core.run import RunInput, collect_run, stream_run
+from super_agent.core.config import Config, ModelConfig, config_from_dict
+from super_agent.core.model import Message, ModelEvent, ModelRequest, TokenUsage
+from super_agent.core.provider import MockModel, ModelProfile, ModelRouter
+from super_agent.core.run import RunInput, collect_run, stream_run
 
 
 class TokenUsageTests(unittest.TestCase):

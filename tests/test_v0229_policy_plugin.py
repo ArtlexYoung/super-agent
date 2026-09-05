@@ -1,14 +1,14 @@
 import unittest
 from pathlib import Path
 
-from adapter.tools import ToolPolicy, WorkspaceSettings
-from core import __version__
-from core.model import Tool
-from skill.library import AgentLibrary
+from super_agent.adapter.tools import ToolPolicy, WorkspaceSettings
+from super_agent.core import __version__
+from super_agent.core.model import Tool
+from super_agent.skill.library import AgentLibrary
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILTIN = ROOT / "src" / "skill" / "builtin"
+BUILTIN = ROOT / "src" / "super_agent" / "skill" / "builtin"
 
 
 class PolicyPluginTests(unittest.TestCase):

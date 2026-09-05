@@ -5,21 +5,21 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
-from adapter.storage import MemoryStorage
-from core.config import EvolutionConfig, config_from_dict
-from core.event import RunIdentity
-from core.model import ModelEvent, Tool
-from core.provider import MockModel
-from core.records import EventStore
-from core.run import ToolContext
-from skill.document import format_skill, parse_skill_text, read_skill_package
-from skill.evolution import (
+from super_agent.adapter.storage import MemoryStorage
+from super_agent.core.config import EvolutionConfig, config_from_dict
+from super_agent.core.event import RunIdentity
+from super_agent.core.model import ModelEvent, Tool
+from super_agent.core.provider import MockModel
+from super_agent.core.records import EventStore
+from super_agent.core.run import ToolContext
+from super_agent.skill.document import format_skill, parse_skill_text, read_skill_package
+from super_agent.skill.evolution import (
     SkillEvidence,
     SkillEvolution,
     SkillTestCase,
     calculate_freshness,
 )
-from skill.library import AgentLibrary
+from super_agent.skill.library import AgentLibrary
 from super_agent import Agent
 from tests.run_state import make_run_state
 
@@ -196,12 +196,12 @@ class AgentLibraryTests(unittest.TestCase):
                 package.writestr("demo/SKILL.md", content)
                 package.writestr("demo/references/result.md", "result")
             with (
-                patch("skill.document.MAX_PACKAGE_FILES", 1),
+                patch("super_agent.skill.document.MAX_PACKAGE_FILES", 1),
                 self.assertRaisesRegex(ValueError, "more than 1 files"),
             ):
                 read_skill_package(limited)
             with (
-                patch("skill.document.MAX_PACKAGE_BYTES", 10),
+                patch("super_agent.skill.document.MAX_PACKAGE_BYTES", 10),
                 self.assertRaisesRegex(ValueError, "unpacked bytes"),
             ):
                 read_skill_package(limited)
@@ -492,7 +492,7 @@ class AgentLibraryTests(unittest.TestCase):
                 library.remove_skill(skill.reference, expected_sha256=skill.sha256)
 
     def test_builtin_scene_uses_central_paths_and_activates(self):
-        root = Path(__file__).resolve().parents[1] / "src" / "skill" / "builtin"
+        root = Path(__file__).resolve().parents[1] / "src" / "super_agent" / "skill" / "builtin"
         library = AgentLibrary((root,))
         self.assertEqual(25, library.list_skills().total)
         session = make_run_state()
@@ -644,7 +644,7 @@ class AgentLibraryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             write_skill(root, "local/self")
-            builtin = Path(__file__).resolve().parents[1] / "src" / "skill" / "builtin"
+            builtin = Path(__file__).resolve().parents[1] / "src" / "super_agent" / "skill" / "builtin"
             library = AgentLibrary(
                 (root, builtin), writable_root=root / "owned"
             )

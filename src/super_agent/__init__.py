@@ -1,0 +1,624 @@
+"""提供直接组合模型、工具、Skill、状态和子 Agent 的公开入口。"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from dataclasses import dataclass, field, replace
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from super_agent.core import require_text as _text
+from super_agent.core.config import Config, EvolutionConfig, WorkingDirectory, config_from_environment
+from super_agent.core.context import AgentContext
+from super_agent.core.event import RunEvent, RunLimits, RunResult
+from super_agent.core.model import Message, Model, TokenBudget, Tool, next_model_profile_name
+from super_agent.core.provider import ModelPricing, ModelProfile, ModelRouter, RouterSettings
+from super_agent.core.records import (
+    AuditPolicy,
+    EventStore,
+    RecordBackend,
+    RecordScope,
+    SessionRecord,
+)
+from super_agent.core.run import Action, EventListener, ToolRegistry, collect_run
+from super_agent.core.user import AgentUser
+from super_agent.skill.agent_builder import (
+    EVOLUTION_PLUGIN,
+    MEMORY_PLUGIN,
+    agent_features,
+    stream_agent,
+)
+from super_agent.skill.library import AgentLibrary
+
+if TYPE_CHECKING:
+    from super_agent.skill.evolution import CandidateRunner
+    from super_agent.skill.organization import TeamMemberSettings, TeamSettings
+    from super_agent.skill.organization_runtime import TeamRuntime
+
+CandidateRunner = Callable[[str, str], str]
+TeamRuntime = Any
+TeamMemberSettings = Any
+TeamSettings = Any
+
+
+@dataclass(frozen=True)
+class AgentSettings:
+    """只保留跨运行且无法从组合对象推导的 Agent 设置。"""
+
+    limits: RunLimits = field(default_factory=RunLimits)
+
+
+class Agent:
+    """模型提供智能，Agent 只组合可选机制并调用唯一运行循环。"""
+
+    def __init__(
+        self,
+        model: Model | None = None,
+        *,
+        name: str | None = None,
+        config: Config | None = None,
+        working_directory: str | Path | WorkingDirectory | None = None,
+    ) -> None:
+        self.model = model
+        selected_name = (
+            name
+            if name is not None
+            else (config.name if config is not None else "super-agent")
+        )
+        self.name = _text(selected_name, "Agent name")
+        self.config = config
+        self.working_directory = _make_working_directory(working_directory)
+        self.instructions: list[str] = []
+        self.settings = AgentSettings()
+        self.team_settings = None
+        self.library: AgentLibrary | None = None
+        self._mcp_servers: dict[str, tuple[object, Mapping[str, tuple[str, ...]]]] = {}
+        self.storage: RecordBackend | None = None
+        self._memories: dict[tuple[str, str, str], object] = {}
+        self.audit_policy = AuditPolicy()
+        self.evolution_policy = EvolutionConfig()
+        self.candidate_runner: CandidateRunner | None = None
+        self._tool_registry = ToolRegistry()
+        self._enabled_plugins: list[str] = []
+        self._enabled_skills: list[str] = []
+        self._disabled_plugins: list[str] = []
+        self._disabled_skills: list[str] = []
+        self._enabled_mcp_servers: list[str] = []
+        self._team_node = None
+        self._router_settings = RouterSettings()
+        if isinstance(model, ModelRouter):
+            self._model_profiles = list(model.profiles)
+            self._router_settings = model.settings
+        elif model is None:
+            self._model_profiles = []
+        else:
+            self._model_profiles = [ModelProfile("default", model)]
+        self._listeners: list[EventListener] = []
+        self._team_runtimes: dict[str, TeamRuntime] = {}
+        self._loaded_model_scopes: set[str] = set()
+        self._session_record: SessionRecord | None = None
+        self.token_budget: TokenBudget | None = None
+        if config is not None:
+            self._apply_config(config, model_was_explicit=model is not None)
+
+    def _apply_config(self, config: Config, *, model_was_explicit: bool) -> None:
+        """应用通用配置；只创建内存对象，不因读取配置产生持久化副作用。"""
+        from super_agent.skill.organization import TeamSettings
+
+        self.instructions = list(config.instructions)
+        if self.working_directory is None:
+            self.working_directory = config.resolve_working_directory()
+        self.settings = AgentSettings(config.limits)
+        self.team_settings = replace(
+            self.team_settings or TeamSettings(),
+            warn_level=config.warn_agent_level,
+            max_level=config.max_agent_level,
+            max_call_depth=config.max_agent_call_depth,
+        )
+        self.evolution_policy = config.evolution or EvolutionConfig()
+        self._enabled_plugins = list(config.enabled_plugins)
+        self._enabled_skills = list(config.enabled_skills)
+        self._disabled_plugins = list(config.disabled_plugins)
+        self._disabled_skills = list(config.disabled_skills)
+        self._enabled_mcp_servers = list(config.enabled_mcp_servers)
+        if config.memory:
+            self.enable_memory()
+        if config.evolution is not None:
+            self.enable_skill_evolution()
+        self.audit_policy = AuditPolicy(
+            config.storage.detailed_log_days,
+            config.storage.critical_log_days,
+        )
+        if not model_was_explicit and config.models:
+            self.replace_models(
+                config.create_model_profiles(),
+                router_settings=config.router,
+            )
+        roots = tuple(
+            path
+            for path in (config.resolve_path(item) for item in config.library_paths)
+            if path is not None
+        )
+        writable = config.resolve_path(config.writable_library_path)
+        cache = config.resolve_path(config.library_cache_path)
+        if roots or writable is not None or cache is not None:
+            self.use_agent_library(
+                AgentLibrary(
+                    roots,
+                    writable_root=writable,
+                    cache_root=cache,
+                    disabled_mcp_servers=config.disabled_mcp_servers,
+                )
+            )
+
+    def set_instructions(self, *instructions: str) -> None:
+        self.instructions = [_text(item, "Agent instruction") for item in instructions]
+
+    def add_instructions(self, *instructions: str) -> None:
+        """追加不重复的运行说明，不写入配置或工作目录。"""
+        for instruction in instructions:
+            text = _text(instruction, "Agent instruction")
+            if text not in self.instructions:
+                self.instructions.append(text)
+
+    def for_user(self, user_id: str) -> AgentUser:
+        """返回固定用户作用域的轻量视图。"""
+        return AgentUser(self, user_id)
+
+    def use_session(self, session: SessionRecord | None) -> None:
+        """显式挂载内存会话记录；不会创建或打开持久化存储。"""
+        if session is not None and not isinstance(session, SessionRecord):
+            raise TypeError("session must be a SessionRecord or None")
+        self._session_record = session
+
+    def set_working_directory(
+        self, working_directory: str | Path | WorkingDirectory | None
+    ) -> None:
+        """显式替换工作目录；不创建目录，也不改变存储位置。"""
+        self.working_directory = _make_working_directory(working_directory)
+
+    def resolve_path(
+        self, value: str | Path, *, working_directory: WorkingDirectory | None = None
+    ) -> Path:
+        """按工作目录解析路径；相对路径没有工作目录时直接失败。"""
+        selected = Path(value).expanduser()
+        if selected.is_absolute():
+            return selected.resolve()
+        base = working_directory or self.working_directory
+        if base is None:
+            raise ValueError("relative paths require an explicit working directory")
+        return base.resolve(selected)
+
+    def add_model(
+        self,
+        model: Model,
+        *,
+        name: str | None = None,
+        description: str = "",
+        purposes: Iterable[str] = ("auto",),
+        features: Iterable[str] = ("text", "tools"),
+        weight: float = 1.0,
+        pricing: ModelPricing | None = None,
+        router_settings: RouterSettings | None = None,
+    ) -> str:
+        """注册一个模型并显式启用模型路由。"""
+        selected_name = name or next_model_profile_name(self._model_profiles)
+        profile = ModelProfile(
+            selected_name,
+            model,
+            description,
+            tuple(dict.fromkeys(_text(item, "model purpose") for item in purposes)),
+            tuple(dict.fromkeys(_text(item, "model feature") for item in features)),
+            weight,
+            pricing or ModelPricing(),
+        )
+        if any(item.name == profile.name for item in self._model_profiles):
+            raise ValueError(f"model name already exists: {profile.name}")
+        self.replace_models(
+            (*self._model_profiles, profile),
+            router_settings=router_settings or self._router_settings,
+        )
+        return profile.name
+
+    def replace_models(
+        self,
+        profiles: Iterable[ModelProfile],
+        *,
+        router_settings: RouterSettings | None = None,
+    ) -> None:
+        """原子替换模型档案；空列表会显式移除模型。"""
+        selected = tuple(profiles)
+        settings = router_settings or self._router_settings
+        names = [profile.name for profile in selected]
+        if len(names) != len(set(names)):
+            raise ValueError("model profile names must be unique")
+        previous = self.model if isinstance(self.model, ModelRouter) else None
+        model: Model | None
+        if not selected:
+            model = None
+        else:
+            model = ModelRouter(selected, settings)
+            if previous is not None:
+                model._copy_model_performance_from(previous)
+        self._model_profiles = list(selected)
+        self._router_settings = settings
+        self.model = model
+        self._loaded_model_scopes.clear()
+
+    def add_group(self, name: str, *, description: str = "") -> Any:
+        """在当前 Agent 下创建一个不调用模型的结构组。"""
+        from super_agent.skill.organization import Team, team_node
+
+        return Team(team_node(self)).add_group(name, description=description)
+
+    def list_agent_tree(self) -> dict[str, object]:
+        """读取完整组织树和当前 Agent 所在位置。"""
+        from super_agent.skill.organization import team_node
+
+        current = team_node(self)
+        return {
+            "current_group_id": current.group_id,
+            "root": current.root().to_dict(),
+        }
+
+    def validate_agent_tree(self) -> tuple[str, ...]:
+        """显式检查层级、空组和委派链路。"""
+        from super_agent.skill.organization import TeamSettings, team_node, validate_tree
+
+        settings = self.team_settings or TeamSettings()
+        return validate_tree(
+            team_node(self).root(),
+            warn_level=settings.warn_level,
+            max_level=settings.max_level,
+        )
+
+    def list_models(self) -> tuple[ModelProfile, ...]:
+        """读取当前 Agent 的模型配置。"""
+        return tuple(self._model_profiles)
+
+    def list_model_profiles(
+        self,
+        *,
+        user_id: str = "local",
+        purpose: str = "auto",
+        agent_name: str | None = None,
+    ) -> tuple[dict[str, object], ...]:
+        """读取用户描述与学习表现组成的安全模型画像。"""
+        return self.for_user(user_id).models.list(
+            purpose=purpose, agent_name=agent_name
+        )
+
+    def use_agent_library(self, library: AgentLibrary) -> None:
+        """显式挂载中央资源库，不读取、安装或启动其中内容。"""
+        if not isinstance(library, AgentLibrary):
+            raise TypeError("agent library must be an AgentLibrary")
+        self.library = library
+        _clear_team_runtimes(self)
+
+    def add_library_path(self, path: str | Path) -> None:
+        """在内存中增加一个中央资源库路径。"""
+        selected = Path(path).expanduser().resolve()
+        if self.library is None:
+            self.use_agent_library(AgentLibrary((selected,)))
+            return
+        self.use_agent_library(
+            AgentLibrary(
+                (*self.library.paths, selected),
+                writable_root=self.library.writable_root,
+                cache_root=self.library.cache_root,
+                record_event=self.library.record_event,
+                cache_entries=self.library.cache_entries,
+                disabled_plugins=self.library.disabled_plugins,
+                disabled_skills=self.library.disabled_skills,
+                disabled_mcp_servers=self.library.disabled_mcp_servers,
+            )
+        )
+
+    def connect_mcp_server(
+        self,
+        reference: str,
+        server: object,
+        *,
+        effects: Mapping[str, tuple[str, ...]],
+    ) -> None:
+        """通过可信代码显式绑定 MCP；库中的 TOML 不会提供连接信息。"""
+        if self.library is None:
+            raise RuntimeError("connect an AgentLibrary before connecting an MCP server")
+        selected = self.library.find_mcp_server(reference).reference
+        if self._enabled_mcp_servers and selected not in self._enabled_mcp_servers:
+            raise PermissionError(f"MCP server is not enabled: {selected}")
+        if not hasattr(server, "list_tools") or not hasattr(server, "call_tool"):
+            raise TypeError("MCP server must provide list_tools and call_tool")
+        self._mcp_servers[selected] = (server, dict(effects))
+
+    def use_storage(self, storage: RecordBackend) -> None:
+        self.storage = storage
+        self._loaded_model_scopes.clear()
+        self._memories.clear()
+        _clear_team_runtimes(self)
+        nodes = () if self._team_node is None else self._team_node.walk()
+        for node in nodes:
+            child = node.coordinator
+            if child is not None and child is not self and child.storage is None:
+                child.use_storage(storage)
+
+    def add_tool(self, tool: Tool) -> None:
+        self._tool_registry.register(tool, exposure="always")
+
+    def add_tools_for_skills(self, tools: Iterable[Tool]) -> None:
+        self._tool_registry.register_many(tools, exposure="after_skill")
+
+    def enable_plugin(self, reference: str) -> None:
+        selected = _text(reference, "plugin reference")
+        if selected not in self._enabled_plugins:
+            self._enabled_plugins.append(selected)
+
+    def list_enabled_plugins(self) -> tuple[str, ...]:
+        """返回显式启用的插件，不触发插件读取或执行。"""
+        return tuple(self._enabled_plugins)
+
+    def list_enabled_skills(self) -> tuple[str, ...]:
+        """返回显式启用的 Skill，不触发 Skill 读取或执行。"""
+        return tuple(self._enabled_skills)
+
+    def list_enabled_features(self) -> tuple[str, ...]:
+        """从已选插件和模型读取功能，不触发工具注册或模型调用。"""
+        return agent_features(self)
+
+    def snapshot(self) -> dict[str, object]:
+        """返回 Agent 组合状态的单一只读视图。"""
+        tree = getattr(self, "_team_node", None)
+        return {"name": self.name, "model_names": [p.name for p in self._model_profiles],
+                "enabled_plugins": list(self.list_enabled_plugins()), "enabled_skills": list(self.list_enabled_skills()),
+                "features": list(self.list_enabled_features()),
+                "storage_backend": None if self.storage is None else type(self.storage).__name__,
+                "working_directory": None if self.working_directory is None else str(self.working_directory.path),
+                "has_subagents": tree is not None and bool(getattr(tree, "children", ())) }
+
+    def is_plain_agent(self) -> bool:
+        """判断 Agent 是否仍是只包含模型和基础运行循环的普通 Agent。"""
+        return not any(
+            (
+                self.library is not None,
+                self.storage is not None,
+                self.memory_enabled,
+                self.evolution_enabled,
+                self._tool_registry.active,
+                self._tool_registry.available,
+                self._enabled_plugins,
+                self._enabled_skills,
+                self._mcp_servers,
+                self._team_node is not None
+                and len(tuple(self._team_node.walk())) > 1,
+            )
+        )
+
+    def enable_skill(self, reference: str) -> None:
+        selected = _text(reference, "Skill reference")
+        if selected not in self._enabled_skills:
+            self._enabled_skills.append(selected)
+
+    def set_disabled_skills(self, *references: str) -> None:
+        """替换 Skill 禁用列表，只影响之后创建的运行快照。"""
+        self._disabled_skills = list(dict.fromkeys(
+            _text(item, "disabled Skill reference") for item in references
+        ))
+
+    def set_disabled_plugins(self, *references: str) -> None:
+        """替换插件禁用列表，只影响之后创建的运行快照。"""
+        self._disabled_plugins = list(dict.fromkeys(
+            _text(item, "disabled plugin reference") for item in references
+        ))
+
+    def enable_memory(self) -> None:
+        """显式选择 Memory 插件并启用其运行工具。"""
+        self.enable_plugin(MEMORY_PLUGIN)
+
+    def set_token_budget(self, budget: TokenBudget | None = None) -> None:
+        """显式设置可选窗口插件使用的 token 预算规则。"""
+        if budget is not None and not isinstance(budget, TokenBudget):
+            raise TypeError("budget must be a TokenBudget or None")
+        self.token_budget = budget
+
+    def enable_skill_evolution(self, runner: CandidateRunner | None = None) -> None:
+        """启用候选和保鲜度工具；更新目标仍需单独授权。"""
+        self.enable_plugin(EVOLUTION_PLUGIN)
+        self.candidate_runner = runner
+
+    def allow_plugin_to_evolve(
+        self, reference: str, *, auto_apply: bool = False
+    ) -> None:
+        """允许 Agent 更新指定插件拥有的 Skill。"""
+        if self.library is None:
+            raise RuntimeError("Skill evolution requires an AgentLibrary")
+        selected = self.library.find_plugin(reference).reference
+        self._allow_evolution_target(selected, auto_apply)
+
+    def allow_skill_to_evolve(
+        self, reference: str, *, auto_apply: bool = False
+    ) -> None:
+        """只允许 Agent 更新一个规范 Skill 引用。"""
+        if self.library is None:
+            raise RuntimeError("Skill evolution requires an AgentLibrary")
+        selected = self.library.find_skill(reference).reference
+        self._allow_evolution_target(selected, auto_apply)
+
+    def _allow_evolution_target(self, reference: str, auto_apply: bool) -> None:
+        allowed = tuple(dict.fromkeys((*self.evolution_policy.allow, reference)))
+        automatic = self.evolution_policy.auto_apply
+        if auto_apply:
+            automatic = tuple(dict.fromkeys((*automatic, reference)))
+        self.evolution_policy = EvolutionConfig(allowed, automatic)
+        self.enable_plugin(EVOLUTION_PLUGIN)
+
+    def configure_team(self, settings: TeamSettings | None = None) -> None:
+        """原子替换团队共用的任务、等待和层级设置。"""
+        if settings is None:
+            from super_agent.skill.organization import TeamSettings
+
+            settings = TeamSettings()
+        self.team_settings = settings
+        _clear_team_runtimes(self)
+
+    def add_event_listener(self, listener: EventListener) -> None:
+        if not callable(listener):
+            raise TypeError("Agent event listener must be callable")
+        self._listeners.append(listener)
+
+    def add_subagent(
+        self,
+        agent: Agent,
+        *,
+        name: str | None = None,
+        description: str = "",
+        settings: TeamMemberSettings | None = None,
+    ) -> str:
+        """把子 Agent 的已有子树挂到当前 Agent 下。"""
+        from super_agent.skill.organization import Team, team_node
+
+        return Team(team_node(self)).add_subagent(
+            agent,
+            name=name,
+            description=description,
+            settings=settings,
+        )
+
+    def stream(
+        self,
+        prompt: str,
+        *,
+        context: AgentContext | None = None,
+        user_id: str = "local",
+        conversation_id: str | None = None,
+        plugin: str | None = None,
+        skill: str | None = None,
+        working_directory: str | Path | WorkingDirectory | None = None,
+        restore_window_reference: str | None = None,
+        fork_window: bool = False,
+    ) -> Iterator[RunEvent]:
+        """构造一次运行并交给唯一 Runtime 循环。"""
+        if context is not None and any(
+            (
+                conversation_id is not None,
+                plugin is not None,
+                skill is not None,
+                user_id != "local",
+                working_directory is not None,
+                restore_window_reference is not None,
+                fork_window,
+            )
+        ):
+            raise ValueError(
+                "context cannot be combined with direct user, conversation, plugin, or Skill options"
+            )
+        selected_context = context or AgentContext(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            plugin=plugin,
+            skill=skill,
+            working_directory=working_directory,
+            restore_window_reference=restore_window_reference,
+            fork_window=fork_window,
+        )
+        return (yield from stream_agent(self, prompt, selected_context))
+
+    def run(
+        self,
+        prompt: str,
+        *,
+        context: AgentContext | None = None,
+        user_id: str = "local",
+        conversation_id: str | None = None,
+        plugin: str | None = None,
+        skill: str | None = None,
+        working_directory: str | Path | WorkingDirectory | None = None,
+        restore_window_reference: str | None = None,
+        fork_window: bool = False,
+    ) -> RunResult:
+        """只收集 stream()，不存在第二条同步模型调用链。"""
+        return collect_run(
+            self.stream(
+                prompt,
+                context=context,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                plugin=plugin,
+                skill=skill,
+                working_directory=working_directory,
+                restore_window_reference=restore_window_reference,
+                fork_window=fork_window,
+            )
+        )
+
+    def get_record_store(
+        self,
+        user_id: str = "local",
+        *,
+        agent_name: str | None = None,
+    ) -> EventStore:
+        """返回固定用户和 Agent 的记录入口，不创建存储。"""
+        if self.storage is None:
+            raise RuntimeError("this operation requires explicitly configured storage")
+        return EventStore(
+            self.storage,
+            scope=RecordScope(
+                user_id=user_id,
+                agent_name=self.name if agent_name is None else agent_name,
+                working_directory_id=(
+                    None
+                    if self.working_directory is None
+                    else self.working_directory.identity
+                ),
+            ),
+        )
+
+    def _require_model(self) -> Model:
+        if self.model is None:
+            raise RuntimeError("Agent requires an explicit model")
+        return self.model
+
+    @property
+    def memory_enabled(self) -> bool:
+        """Memory 插件是否被显式选择且未禁用。"""
+        return "memory" in agent_features(self)
+
+    @property
+    def evolution_enabled(self) -> bool:
+        """Evolution 插件是否被显式选择且未禁用。"""
+        return "evolution" in agent_features(self)
+
+
+def _clear_team_runtimes(agent: Agent) -> None:
+    from super_agent.skill.organization_runtime import clear_team_runtimes
+
+    clear_team_runtimes(agent)
+
+
+def model_from_environment(environment: Mapping[str, str] | None = None) -> Model:
+    """使用与 CLI 相同的环境规则创建模型，不读取或写入其他状态。"""
+    return config_from_environment(environment).create_model()
+
+
+def _make_working_directory(
+    value: str | Path | WorkingDirectory | None,
+) -> WorkingDirectory | None:
+    if value is None:
+        return None
+    if isinstance(value, WorkingDirectory):
+        return value
+    return WorkingDirectory.from_path(value)
+
+
+__all__ = [
+    "Agent",
+    "AgentContext",
+    "AgentSettings",
+    "Message",
+    "Model",
+    "RunEvent",
+    "RunResult",
+    "AgentLibrary",
+    "Tool",
+    "Action",
+    "model_from_environment",
+]

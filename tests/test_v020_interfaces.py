@@ -9,13 +9,13 @@ from pathlib import Path
 
 from unittest.mock import patch
 
-from adapter.cli import CliConfig, _build_agent, _load_code, _load_general, main
-from adapter.storage import JsonlStorage, MemoryStorage
-from core.config import Config, ModelConfig
-from core.config import discover_configuration_sources
-from core.event import RunLimits
-from core.provider import MockModel, OpenAIModel
-from core.records import EventStore
+from super_agent.adapter.cli import CliConfig, _build_agent, _load_code, _load_general, main
+from super_agent.adapter.storage import JsonlStorage, MemoryStorage
+from super_agent.core.config import Config, ModelConfig
+from super_agent.core.config import discover_configuration_sources
+from super_agent.core.event import RunLimits
+from super_agent.core.provider import MockModel, OpenAIModel
+from super_agent.core.records import EventStore
 from scripts.verify_release import verify_release
 from super_agent import Agent
 
@@ -99,7 +99,7 @@ class InterfaceTests(unittest.TestCase):
                 'general_config = "common.toml"\noutput = "json"\n',
                 encoding="utf-8",
             )
-            with patch("adapter.cli.Path.cwd", return_value=nested):
+            with patch("super_agent.adapter.cli.Path.cwd", return_value=nested):
                 cli = CliConfig.automatic()
                 config = _load_general(cli.general_config)
 
@@ -128,7 +128,7 @@ class InterfaceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "cli.toml").write_text("", encoding="utf-8")
-            with patch("adapter.cli.Path.cwd", return_value=root):
+            with patch("super_agent.adapter.cli.Path.cwd", return_value=root):
                 sources = CliConfig.configuration_sources()
 
             self.assertTrue(any(item.selected for item in sources))
@@ -240,7 +240,7 @@ commands = [["python3.11", "-V"]]
         self.assertNotIn("private failure detail", json.dumps(insight))
 
     def test_release_shape_matches_current_release(self):
-        self.assertEqual([], verify_release(ROOT, "0.2.85"))
+        self.assertEqual([], verify_release(ROOT, "0.2.86"))
 
 
 if __name__ == "__main__":

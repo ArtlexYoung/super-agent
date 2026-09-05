@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from core.config import Config
+from super_agent.core.config import Config
 from super_agent import Agent
 
 

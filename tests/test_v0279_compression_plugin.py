@@ -1,8 +1,8 @@
 import json
 import unittest
 
-from core.model import Message, ModelEvent, ModelRequest
-from core.provider import MockModel
+from super_agent.core.model import Message, ModelEvent, ModelRequest
+from super_agent.core.provider import MockModel
 from super_agent import Agent
 
 

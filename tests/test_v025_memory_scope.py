@@ -2,12 +2,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from adapter.storage import EventMemoryStore, JsonlMemoryStore, MemoryStorage
-from core.event import RunIdentity
-from core.records import EventStore, RecordQuery
-from core.provider import MockModel
-from skill.agent_builder import agent_memory
-from skill.memory import Memory
+from super_agent.adapter.storage import EventMemoryStore, JsonlMemoryStore, MemoryStorage
+from super_agent.core.event import RunIdentity
+from super_agent.core.records import EventStore, RecordQuery
+from super_agent.core.provider import MockModel
+from super_agent.skill.agent_builder import agent_memory
+from super_agent.skill.memory import Memory
 from super_agent import Agent
 
 

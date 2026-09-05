@@ -2,13 +2,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.context import AgentContext
-from core.event import RunIdentity
-from core.model import Message, ModelRequest, TokenBudget
-from core.provider import MockModel, ModelProfile, ModelRouter
-from core.run import RuntimeExtensionContext, RuntimeControl, collect_run, stream_run, RunInput
-from skill.agent_builder import TokenBudgetExtension
-from skill.library import AgentLibrary
+from super_agent.core.context import AgentContext
+from super_agent.core.event import RunIdentity
+from super_agent.core.model import Message, ModelRequest, TokenBudget
+from super_agent.core.provider import MockModel, ModelProfile, ModelRouter
+from super_agent.core.run import RuntimeExtensionContext, RuntimeControl, collect_run, stream_run, RunInput
+from super_agent.skill.agent_builder import TokenBudgetExtension
+from super_agent.skill.library import AgentLibrary
 from super_agent import Agent
 
 
@@ -35,7 +35,7 @@ class TokenBudgetTests(unittest.TestCase):
     def test_context_window_plugin_rolls_over_only_when_explicitly_enabled(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            builtin = Path(__file__).parents[1] / "src" / "skill" / "builtin"
+            builtin = Path(__file__).parents[1] / "src" / "super_agent" / "skill" / "builtin"
             library = AgentLibrary((builtin,))
             model = ModelRouter(
                 (ModelProfile("small", MockModel("answer"), context_window_tokens=5_000),)

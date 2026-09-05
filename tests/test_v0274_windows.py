@@ -1,8 +1,8 @@
 import unittest
 
-from core.event import RunWindow
-from core.provider import MockModel
-from core.run import RunInput, collect_run, stream_run
+from super_agent.core.event import RunWindow
+from super_agent.core.provider import MockModel
+from super_agent.core.run import RunInput, collect_run, stream_run
 
 
 class RunWindowTests(unittest.TestCase):

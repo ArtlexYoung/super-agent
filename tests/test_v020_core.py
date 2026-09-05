@@ -6,11 +6,11 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.error import URLError
 
-from adapter.storage import JsonlStorage, MemoryStorage, SqliteStorage, create_storage
-from core.config import Config, ModelConfig, config_from_dict, config_from_environment
-from core.event import RunEvent, RunLimits, event_category, event_is_critical
-from core.model import Message, ModelEvent, ModelRequest, Tool, ToolCall
-from core.provider import (
+from super_agent.adapter.storage import JsonlStorage, MemoryStorage, SqliteStorage, create_storage
+from super_agent.core.config import Config, ModelConfig, config_from_dict, config_from_environment
+from super_agent.core.event import RunEvent, RunLimits, event_category, event_is_critical
+from super_agent.core.model import Message, ModelEvent, ModelRequest, Tool, ToolCall
+from super_agent.core.provider import (
     AnthropicModel,
     MockModel,
     ModelProfile,
@@ -22,9 +22,9 @@ from core.provider import (
     _to_anthropic_messages,
     create_model,
 )
-from core.records import AuditPolicy, Conversations, EventStore, RecordQuery
-from core.resources import ResourceCenter
-from core.run import RunInput, collect_run, stream_run
+from super_agent.core.records import AuditPolicy, Conversations, EventStore, RecordQuery
+from super_agent.core.resources import ResourceCenter
+from super_agent.core.run import RunInput, collect_run, stream_run
 from super_agent import Agent, model_from_environment
 
 
@@ -272,7 +272,7 @@ class CoreRuntimeTests(unittest.TestCase):
             request_body={"temperature": 0.2, "metadata": {"source": "desktop"}},
             reasoning_effort="high",
         )
-        with patch("core.provider._post_sse", return_value=iter(())) as post:
+        with patch("super_agent.core.provider._post_sse", return_value=iter(())) as post:
             list(model.stream(ModelRequest((Message("user", "hello"),))))
         payload = post.call_args.args[1]
         self.assertEqual(0.2, payload["temperature"])
@@ -291,7 +291,7 @@ class CoreRuntimeTests(unittest.TestCase):
                 "thinking": {"type": "enabled", "budget_tokens": 2048},
             },
         )
-        with patch("core.provider._post_sse", return_value=iter(())) as post:
+        with patch("super_agent.core.provider._post_sse", return_value=iter(())) as post:
             list(model.stream(ModelRequest((Message("user", "hello"),))))
         payload = post.call_args.args[1]
         self.assertEqual(8192, payload["max_tokens"])

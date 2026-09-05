@@ -1,6 +1,6 @@
 import unittest
 
-from core.resources import ResourceCenter
+from super_agent.core.resources import ResourceCenter
 
 
 class ResourceCenterTests(unittest.TestCase):

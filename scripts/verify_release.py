@@ -1,26 +1,27 @@
-"""Run the local release checks for v0.2.85."""
+"""Run the local release checks for v0.2.86."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import tomllib
 from pathlib import Path
 
-VERSION = "0.2.85"
-MAX_SOURCE_FILES = 27
+VERSION = "0.2.86"
+MAX_SOURCE_FILES = 28
 # 源码非空行预算随功能按需增长：CLI 连续聊天、会话保存恢复、模型诊断、编码验证、Skill 管理。
 # 按 development-plan P0-00 调整，保留增长预算但不取消版本、依赖与资源一致性检查。
 MAX_SOURCE_LINES = 13_300
-SOURCE_ROOTS = {"adapter", "core", "skill", "cli.py", "super_agent.py"}
+SOURCE_ROOTS = {"super_agent", "cli.py"}
 DOMAIN_FILES = {
-    "adapter": {"cli.py", "database.py", "process.py", "storage.py", "tools.py"},
-    "core": {"__init__.py", "config.py", "context.py", "event.py", "model.py", "provider.py", "records.py", "resources.py", "run.py", "user.py"},
-    "skill": {
+    "super_agent/adapter": {"cli.py", "database.py", "process.py", "storage.py", "tools.py"},
+    "super_agent/core": {"__init__.py", "config.py", "context.py", "event.py", "model.py", "provider.py", "records.py", "resources.py", "run.py", "user.py"},
+    "super_agent/skill": {
         "agent_builder.py",
         "builtin",
         "document.py",
@@ -52,7 +53,7 @@ EVALUATION_FILES = (
     "tests/eval/runtime/proxy/siliconflow.yaml",
     "tests/eval/runtime/proxy/usage_logging.py",
 )
-WHEEL_ROOTS = ["src/adapter", "src/core", "src/skill", "src/cli.py", "src/super_agent.py"]
+WHEEL_ROOTS = ["src/super_agent"]
 SDIST_ROOTS = ["README.md", "README_cn.md", "README_en.md", "pyproject.toml", "docs", "scripts", "src", "tests", "examples"]
 REQUIRED_BUILTIN_SKILLS = {
     "common": set(),
@@ -111,9 +112,9 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
         errors.append("Python 3.11 remains the supported minimum")
     if project_data.get("dependencies") != []:
         errors.append("default runtime dependencies must remain empty")
-    if project_data.get("scripts", {}).get("super-agent") != "adapter.cli:main":
-        errors.append("installed CLI must point to adapter.cli:main")
-    if _read_version(root / "src/core/__init__.py", errors) != expected_version:
+    if project_data.get("scripts", {}).get("super-agent") != "super_agent.adapter.cli:main":
+        errors.append("installed CLI must point to super_agent.adapter.cli:main")
+    if _read_version(root / "src/super_agent/core/__init__.py", errors) != expected_version:
         errors.append("core version does not match")
     for removed in ("web", "docs/ag-ui.md", "docs/web.md", "src/adapter/http", "src/adapter/static"):
         if (root / removed).exists():
@@ -127,7 +128,7 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
     if lines > MAX_SOURCE_LINES:
         errors.append(f"source line count is {lines}, limit is {MAX_SOURCE_LINES}")
     errors.extend(_check_old_imports(files))
-    errors.extend(_check_builtin_plugins(root / "src" / "skill" / "builtin"))
+    errors.extend(_check_builtin_plugins(root / "src" / "super_agent" / "skill" / "builtin"))
     errors.extend(_check_benchmark(root / "examples" / "offline-gate-benchmark.json"))
     readme = (root / "README.md").read_text(encoding="utf-8") if (root / "README.md").is_file() else ""
     for marker in ("README_cn.md", "README_en.md", "## 致谢与借鉴"):
@@ -211,19 +212,22 @@ def _check_build_config(project: dict[str, object], root: Path) -> list[str]:
 
 def _check_old_imports(files: list[Path]) -> list[str]:
     errors: list[str] = []
-    forbidden = ("PluginCatalog", "plugin_catalog", "plugin_paths", "writable_plugin_path", "plugin_cache_path", "plugin_snapshot", "core.models", "core.runtime", "core.loop", "core.tools", "core.checks", "core.records.", "skill.handlers", "skill.learning", "skill.tasks", "adapter.processes", "adapter.storage_backends")
+    forbidden = ("PluginCatalog", "plugin_catalog", "plugin_paths", "writable_plugin_path", "plugin_cache_path", "plugin_snapshot")
+    legacy_import = re.compile(r"(?<!super_agent\.)(^\s*(?:from|import)\s+(core|skill|adapter)(?:\.|\b))", re.MULTILINE)
     for path in files:
         text = path.read_text(encoding="utf-8")
         for name in forbidden:
             if name in text:
                 errors.append(f"old import or compatibility reference remains: {path}: {name}")
+        if legacy_import.search(text):
+            errors.append(f"unprefixed internal import remains: {path}")
     return errors
 
 
 def _check_builtin_plugins(root: Path) -> list[str]:
     errors: list[str] = []
     try:
-        from skill.library import AgentLibrary
+        from super_agent.skill.library import AgentLibrary
 
         snapshot = AgentLibrary((root,)).snapshot()
     except (OSError, TypeError, ValueError) as error:

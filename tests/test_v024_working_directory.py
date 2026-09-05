@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.config import Config, WorkingDirectory, config_from_dict
-from core.provider import MockModel
+from super_agent.core.config import Config, WorkingDirectory, config_from_dict
+from super_agent.core.provider import MockModel
 from super_agent import Agent
 
 

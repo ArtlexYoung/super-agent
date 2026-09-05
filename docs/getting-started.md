@@ -60,7 +60,7 @@ super-agent --skill skill:super-agent/review/multi-agent "检视这个方案"
 ## Python 嵌入 / Embed in Python
 
 ```python
-from core.provider import MockModel
+from super_agent.core.provider import MockModel
 from super_agent import Agent
 
 agent = Agent(MockModel("offline response"))
@@ -75,7 +75,7 @@ print(result.text)
 ## 显式添加状态 / Add State Explicitly
 
 ```python
-from adapter.storage import JsonlStorage
+from super_agent.adapter.storage import JsonlStorage
 from super_agent import Agent, model_from_environment
 
 agent = Agent(model_from_environment())

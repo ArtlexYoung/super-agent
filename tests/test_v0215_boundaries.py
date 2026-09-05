@@ -6,9 +6,9 @@ from datetime import UTC, datetime, timedelta
 from io import StringIO
 from pathlib import Path
 
-from adapter.cli import main
-from adapter.storage import JsonlStorage
-from core.records import AuditPolicy, EventStore, RecordQuery
+from super_agent.adapter.cli import main
+from super_agent.adapter.storage import JsonlStorage
+from super_agent.core.records import AuditPolicy, EventStore, RecordQuery
 
 
 class V0215BoundaryTests(unittest.TestCase):

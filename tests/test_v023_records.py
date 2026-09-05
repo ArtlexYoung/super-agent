@@ -1,8 +1,8 @@
 import unittest
 
-from core.model import ModelEvent
-from core.provider import MockModel
-from core.records import SessionRecord
+from super_agent.core.model import ModelEvent
+from super_agent.core.provider import MockModel
+from super_agent.core.records import SessionRecord
 from super_agent import Agent
 
 

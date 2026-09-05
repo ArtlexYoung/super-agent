@@ -1,9 +1,9 @@
 import time
 import unittest
 
-from core.model import ModelEvent, Tool
-from core.provider import MockModel
-from core.run import Action, FatalToolError, RunInput, ToolExecutionCenter, collect_run, stream_run
+from super_agent.core.model import ModelEvent, Tool
+from super_agent.core.provider import MockModel
+from super_agent.core.run import Action, FatalToolError, RunInput, ToolExecutionCenter, collect_run, stream_run
 
 
 class ToolExecutionCenterTests(unittest.TestCase):

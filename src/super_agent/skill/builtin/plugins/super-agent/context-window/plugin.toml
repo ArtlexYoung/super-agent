@@ -1,0 +1,10 @@
+schema = 1
+id = "super-agent/context-window"
+version = "0.2.86"
+description = "Explicit token budget and context window rollover"
+entry_skill = "skill:super-agent/context-window"
+skills = []
+included_plugins = []
+required_mcp_servers = []
+optional_mcp_servers = []
+runtime_extension = "context-window"

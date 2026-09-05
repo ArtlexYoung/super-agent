@@ -6,9 +6,9 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 
-import adapter.cli as cli
-from core.config import config_from_environment
-from skill.library import AgentLibrary
+import super_agent.adapter.cli as cli
+from super_agent.core.config import config_from_environment
+from super_agent.skill.library import AgentLibrary
 
 
 def _skill_package(name="demo-skill", description="A demo skill", extra="Body content."):

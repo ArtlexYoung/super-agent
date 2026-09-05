@@ -1,10 +1,10 @@
 import json
 import unittest
 
-from core.model import Message
-from core.provider import MockModel
-from core.resources import ResourceCenter
-from core.run import RunInput, collect_run, stream_run
+from super_agent.core.model import Message
+from super_agent.core.provider import MockModel
+from super_agent.core.resources import ResourceCenter
+from super_agent.core.run import RunInput, collect_run, stream_run
 
 
 class RestoreForkTests(unittest.TestCase):

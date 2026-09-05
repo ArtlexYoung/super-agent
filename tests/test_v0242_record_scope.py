@@ -2,10 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from adapter.storage import JsonlStorage, MemoryStorage, SqliteStorage, build_sql_filters
-from core.context import AgentContext
-from core.event import RunEvent, RunIdentity
-from core.records import EventStore, RecordQuery, RecordScope, SessionRecord
+from super_agent.adapter.storage import JsonlStorage, MemoryStorage, SqliteStorage, build_sql_filters
+from super_agent.core.context import AgentContext
+from super_agent.core.event import RunEvent, RunIdentity
+from super_agent.core.records import EventStore, RecordQuery, RecordScope, SessionRecord
 
 
 class UnifiedRecordScopeTests(unittest.TestCase):

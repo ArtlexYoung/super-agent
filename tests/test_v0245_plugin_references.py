@@ -4,12 +4,12 @@ from pathlib import Path
 import tempfile
 
 from scripts.verify_release import VERSION, _check_builtin_plugins
-from skill.library import AgentLibrary
+from super_agent.skill.library import AgentLibrary
 
 
 class PluginReferenceTests(unittest.TestCase):
     def test_plugin_skill_references_are_ordered_and_unique(self):
-        root = Path(__file__).resolve().parents[1] / "src" / "skill" / "builtin"
+        root = Path(__file__).resolve().parents[1] / "src" / "super_agent" / "skill" / "builtin"
         library = AgentLibrary((root,))
 
         references = library.plugin_skill_references("plugin:super-agent/code")
@@ -20,7 +20,7 @@ class PluginReferenceTests(unittest.TestCase):
         self.assertIn("skill:super-agent/task", references)
 
     def test_skill_index_reports_plugin_references(self):
-        root = Path(__file__).resolve().parents[1] / "src" / "skill" / "builtin"
+        root = Path(__file__).resolve().parents[1] / "src" / "super_agent" / "skill" / "builtin"
         library = AgentLibrary((root,))
 
         page = library.list_skills(page_size=100)
@@ -52,7 +52,7 @@ class PluginReferenceTests(unittest.TestCase):
                 AgentLibrary((root,)).snapshot()
 
     def test_release_gate_rejects_a_stale_builtin_skill_version(self):
-        source = Path(__file__).resolve().parents[1] / "src" / "skill" / "builtin"
+        source = Path(__file__).resolve().parents[1] / "src" / "super_agent" / "skill" / "builtin"
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "builtin"
             shutil.copytree(source, target)

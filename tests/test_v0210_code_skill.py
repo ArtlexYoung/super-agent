@@ -3,17 +3,17 @@ import unittest
 from pathlib import Path
 from pathlib import Path
 
-from adapter.cli import _workspace_instructions
-from adapter.process import ProcessSettings, ProcessTools
-from adapter.tools import CodeWorkspace, WorkspaceSettings
-from skill.library import AgentLibrary
-from core.provider import MockModel
+from super_agent.adapter.cli import _workspace_instructions
+from super_agent.adapter.process import ProcessSettings, ProcessTools
+from super_agent.adapter.tools import CodeWorkspace, WorkspaceSettings
+from super_agent.skill.library import AgentLibrary
+from super_agent.core.provider import MockModel
 from super_agent import Agent
 
 
 class CodeWorkspaceSetupTests(unittest.TestCase):
     def test_code_plugin_is_passive_until_host_binds_tools(self):
-        builtin = Path(__file__).resolve().parents[1] / "src" / "skill" / "builtin"
+        builtin = Path(__file__).resolve().parents[1] / "src" / "super_agent" / "skill" / "builtin"
         library = AgentLibrary((builtin,))
         plugin = library.find_plugin("plugin:super-agent/code")
 

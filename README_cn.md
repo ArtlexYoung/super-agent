@@ -95,11 +95,11 @@ print(result.text)
 ```python
 from super_agent import Agent, model_from_environment
 from pathlib import Path
-from skill.library import AgentLibrary
+from super_agent.skill.library import AgentLibrary
 
 main = Agent(model_from_environment())
 coder = Agent(model_from_environment())
-main.use_agent_library(AgentLibrary((Path("src/skill/builtin"),)))
+main.use_agent_library(AgentLibrary((Path("src/super_agent/skill/builtin"),)))
 engineering = main.add_group("engineering")
 engineering.add_subagent(coder, name="coder", description="实现并验证代码修改")
 result = main.run(
@@ -118,7 +118,7 @@ result = main.run(
 ## 按需添加状态
 
 ```python
-from adapter.storage import JsonlStorage
+from super_agent.adapter.storage import JsonlStorage
 from super_agent import Agent, model_from_environment
 
 agent = Agent(model_from_environment())

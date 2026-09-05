@@ -1,7 +1,7 @@
 import unittest
 
-from core.resources import ResourceCenter
-from skill.library import AgentLibrary
+from super_agent.core.resources import ResourceCenter
+from super_agent.skill.library import AgentLibrary
 
 
 class CentralResourceCenterTests(unittest.TestCase):

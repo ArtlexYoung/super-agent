@@ -3,11 +3,11 @@ import unittest
 from datetime import UTC, datetime, timedelta
 from threading import Event, Thread, current_thread
 
-from adapter.storage import EventCheckpointStore, MemoryStorage
-from core.event import CheckpointConflictError, RunCheckpoint
-from core.model import ModelEvent, ModelRequest
-from core.records import AuditPolicy, EventStore, RecordQuery, RecordScope, SessionRecord
-from skill.memory import Memory
+from super_agent.adapter.storage import EventCheckpointStore, MemoryStorage
+from super_agent.core.event import CheckpointConflictError, RunCheckpoint
+from super_agent.core.model import ModelEvent, ModelRequest
+from super_agent.core.records import AuditPolicy, EventStore, RecordQuery, RecordScope, SessionRecord
+from super_agent.skill.memory import Memory
 from super_agent import Agent
 
 

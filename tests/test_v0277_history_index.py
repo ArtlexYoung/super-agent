@@ -1,10 +1,10 @@
 import unittest
 
-from core.event import RunIdentity
-from core.model import Message, ModelRequest
-from core.provider import MockModel
-from core.resources import ResourceCenter
-from core.run import RuntimeControl, RuntimeExtensionContext, RunInput, collect_run, stream_run
+from super_agent.core.event import RunIdentity
+from super_agent.core.model import Message, ModelRequest
+from super_agent.core.provider import MockModel
+from super_agent.core.resources import ResourceCenter
+from super_agent.core.run import RuntimeControl, RuntimeExtensionContext, RunInput, collect_run, stream_run
 
 
 class HistoryIndexTests(unittest.TestCase):

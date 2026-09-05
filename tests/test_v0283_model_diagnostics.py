@@ -4,8 +4,8 @@ import os
 import unittest
 from unittest import mock
 
-import adapter.cli as cli
-from core.config import config_from_environment
+import super_agent.adapter.cli as cli
+from super_agent.core.config import config_from_environment
 
 
 class ModelDiagnosticsTests(unittest.TestCase):
