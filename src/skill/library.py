@@ -537,19 +537,23 @@ class AgentLibrary:
         selected = _resource_id(skill_id or provisional.name, "Skill ID")
         if selected.rsplit("/", 1)[-1] != provisional.name:
             raise ValueError("installed Skill name must match the target directory")
-        if selected in self.snapshot().skills:
-            current = self.snapshot().skills[selected]
-            if current.package_sha256 == package.sha256:
+        reference = f"skill:{selected}"
+        if reference in self.snapshot().skills:
+            current = self.snapshot().skills[reference]
+            # package.sha256 由满足规范的包计算，而当前 Skill 的 package_sha256
+            # 由 _skill_content_hash 计算；两者口径不同。统一用内容哈希比较，
+            # 避免同内容重装被误判为冲突。
+            if current.package_sha256 == _install_content_hash(package):
                 return current
-            raise ValueError(f"Skill identity conflicts: skill:{selected}")
-        if f"skill:{selected}" in provisional.includes:
-            raise ValueError(f"Skill include cycle: skill:{selected}")
-        for reference in provisional.includes:
-            self.find_skill(reference)
+            raise ValueError(f"Skill identity conflicts: {reference}")
+        if reference in provisional.includes:
+            raise ValueError(f"Skill include cycle: {reference}")
+        for include in provisional.includes:
+            self.find_skill(include)
         target = self._writable() / "skills" / selected
         install_skill_package(package, target)
         self.refresh()
-        installed = self.find_skill(f"skill:{selected}")
+        installed = self.find_skill(reference)
         self._record("skill.installed", _skill_event(installed))
         return installed
 
@@ -1182,11 +1186,31 @@ def _skill_content_hash(path: Path) -> str:
         if not item.is_file():
             continue
         relative = item.relative_to(root)
-        if item != path and any((root / parent / SKILL_FILE).is_file() for parent in relative.parents):
+        # 若该文件位于一个嵌套 Skill 目录（其父目录存在 SKILL.md）之下，则跳过，
+        # 避免把子 Skill 的资源算进当前 Skill。根目录自身不被视为嵌套层。
+        if item != path and any(
+            str(parent) not in {"", "."} and (root / parent / SKILL_FILE).is_file()
+            for parent in relative.parents
+        ):
             continue
         digest.update(relative.as_posix().encode())
         digest.update(b"\0")
         digest.update(item.read_bytes())
+    return digest.hexdigest()
+
+
+def _install_content_hash(package: object) -> str:
+    """用与 _skill_content_hash 相同的相对路径口径计算分发包内容哈希。
+
+    分发包只包含当前 Skill 自身的文件，因此按相对路径 + 内容直接计算，
+    保证同内容重装幂等（与已安装 Skill 的 package_sha256 一致）。
+    """
+    digest = hashlib.sha256()
+    for relative, content in sorted(package.files, key=lambda pair: pair[0]):
+        normalized = relative.as_posix() if isinstance(relative, Path) else relative
+        digest.update(normalized.encode())
+        digest.update(b"\0")
+        digest.update(content)
     return digest.hexdigest()
 
 

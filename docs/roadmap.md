@@ -116,6 +116,10 @@ v0.2.84 按项目标记探测候选验证命令；候选仍走命令白名单与
 
 v0.2.84 probes candidate verification commands by project markers; candidates still pass the command whitelist and per-action confirmation, and return argv, cwd, and exit status.
 
+v0.2.85 让 CLI 直接安装、打包、列出、读取与移除本地 Skill，复用 AgentLibrary 的冲突检查与回滚，并修复同内容重装的幂等哈希口径。
+
+v0.2.85 lets the CLI install, pack, list, read, and remove local Skills directly, reusing AgentLibrary conflict checks and rollback, and fixes the idempotent content-hash basis for same-content reinstalls.
+
 后续演进按风险和可验证性推进：
 
 Future work should proceed by risk and verifiability:

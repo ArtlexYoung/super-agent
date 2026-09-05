@@ -1,6 +1,6 @@
 schema = 1
 id = "super-agent/code"
-version = "0.2.84"
+version = "0.2.85"
 description = "Repository coding methods"
 entry_skill = "skill:super-agent/code"
 skills = ["skill:super-agent/code/deep-optimization"]

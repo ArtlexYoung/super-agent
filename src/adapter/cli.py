@@ -240,14 +240,22 @@ def _mcps_command(arguments: list[str]) -> int:
 
 def _catalog_command(kind: str, arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(prog=f"super-agent {kind}")
-    parser.add_argument("action", choices=("list", "read"), nargs="?", default="list")
+    parser.add_argument(
+        "action",
+        choices=("list", "read", "install", "pack", "remove"),
+        nargs="?",
+        default="list",
+    )
     parser.add_argument("reference", nargs="?")
+    parser.add_argument("source", nargs="?")
     parser.add_argument("--config")
+    parser.add_argument("--dest", help="writable library root for install or pack target")
     parser.add_argument("--page", type=int, default=1)
     parser.add_argument("--page-size", type=int, default=20)
     parser.add_argument("--output", choices=("text", "json"), default="json")
     parsed = parser.parse_args(arguments)
-    library = _library_from_config(_load_general(parsed.config))
+    config = _load_general(parsed.config)
+    library = _library_from_config(config)
     if parsed.action == "list":
         method = (
             library.list_plugins
@@ -257,16 +265,105 @@ def _catalog_command(kind: str, arguments: list[str]) -> int:
             else library.list_mcp_servers
         )
         value = method(page=parsed.page, page_size=parsed.page_size).to_dict()
+        _print_value(value, parsed.output)
+        return 0
+    if parsed.action in {"install", "remove"}:
+        if kind == "mcps":
+            raise ValueError(f"{kind} does not support {parsed.action}")
+        return _write_catalog_command(
+            kind, parsed.action, parsed, config, library
+        )
+    if parsed.action == "pack":
+        kind = "skills"
+        if kind not in {"skills", "plugins"}:
+            raise ValueError("pack is supported for skills only")
+        return _pack_catalog_command(parsed, library)
+    # read
+    if not parsed.reference:
+        raise ValueError(f"{kind} read requires a canonical reference")
+    if kind == "plugins":
+        value = library.preview_plugin(parsed.reference, max_characters=20_000).to_dict()
+    elif kind == "skills":
+        value = library.preview_skill(parsed.reference, max_characters=20_000).to_dict()
+    else:
+        value = library.find_mcp_server(parsed.reference).index_entry()
+    return _print_value(value, parsed.output)
+
+
+def _write_catalog_command(
+    kind: str,
+    action: str,
+    parsed: argparse.Namespace,
+    config: Config,
+    library: AgentLibrary,
+) -> int:
+    """执行可写目录操作（skills 安装/移除、plugins 移除）。
+
+    复用 AgentLibrary 的冲突检查、回滚与身份验证，不复制安装器。
+    """
+    writable = _writable_library_root(config, parsed.dest)
+    writable_library = AgentLibrary(
+        library.paths,
+        writable_root=writable,
+        cache_root=library.cache_root,
+        disabled_plugins=library.disabled_plugins,
+        disabled_skills=library.disabled_skills,
+        disabled_mcp_servers=library.disabled_mcp_servers,
+    )
+    if action == "install":
+        if kind == "skills":
+            if not parsed.source:
+                raise ValueError("skills install requires a source path")
+            installed = writable_library.install_skill(parsed.source)
+            value = _skill_install_view(installed, writable)
+        else:
+            raise ValueError("plugins install requires a plugin bundle; not supported yet")
     else:
         if not parsed.reference:
-            raise ValueError(f"{kind} read requires a canonical reference")
-        if kind == "plugins":
-            value = library.preview_plugin(parsed.reference, max_characters=20_000).to_dict()
-        elif kind == "skills":
-            value = library.preview_skill(parsed.reference, max_characters=20_000).to_dict()
+            raise ValueError(f"{kind} remove requires a canonical reference")
+        if kind == "skills":
+            reference = parsed.reference if parsed.reference.startswith("skill:") else f"skill:{parsed.reference}"
+            skill = writable_library.find_skill(reference)
+            writable_library.remove_skill(reference, expected_sha256=skill.sha256)
+            value = {"reference": reference, "removed": True, "target": str(writable)}
         else:
-            value = library.find_mcp_server(parsed.reference).index_entry()
+            reference = parsed.reference if parsed.reference.startswith("plugin:") else f"plugin:{parsed.reference}"
+            plugin = writable_library.find_plugin(reference)
+            writable_library.remove_plugin(reference, expected_sha256=plugin.sha256)
+            value = {"reference": reference, "removed": True, "target": str(writable)}
     return _print_value(value, parsed.output)
+
+
+def _pack_catalog_command(parsed: argparse.Namespace, library: AgentLibrary) -> int:
+    if not parsed.reference:
+        raise ValueError("pack requires a Skill reference")
+    if not parsed.dest:
+        raise ValueError("pack requires --dest as the destination ZIP path")
+    reference = (
+        parsed.reference
+        if parsed.reference.startswith("skill:")
+        else f"skill:{parsed.reference}"
+    )
+    path = library.pack_skill(reference, parsed.dest)
+    return _print_value(
+        {"reference": reference, "zip": str(path)}, parsed.output
+    )
+
+
+def _writable_library_root(config: Config, explicit: str | None) -> Path:
+    """返回可写资源根目录，未配置时使用用户级默认位置。"""
+    selected = explicit or config.writable_library_path or ".super-agent/library"
+    path = config.resolve_path(selected) or Path(selected).expanduser().resolve()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _skill_install_view(installed: object, writable: Path) -> dict[str, object]:
+    view = installed.index_entry()
+    return {
+        **{key: value for key, value in view.items() if key != "content"},
+        "target": str(writable),
+    }
 
 
 def _data_command(arguments: list[str]) -> int:

@@ -1,4 +1,4 @@
-"""Run the local release checks for v0.2.84."""
+"""Run the local release checks for v0.2.85."""
 
 from __future__ import annotations
 
@@ -11,11 +11,11 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-VERSION = "0.2.84"
+VERSION = "0.2.85"
 MAX_SOURCE_FILES = 27
-# 源码非空行预算随功能按需增长：v0.2.81 连续聊天、v0.2.82 会话保存/恢复。
+# 源码非空行预算随功能按需增长：CLI 连续聊天、会话保存恢复、模型诊断、编码验证、Skill 管理。
 # 按 development-plan P0-00 调整，保留增长预算但不取消版本、依赖与资源一致性检查。
-MAX_SOURCE_LINES = 13_000
+MAX_SOURCE_LINES = 13_300
 SOURCE_ROOTS = {"adapter", "core", "skill", "cli.py", "super_agent.py"}
 DOMAIN_FILES = {
     "adapter": {"cli.py", "database.py", "process.py", "storage.py", "tools.py"},
