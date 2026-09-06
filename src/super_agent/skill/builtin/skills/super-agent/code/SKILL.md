@@ -8,7 +8,7 @@ metadata:
   super-agent-capabilities: "[\"file_read\",\"file_write\",\"file_delete\",\"git_read\",\"process_run\"]"
   super-agent-optional-capabilities: "[\"file_search\",\"process_poll\",\"process_stop\"]"
   super-agent-type: "task"
-  super-agent-version: "0.2.101"
+  super-agent-version: "0.2.102"
 ---
 # Repository coding method
 
