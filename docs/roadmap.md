@@ -136,6 +136,10 @@ v0.2.89 统一资源所有权与生命周期：创建者负责关闭，借用对
 
 v0.2.89 unifies resource ownership and lifecycle: the creator closes, and borrowed objects are not closed by the Agent; `close()` is idempotent, propagates to subagents, and is available as a context manager.
 
+v0.2.90 建立可解释的依赖方向门禁：核心层不得反向导入装配层，并分层报告 core/skill/adapter 源码规模；修正 `core.user` 对 skill 的顶层反向依赖。
+
+v0.2.90 establishes an interpretable dependency-direction gate: the core layer must not reverse-import the assembly layer, and reports core/skill/adapter source sizes separately; it also fixes `core.user`'s top-level reverse dependency on skill.
+
 后续演进按风险和可验证性推进：
 
 Future work should proceed by risk and verifiability:

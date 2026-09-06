@@ -13,12 +13,6 @@ from super_agent.core.model import Message, Model, ModelPerformance
 from super_agent.core.provider import ModelRouter
 from super_agent.core.records import Conversations, EventStore, Record, RecordScope
 from super_agent.core.run import EventListener, collect_run
-from super_agent.skill.agent_builder import (
-    agent_event_store,
-    agent_evolution,
-    agent_library,
-    agent_memory,
-)
 
 if TYPE_CHECKING:
     from super_agent import Agent
@@ -134,6 +128,8 @@ class UserMemory:
         return self._memory().forget(memory_id, reason)
 
     def _memory(self):
+        from super_agent.skill.agent_builder import agent_event_store, agent_memory
+
         identity = RunIdentity(
             user_id=self.user.user_id,
             agent_name=self.user.agent.name,
@@ -289,6 +285,7 @@ class UserRuns:
         result = self._result_from_records(self.read(run_id))
         if not self.user.agent.evolution_enabled:
             raise RuntimeError("Skill evolution is not enabled for this Agent")
+        from super_agent.skill.agent_builder import agent_evolution, agent_library
         from super_agent.skill.evolution import evidence_from_run
 
         identity = RunIdentity(user_id=self.user.user_id, agent_name=self.user.agent.name)
@@ -471,6 +468,8 @@ def model_profile_views(
     """组合用户初始描述和当前作用域内的学习表现。"""
     model = agent.model
     if isinstance(model, ModelRouter):
+        from super_agent.skill.agent_builder import agent_event_store
+
         _load_model_performance(
             agent, model, agent_event_store(agent, identity), identity
         )

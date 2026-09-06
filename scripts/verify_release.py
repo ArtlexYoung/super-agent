@@ -1,4 +1,4 @@
-"""Run the local release checks for v0.2.89."""
+"""Run the local release checks for v0.2.90."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-VERSION = "0.2.89"
+VERSION = "0.2.90"
 MAX_SOURCE_FILES = 28
 # 源码非空行预算随功能按需增长：CLI 连续聊天、会话保存恢复、模型诊断、编码验证、Skill 管理。
 # 按 development-plan P0-00 调整，保留增长预算但不取消版本、依赖与资源一致性检查。
@@ -127,9 +127,16 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
         errors.append(f"source file count is {len(files)}, limit is {MAX_SOURCE_FILES}")
     if lines > MAX_SOURCE_LINES:
         errors.append(f"source line count is {lines}, limit is {MAX_SOURCE_LINES}")
+    errors.extend(_check_dependency_direction(root / "src" / "super_agent"))
     errors.extend(_check_old_imports(files))
     errors.extend(_check_builtin_plugins(root / "src" / "super_agent" / "skill" / "builtin"))
     errors.extend(_check_benchmark(root / "examples" / "offline-gate-benchmark.json"))
+    print(
+        f"Python source: {len(files)} files, {lines} non-empty lines "
+        f"(core={_domain_lines(root / 'src' / 'super_agent' / 'core')}, "
+        f"skill={_domain_lines(root / 'src' / 'super_agent' / 'skill')}, "
+        f"adapter={_domain_lines(root / 'src' / 'super_agent' / 'adapter')})"
+    )
     readme = (root / "README.md").read_text(encoding="utf-8") if (root / "README.md").is_file() else ""
     for marker in ("README_cn.md", "README_en.md", "## 致谢与借鉴"):
         if marker not in readme:
@@ -208,6 +215,34 @@ def _check_build_config(project: dict[str, object], root: Path) -> list[str]:
         if not (root / relative).is_file():
             errors.append(f"missing evaluation asset: {relative}")
     return errors
+
+
+def _check_dependency_direction(package: Path) -> list[str]:
+    """核心不得反向导入装配层；检测 core -> skill/adapter 的顶层依赖。"""
+    errors: list[str] = []
+    reverse = re.compile(r"(?m)^(?:from|import)\s+super_agent\.(?:(skill|adapter))\.?")
+    for path in (package / "core").rglob("*.py"):
+        if "__pycache__" in path.parts:
+            continue
+        for index, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            match = reverse.match(line)
+            if match:
+                errors.append(
+                    f"core reverse-imports {match.group(1)}: "
+                    f"{path.relative_to(package)}:{index}"
+                )
+    return errors
+
+
+def _domain_lines(root: Path) -> int:
+    """统计某源码目录的非空行，用于可解释的规模报告。"""
+    if not root.is_dir():
+        return 0
+    return sum(
+        _non_empty_lines(path)
+        for path in root.rglob("*.py")
+        if "__pycache__" not in path.parts
+    )
 
 
 def _check_old_imports(files: list[Path]) -> list[str]:
