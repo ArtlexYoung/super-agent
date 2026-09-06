@@ -132,6 +132,10 @@ v0.2.88 收敛 Agent 公共入口：不再复制死配置，模型画像归领�
 
 v0.2.88 converges the Agent public entry: it no longer duplicates dead configuration, model profiles belong to domain objects, and construction, run/stream, tools, and subagent composition are the single beginner-facing entry.
 
+v0.2.89 统一资源所有权与生命周期：创建者负责关闭，借用对象不由 Agent 关闭；`close()` 幂等并向子 Agent 传播，并存为上下文管理器。
+
+v0.2.89 unifies resource ownership and lifecycle: the creator closes, and borrowed objects are not closed by the Agent; `close()` is idempotent, propagates to subagents, and is available as a context manager.
+
 后续演进按风险和可验证性推进：
 
 Future work should proceed by risk and verifiability:

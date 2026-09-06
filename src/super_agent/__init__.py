@@ -474,6 +474,29 @@ class Agent:
             settings=settings,
         )
 
+    def close(self) -> None:
+        """释放本 Agent 拥有的内存运行资源，不关闭借用对象。
+
+        只清理本 Agent 创建的记忆与团队运行状态，并向子 Agent 传播；
+        ``use_storage`` / ``use_agent_library`` / ``connect_mcp_server`` 传入的
+        存储、资源库和 MCP 服务是借用对象，由调用者负责关闭。幂等。
+        """
+        self._memories.clear()
+        if self._team_node is not None:
+            from super_agent.skill.organization_runtime import clear_team_runtimes
+
+            clear_team_runtimes(self)
+            for node in self._team_node.walk():
+                child = node.coordinator
+                if child is not None and child is not self:
+                    child.close()
+
+    def __enter__(self) -> Agent:
+        return self
+
+    def __exit__(self, _type: object, _value: object, _traceback: object) -> None:
+        self.close()
+
     def stream(
         self,
         prompt: str,
