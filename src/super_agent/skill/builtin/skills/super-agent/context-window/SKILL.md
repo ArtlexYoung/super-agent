@@ -4,7 +4,7 @@ description: "Methods for explicit token budgeting and context window rollover"
 metadata:
   super-agent-categories: "[\"context\",\"token-budget\"]"
   super-agent-type: "method"
-  super-agent-version: "0.2.96"
+  super-agent-version: "0.2.97"
 ---
 # Explicit context window method
 
