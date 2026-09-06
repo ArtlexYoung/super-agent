@@ -128,6 +128,10 @@ v0.2.87 让基础 Agent 运行只载入必要模块：未启用的团队、存�
 
 v0.2.87 makes a base Agent run load only necessary modules: unenabled team, storage, and MCP implementations are no longer imported by a plain run, while they still load and work when enabled.
 
+v0.2.88 收敛 Agent 公共入口：不再复制死配置，模型画像归领域对象，构造、run/stream、工具与子 Agent 组合是唯一面向初学者的入口。
+
+v0.2.88 converges the Agent public entry: it no longer duplicates dead configuration, model profiles belong to domain objects, and construction, run/stream, tools, and subagent composition are the single beginner-facing entry.
+
 后续演进按风险和可验证性推进：
 
 Future work should proceed by risk and verifiability:

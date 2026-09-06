@@ -1,4 +1,8 @@
-"""提供直接组合模型、工具、Skill、状态和子 Agent 的公开入口。"""
+"""提供直接组合模型、工具、Skill、状态和子 Agent 的公开入口。
+
+公共入口聚焦构造、run / stream、工具与 Skill 装配、Python 子 Agent 组合；
+团队、审计、模型画像、资源安装等领域管理交给对应领域对象。
+"""
 
 from __future__ import annotations
 
@@ -66,7 +70,6 @@ class Agent:
             else (config.name if config is not None else "super-agent")
         )
         self.name = _text(selected_name, "Agent name")
-        self.config = config
         self.working_directory = _make_working_directory(working_directory)
         self.instructions: list[str] = []
         self.settings = AgentSettings()
@@ -275,18 +278,6 @@ class Agent:
     def list_models(self) -> tuple[ModelProfile, ...]:
         """读取当前 Agent 的模型配置。"""
         return tuple(self._model_profiles)
-
-    def list_model_profiles(
-        self,
-        *,
-        user_id: str = "local",
-        purpose: str = "auto",
-        agent_name: str | None = None,
-    ) -> tuple[dict[str, object], ...]:
-        """读取用户描述与学习表现组成的安全模型画像。"""
-        return self.for_user(user_id).models.list(
-            purpose=purpose, agent_name=agent_name
-        )
 
     def use_agent_library(self, library: AgentLibrary) -> None:
         """显式挂载中央资源库，不读取、安装或启动其中内容。"""

@@ -266,9 +266,7 @@ class TeamMember:
         }
         if user_id is not None:
             value["model_profiles"] = list(
-                self.agent.list_model_profiles(
-                    user_id=user_id, agent_name=self.name
-                )
+                self.agent.for_user(user_id).models.list(agent_name=self.name)
             )
         return value
 

@@ -95,6 +95,26 @@ result = agent.run("解释 Skill 渐进式披露")
 print(result.text)
 ```
 
+带自定义工具的独立 Agent 也在约 20 行内完成，入口仍是 `Agent` 与 `add_tool`；
+
+An independent Agent with a custom tool also fits in about 20 lines, still using `Agent` and `add_tool`:
+
+```python
+from super_agent import Agent, model_from_environment
+from super_agent.core.model import Tool
+
+def echo(arguments, _context):
+    return {"echo": arguments["text"]}
+
+agent = Agent(model_from_environment())
+agent.add_tool(Tool("echo", "Echo text", echo, {
+    "type": "object",
+    "properties": {"text": {"type": "string"}},
+    "required": ["text"],
+}))
+print(agent.run("repeat hello").text)
+```
+
 组和子 Agent 在代码中自然组合。第 1 层是根组，普通组不调用模型，每个 Agent 仍保留自己的模型、Skill 和配置。
 
 Groups and subagents compose naturally in code. Level 1 is the root group, structural groups do not call models, and each Agent keeps its own models, plugins, Skills, and configuration.
@@ -240,5 +260,5 @@ Third-party projects retain their own copyrights and licenses; this project is l
 The full release gate checks Python tests, compilation, package contents, offline evaluation, and build.
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.87 --full
+python3.11 scripts/verify_release.py --version 0.2.88 --full
 ```
