@@ -1,4 +1,4 @@
-"""Run the local release checks for v0.2.103."""
+"""Run the local release checks for v0.2.104."""
 
 from __future__ import annotations
 
@@ -12,15 +12,15 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-VERSION = "0.2.103"
-MAX_SOURCE_FILES = 36
+VERSION = "0.2.104"
+MAX_SOURCE_FILES = 37
 # 源码非空行预算随功能按需增长：CLI 连续聊天、会话保存恢复、模型诊断、编码验证、Skill 管理。
 # 通用能力需求（capability.py）、内容寻址（content.py）、自包含资源包（package.py）、
 # Harness 兼容报告（harness.py）、声明式投影（projection.py）、能力解析（resolve.py）、
-# 安装事务（transaction.py）与受限 MCP 出口（exit.py）新增到 skill 层，
-# 随 P2-02/P2-04/P2-05 按 development-plan P0-00 调整。
+# 安装事务（transaction.py）、受限 MCP 出口（exit.py）与 Harness 预设（preset.py）新增到
+# skill 层，随 P2-02/P2-04/P2-05 按 development-plan P0-00 调整。
 # 按 development-plan P0-00 调整，保留增长预算但不取消版本、依赖与资源一致性检查。
-MAX_SOURCE_LINES = 14_300
+MAX_SOURCE_LINES = 14_400
 SOURCE_ROOTS = {"super_agent", "cli.py"}
 DOMAIN_FILES = {
     "super_agent/adapter": {"cli.py", "database.py", "process.py", "storage.py", "tools.py"},
@@ -42,6 +42,7 @@ DOMAIN_FILES = {
         "organization_tools.py",
         "organization_workers.py",
         "package.py",
+        "preset.py",
         "projection.py",
         "resolve.py",
         "transaction.py",
