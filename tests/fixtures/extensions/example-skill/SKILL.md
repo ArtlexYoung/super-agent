@@ -4,9 +4,9 @@ description: A portable extension-protocol fixture with resources and capability
 metadata:
   author: Super Agent
   super-agent-type: task
-  super-agent-version: "0.2.91"
-  super-agent-capabilities: '["read_file", "search_files"]'
-  super-agent-optional-capabilities: '["run_test"]'
+  super-agent-version: "0.2.92"
+  super-agent-capabilities: ["read_file", "search_files"]
+  super-agent-optional-capabilities: ["run_test"]
   disable-model-invocation: "false"
 ---
 

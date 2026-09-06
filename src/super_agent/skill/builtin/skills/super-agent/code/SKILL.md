@@ -5,10 +5,14 @@ metadata:
   super-agent-categories: "[\"code\",\"code/change\"]"
   super-agent-optional-tools: "[\"git_status\",\"git_diff\",\"write_file\",\"replace_in_file\",\"delete_file\",\"list_process_commands\",\"start_process\",\"poll_process\",\"stop_process\",\"run_check\"]"
   super-agent-requires: "[\"list_files\",\"read_file\",\"search_files\",\"repository_map\"]"
+  super-agent-capabilities: "[\"file_read\",\"file_write\",\"file_delete\",\"git_read\",\"process_run\"]"
+  super-agent-optional-capabilities: "[\"file_search\",\"process_poll\",\"process_stop\"]"
   super-agent-type: "task"
-  super-agent-version: "0.2.91"
+  super-agent-version: "0.2.92"
 ---
 # Repository coding method
+
+> 宿主中立：本正文是通用编码方法；`super-agent-requires`/`optional_tools` 是 Super Agent 的具体工具绑定，`super-agent-capabilities` 是不绑定具体工具名的通用能力需求。其他宿主可读取正文与 capabilities 自行映射工具。此 Skill 是只读方法，从不授予文件、Git、进程或网络访问权限。
 
 This Skill is a passive coding method. It never grants file, Git, process, network, or delete access. The host must explicitly register the matching tools and policy before any action can happen.
 

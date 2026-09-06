@@ -11,7 +11,7 @@ PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
 python3.11 -m unittest discover -s tests -p 'test_*.py' -v
 
 PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
-python3.11 scripts/verify_release.py --version 0.2.91 --full
+python3.11 scripts/verify_release.py --version 0.2.92 --full
 ```
 
 发布检查验证版本、Python 最低版本、零默认依赖、源码布局、旧目录删除、构建范围、内置插件去重关系和离线评测资产。
@@ -23,6 +23,10 @@ The release gate checks version, Python minimum, zero default dependencies, sour
 Log writes never trigger retention cleanup. Run `super-agent data storage prune --config common.toml --user alice` to preview, then add `--apply` to delete expired logs in the current user, Agent, and working-directory scope and record the cleanup; state streams are not expired by this policy.
 
 ## 版本 / Version
+
+v0.2.92 完善标准 Skill 解析：支持 YAML 流列表与转义，内置 `code` Skill 增加宿主中立能力需求并将概述与工具绑定分离。
+
+v0.2.92 improves standard Skill parsing with YAML flow lists and escapes, and adds host-neutral capability requirements to the builtin `code` Skill while separating the method narrative from host tool bindings.
 
 v0.2.91 定义通用扩展包协议：固定 Agent Skills 规范版本、引入必需/可选能力 schema，兼容内联 YAML 映射，保留宿主扩展并输出结构化协议报告，附标准 Skill 资源 fixtures。
 

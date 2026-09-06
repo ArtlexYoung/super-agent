@@ -144,6 +144,10 @@ v0.2.91 定义通用扩展包协议：固定 Agent Skills 规范版本、引入�
 
 v0.2.91 defines the general extension package protocol: pins an Agent Skills spec version, adds required/optional capability schemas, accepts inline YAML mappings, preserves host extensions with a structured protocol report, and ships standard Skill resource fixtures.
 
+v0.2.92 完善标准 Skill 解析：支持 YAML 流列表与转义，内置 `code` Skill 增加宿主中立能力需求并将概述与工具绑定分离。
+
+v0.2.92 improves standard Skill parsing with YAML flow lists and escapes, and adds host-neutral capability requirements to the builtin `code` Skill while separating the method narrative from host tool bindings.
+
 后续演进按风险和可验证性推进：
 
 Future work should proceed by risk and verifiability:

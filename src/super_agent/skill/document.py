@@ -478,10 +478,14 @@ def _normalize_metadata(frontmatter: Mapping[str, object]) -> dict[str, object]:
     standard_metadata = frontmatter.get("metadata", {})
     if not isinstance(standard_metadata, Mapping):
         raise TypeError("skill metadata must be a string mapping")
-    extra = {
-        str(key): _required_text(value, f"skill metadata {key}")
-        for key, value in standard_metadata.items()
-    }
+    extra: dict[str, object] = {}
+    for key, value in standard_metadata.items():
+        selected = str(key)
+        # 宿主扩展键通常为字符串值；列表键由解析器产出 Python 列表。
+        if selected in EXTENSION_KEYS.values() and isinstance(value, list):
+            extra[selected] = value
+        else:
+            extra[selected] = _required_text(value, f"skill metadata {selected}")
     normalized: dict[str, object] = {
         "name": _required_text(frontmatter.get("name"), "skill name"),
         "description": _required_text(
@@ -588,10 +592,60 @@ def _parse_yaml_metadata(lines: list[str], index: int) -> tuple[dict[str, str], 
             raise ValueError(f"duplicate Skill metadata field: {key}")
         if _is_block_scalar(raw):
             value, index = _parse_block_scalar(lines, index + 1, 2, raw)
+        elif raw.startswith("["):
+            value = _parse_flow_list(raw, index + 1)
+            index += 1
         else:
             value, index = _yaml_string_value(raw, index + 1), index + 1
         result[key] = value
     return result, index
+
+
+def _parse_flow_list(raw: str, line_number: int) -> list[str]:
+    """解析 YAML 流列表，如 ``["read", "write"]``，只接受字符串元素。"""
+    if not raw.endswith("]"):
+        raise ValueError(f"invalid flow list on line {line_number}")
+    content = raw[1:-1].strip()
+    if not content:
+        return []
+    values: list[str] = []
+    token: list[str] = []
+    quote: str | None = None
+    escaped = False
+    for char in content:
+        if quote is not None:
+            if escaped:
+                token.append(_escape_yaml_char(char))
+                escaped = False
+                continue
+            if char == "\\" and quote == '"':
+                escaped = True
+                continue
+            if char == quote:
+                quote = None
+                continue
+            token.append(char)
+            continue
+        if char in "\"'":
+            quote = char
+            continue
+        if char == ",":
+            values.append(_yaml_flow_list_item("".join(token).strip(), line_number))
+            token = []
+            continue
+        token.append(char)
+    if quote is not None or escaped:
+        raise ValueError(f"unterminated quoted string in flow list on line {line_number}")
+    values.append(_yaml_flow_list_item("".join(token).strip(), line_number))
+    return values
+
+
+def _yaml_flow_list_item(value: str, line_number: int) -> str:
+    if not value:
+        raise ValueError(f"flow list item cannot be empty on line {line_number}")
+    if value in {"null", "~", "true", "false", ".nan", ".inf", "-.inf"}:
+        raise ValueError(f"flow list item must be a string on line {line_number}")
+    return value
 
 
 def _parse_block_scalar(
@@ -786,7 +840,12 @@ def _is_block_scalar(value: str) -> bool:
     return value in {"|", "|-", "|+", ">", ">-", ">+"}
 
 
-def _extension_list(value: str, name: str) -> list[str]:
+def _extension_list(value: object, name: str) -> list[str]:
+    # 容忍两种形式：既有 JSON 编码字符串，或已由解析器产出的流列表。
+    if isinstance(value, list):
+        return list(_text_array(value, f"skill {name}"))
+    if not isinstance(value, str):
+        raise TypeError(f"super-agent-{name.replace('_', '-')} must be a JSON string array or list")
     try:
         parsed = json.loads(value)
     except json.JSONDecodeError as error:
