@@ -19,6 +19,7 @@ from super_agent.core import require_integer as _integer, require_text as _text
 from super_agent.core.model import Tool
 from super_agent.core.resources import DisclosedContent, DisclosurePage, ResourceCenter
 from super_agent.core.run import ToolContext, _RunState
+from super_agent.skill.content import ContentAddress, dedup
 from super_agent.skill.document import (
     SKILL_FILE,
     Skill,
@@ -244,6 +245,31 @@ class AgentLibrary:
                 page=1, page_size=page_size
             ).to_dict(),
         }
+
+    def content_addresses(self) -> dict[str, dict[str, object]]:
+        """按内容摘要枚举全部资源并全局去重，报告哪些引用共享同一内容。
+
+        摘要与引用名、来源目录无关：相同内容在不同 Skill/MCP/插件下必然得到同一
+        摘要，因此可作为自包含资源包与安装所有权的公共键。只做内容核算，不写库。
+        """
+        snapshot = self.snapshot()
+        addresses: list[ContentAddress] = []
+        for item in snapshot.skills.values():
+            addresses.append(
+                ContentAddress(
+                    _skill_content_hash(item.path), item.reference, "skill", item.version
+                )
+            )
+        for item in snapshot.mcps.values():
+            addresses.append(
+                ContentAddress(item.sha256, item.reference, "mcp", item.version)
+            )
+        for item in snapshot.plugins.values():
+            addresses.append(
+                ContentAddress(item.sha256, item.reference, "plugin", item.version)
+            )
+        return dedup(addresses)
+
 
     def list_skills(
         self,

@@ -1,6 +1,6 @@
 schema = 1
 id = "super-agent/task"
-version = "0.2.94"
+version = "0.2.95"
 description = "Explicit planning and task completion methods"
 entry_skill = "skill:super-agent/task"
 skills = []

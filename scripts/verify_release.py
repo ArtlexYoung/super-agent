@@ -1,4 +1,4 @@
-"""Run the local release checks for v0.2.94."""
+"""Run the local release checks for v0.2.95."""
 
 from __future__ import annotations
 
@@ -12,12 +12,13 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-VERSION = "0.2.94"
-MAX_SOURCE_FILES = 29
+VERSION = "0.2.95"
+MAX_SOURCE_FILES = 30
 # 源码非空行预算随功能按需增长：CLI 连续聊天、会话保存恢复、模型诊断、编码验证、Skill 管理。
-# 通用能力需求模块（capability.py）新增到 skill 层，随 P2-02 按 development-plan P0-00 调整。
+# 通用能力需求模块（capability.py）与内容寻址模块（content.py）新增到 skill 层，随 P2-02 按
+# development-plan P0-00 调整。
 # 按 development-plan P0-00 调整，保留增长预算但不取消版本、依赖与资源一致性检查。
-MAX_SOURCE_LINES = 13_600
+MAX_SOURCE_LINES = 13_700
 SOURCE_ROOTS = {"super_agent", "cli.py"}
 DOMAIN_FILES = {
     "super_agent/adapter": {"cli.py", "database.py", "process.py", "storage.py", "tools.py"},
@@ -26,6 +27,7 @@ DOMAIN_FILES = {
         "agent_builder.py",
         "builtin",
         "capability.py",
+        "content.py",
         "document.py",
         "evolution.py",
         "library.py",
