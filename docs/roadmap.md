@@ -140,6 +140,10 @@ v0.2.90 建立可解释的依赖方向门禁：核心层不得反向导入装配
 
 v0.2.90 establishes an interpretable dependency-direction gate: the core layer must not reverse-import the assembly layer, and reports core/skill/adapter source sizes separately; it also fixes `core.user`'s top-level reverse dependency on skill.
 
+v0.2.91 定义通用扩展包协议：固定 Agent Skills 规范版本、引入必需/可选能力 schema，兼容内联 YAML 映射，保留宿主扩展并输出结构化协议报告，附标准 Skill 资源 fixtures。
+
+v0.2.91 defines the general extension package protocol: pins an Agent Skills spec version, adds required/optional capability schemas, accepts inline YAML mappings, preserves host extensions with a structured protocol report, and ships standard Skill resource fixtures.
+
 后续演进按风险和可验证性推进：
 
 Future work should proceed by risk and verifiability:

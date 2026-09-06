@@ -17,6 +17,8 @@ from types import MappingProxyType
 
 SKILL_FILE = "SKILL.md"
 NAME_PATTERN = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?")
+# 固定的 Agent Skills 规范版本号，供解析与跨宿主协议共用。
+AGENT_SKILLS_SPEC = "0.1"
 STANDARD_FIELDS = {
     "name",
     "description",
@@ -32,8 +34,17 @@ EXTENSION_KEYS = {
     "requires": "super-agent-requires",
     "optional_tools": "super-agent-optional-tools",
     "includes": "super-agent-includes",
+    "capabilities": "super-agent-capabilities",
+    "optional_capabilities": "super-agent-optional-capabilities",
 }
-LIST_FIELDS = ("categories", "requires", "optional_tools", "includes")
+LIST_FIELDS = (
+    "categories",
+    "requires",
+    "optional_tools",
+    "includes",
+    "capabilities",
+    "optional_capabilities",
+)
 MAX_RESOURCE_BYTES = 20_000_000
 MAX_PACKAGE_FILES = 1_024
 MAX_PACKAGE_FILE_BYTES = 50_000_000
@@ -55,6 +66,8 @@ class Skill:
     requires: tuple[str, ...] = ()
     optional_tools: tuple[str, ...] = ()
     includes: tuple[str, ...] = ()
+    capabilities: tuple[str, ...] = ()
+    optional_capabilities: tuple[str, ...] = ()
     version: str = "0.1.0"
     metadata: Mapping[str, object] = field(default_factory=dict)
     sha256: str = ""
@@ -91,6 +104,42 @@ class Skill:
             "requires": list(self.requires),
             "optional_tools": list(self.optional_tools),
             "version": self.version,
+        }
+
+    def protocol_audit(self) -> dict[str, object]:
+        """将标准字段与宿主扩展分开，并报告支持范围。
+
+        标准字段可完整解析；宿主特有元数据保留在 ``extensions``；必需能力缺失时
+        标记 ``status`` 为 ``blocked``，存在但不能满足的记为 ``partial``。
+        """
+        standard = {
+            "name": self.name,
+            "description": self.description,
+            "license": self.metadata.get("license"),
+            "compatibility": self.metadata.get("compatibility"),
+            "body_characters": len(self.body),
+        }
+        reserved = set(EXTENSION_KEYS.values())
+        extensions = {
+            str(key): value
+            for key, value in self.metadata.get("standard_metadata", {}).items()
+            if str(key) not in reserved
+        }
+        if self.capabilities:
+            status = "partial"
+        elif self.requires:
+            status = "partial"
+        else:
+            status = "complete"
+        return {
+            "spec": AGENT_SKILLS_SPEC,
+            "skill_id": self.skill_id,
+            "version": self.version,
+            "standard": standard,
+            "required_capabilities": list(self.capabilities),
+            "optional_capabilities": list(self.optional_capabilities),
+            "extensions": extensions,
+            "status": status,
         }
 
 
@@ -383,6 +432,12 @@ def parse_skill_text(
             metadata.get("optional_tools", []), "skill optional_tools"
         ),
         includes=_text_array(metadata.get("includes", []), "skill includes"),
+        capabilities=_text_array(
+            metadata.get("capabilities", []), "skill capabilities"
+        ),
+        optional_capabilities=_text_array(
+            metadata.get("optional_capabilities", []), "skill optional_capabilities"
+        ),
         version=_required_text(metadata.get("version"), "skill version"),
         metadata=MappingProxyType(metadata),
         sha256=digest,
@@ -504,6 +559,8 @@ def _parse_yaml_frontmatter(source: str) -> dict[str, object]:
                 value, index = {}, index + 1
             else:
                 value, index = _parse_yaml_metadata(lines, index + 1)
+        elif key == "metadata" and raw.startswith("{"):
+            value, index = _parse_inline_flow_mapping(raw, index + 1), index + 1
         elif _is_block_scalar(raw):
             value, index = _parse_block_scalar(lines, index + 1, 0, raw)
         else:
@@ -570,6 +627,91 @@ def _fold_yaml_lines(lines: list[str]) -> str:
             result.append("\n")
         result.append(line)
     return "".join(result)
+
+
+def _parse_inline_flow_mapping(raw: str, line_number: int) -> dict[str, str]:
+    """解析 YAML 内联流映射，如 ``{author: "example", version: 0.1}``。"""
+    if not raw.endswith("}") or raw == "{}":
+        raise ValueError(f"invalid inline mapping on line {line_number}")
+    content = raw[1:-1].strip()
+    if not content:
+        return {}
+    result: dict[str, str] = {}
+    index = 0
+    length = len(content)
+    while index < length:
+        while index < length and content[index] in " \t,":
+            index += 1
+        if index >= length:
+            break
+        if content[index] == ",":
+            raise ValueError(f"invalid inline mapping on line {line_number}")
+        start = index
+        while index < length and content[index] not in ":":
+            index += 1
+        if index >= length:
+            raise ValueError(f"invalid inline mapping key on line {line_number}")
+        key = content[start:index].strip()
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", key):
+            raise ValueError(f"invalid inline mapping key on line {line_number}: {key}")
+        if key in result:
+            raise ValueError(f"duplicate inline mapping key on line {line_number}: {key}")
+        index += 1  # consume ':'
+        while index < length and content[index] in " \t":
+            index += 1
+        if index < length and content[index] in "\"'":
+            quote = content[index]
+            value, next_index = _quoted_yaml_string(content, index, line_number)
+            value = value.rstrip()
+            index = next_index
+        else:
+            value_start = index
+            while index < length and content[index] != ",":
+                index += 1
+            value = content[value_start:index].strip()
+            if not value or value.startswith(("[{&*!")):
+                raise ValueError(f"Skill YAML value must be a string on line {line_number}")
+            if value.lower() in {"null", "~", "true", "false", ".nan", ".inf", "-.inf"}:
+                raise ValueError(f"Skill YAML value must be a string on line {line_number}")
+        result[key] = value
+    return result
+
+
+def _quoted_yaml_string(
+    content: str, start: int, line_number: int
+) -> tuple[str, int]:
+    """解析从 start 开始的单/双引号 YAML 字符串，返回 (值, 结束下标)。"""
+    quote = content[start]
+    index = start + 1
+    chars: list[str] = []
+    while index < len(content):
+        char = content[index]
+        if quote == "'":
+            if char == "'":
+                if index + 1 < len(content) and content[index + 1] == "'":
+                    chars.append("'")
+                    index += 2
+                    continue
+                return "".join(chars), index + 1
+            chars.append(char)
+            index += 1
+            continue
+        if char == "\\":
+            if index + 1 >= len(content):
+                raise ValueError(f"invalid quoted string on line {line_number}")
+            chars.append(_escape_yaml_char(content[index + 1]))
+            index += 2
+            continue
+        if char == '"':
+            return "".join(chars), index + 1
+        chars.append(char)
+        index += 1
+    raise ValueError(f"unterminated quoted string on line {line_number}")
+
+
+def _escape_yaml_char(char: str) -> str:
+    mapping = {"n": "\n", "t": "\t", "r": "\r", '"': '"', "\\": "\\", "/": "/", "0": "\0"}
+    return mapping.get(char, char)
 
 
 def _yaml_pair(line: str, line_number: int) -> tuple[str, str]:

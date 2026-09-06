@@ -4,7 +4,7 @@ description: "Explicit methods for improving reusable Skills"
 metadata:
   super-agent-categories: "[\"evolution\",\"skill\"]"
   super-agent-type: "method"
-  super-agent-version: "0.2.90"
+  super-agent-version: "0.2.91"
 ---
 # Skill improvement methods
 
