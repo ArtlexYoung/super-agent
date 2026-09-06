@@ -10,10 +10,12 @@ import shutil
 import subprocess
 import tempfile
 import zipfile
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
+
+from super_agent.skill.capability import CapabilityNeeds, capability_needs
 
 SKILL_FILE = "SKILL.md"
 NAME_PATTERN = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?")
@@ -89,6 +91,14 @@ class Skill:
     @property
     def key(self) -> str:
         return self.reference
+
+    def capability_needs(self) -> CapabilityNeeds:
+        """返回本 Skill 声明的核心能力需求，独立于任何具体的宿主工具名。"""
+        return capability_needs(self.capabilities, self.optional_capabilities)
+
+    def capability_support(self, provided: Iterable[str]) -> dict[str, object]:
+        """按能力名核算宿主是否满足本 Skill，不绑定具体工具名。"""
+        return self.capability_needs().support(provided)
 
     @property
     def root(self) -> Path:
