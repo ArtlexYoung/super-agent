@@ -1,6 +1,6 @@
 schema = 1
 id = "super-agent/context-compression"
-version = "0.2.102"
+version = "0.2.103"
 description = "Explicit model-directed context compression"
 entry_skill = "skill:super-agent/context-compression"
 skills = []
