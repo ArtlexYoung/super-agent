@@ -84,6 +84,9 @@ class Plugin:
     sources: tuple[Path, ...] = ()
     writable: bool = False
     runtime_extension: str | None = None
+    capabilities: tuple[str, ...] = ()
+    optional_capabilities: tuple[str, ...] = ()
+    resources: tuple[str, ...] = ()
 
     @property
     def reference(self) -> str:
@@ -95,7 +98,7 @@ class Plugin:
         return tuple(dict.fromkeys((self.entry_skill, *self.skills)))
 
     def index_entry(self) -> dict[str, object]:
-        return {
+        entry: dict[str, object] = {
             "key": self.reference,
             "version": self.version,
             "description": self.description,
@@ -109,6 +112,13 @@ class Plugin:
             "sha256": self.sha256,
             "sources": len(self.sources),
         }
+        if self.capabilities:
+            entry["capabilities"] = list(self.capabilities)
+        if self.optional_capabilities:
+            entry["optional_capabilities"] = list(self.optional_capabilities)
+        if self.resources:
+            entry["resources"] = list(self.resources)
+        return entry
 
 
 @dataclass(frozen=True)
@@ -869,17 +879,31 @@ def _read_plugin_manifest(path: Path, library_root: Path, *, writable: bool) -> 
     plugin_id = _resource_id("/".join(relative.parts), "plugin ID")
     with path.open("rb") as stream:
         value = tomllib.load(stream)
-    _unknown(value, {"schema", "id", "version", "description", "entry_skill", "skills", "included_plugins", "required_mcp_servers", "optional_mcp_servers", "runtime_extension"}, "plugin manifest")
+    _unknown(value, {"schema", "id", "version", "description", "entry_skill", "skills", "included_plugins", "required_mcp_servers", "optional_mcp_servers", "runtime_extension", "capabilities", "optional_capabilities", "resources"}, "plugin manifest")
     if value.get("schema") != 1:
         raise ValueError(f"unsupported plugin schema: {value.get('schema')}")
     if _resource_id(value.get("id"), "plugin ID") != plugin_id:
         raise ValueError(f"plugin ID must match its directory: {plugin_id}")
+    resources_root = path.parent / "resources"
+    if resources_root.is_dir():
+        resource_files = _resource_inventory(resources_root)
+    else:
+        resource_files = ()
     extra_files = tuple(
-        item for item in path.parent.rglob("*") if item.is_file() and item.name != PLUGIN_FILE
+        item
+        for item in path.parent.rglob("*")
+        if item.is_file()
+        and item.name != PLUGIN_FILE
+        and not item.is_relative_to(resources_root)
     )
     if extra_files:
         raise ValueError(
-            f"plugin directory may contain only {PLUGIN_FILE}: {plugin_id}"
+            f"plugin directory may contain only {PLUGIN_FILE} and resources/: {plugin_id}"
+        )
+    declared_resources = _text_array(value.get("resources", []), "plugin resources")
+    if declared_resources and set(declared_resources) != set(resource_files):
+        raise ValueError(
+            f"plugin resources must match the resources directory: {plugin_id}"
         )
     skills = _references(value.get("skills", []), "skill", "plugin skills")
     included = _references(value.get("included_plugins", []), "plugin", "included plugins")
@@ -912,6 +936,9 @@ def _read_plugin_manifest(path: Path, library_root: Path, *, writable: bool) -> 
         (path.parent.resolve(),),
         writable,
         _optional_runtime_extension(value.get("runtime_extension")),
+        _text_array(value.get("capabilities", []), "plugin capabilities"),
+        _text_array(value.get("optional_capabilities", []), "plugin optional_capabilities"),
+        tuple(resource_files),
     )
 
 
@@ -1166,6 +1193,13 @@ def _text_array(value: object, name: str) -> tuple[str, ...]:
     if not isinstance(value, list) or any(not isinstance(item, str) or not item.strip() for item in value):
         raise TypeError(f"{name} must be an array of non-empty text")
     return tuple(dict.fromkeys(item.strip() for item in value))
+
+
+def _resource_inventory(root: Path) -> tuple[str, ...]:
+    """返回插件资源目录中按相对路径排序的文件清单。"""
+    return tuple(
+        sorted(item.relative_to(root).as_posix() for item in root.rglob("*") if item.is_file())
+    )
 
 
 def _directory_hash(root: Path) -> str:
