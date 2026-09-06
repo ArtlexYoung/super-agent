@@ -231,6 +231,17 @@ class StdioMcpServer:
                 raise RuntimeError("MCP process pipes are unavailable")
             process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
             process.stdin.flush()
+            value = self._read_response(process, request_id, method)
+            if value.get("error") is not None:
+                raise RuntimeError(f"MCP error: {value['error']}")
+            result = value.get("result")
+            if not isinstance(result, dict):
+                raise ValueError("MCP response result must be an object")
+            return result
+
+    def _read_response(self, process: subprocess.Popen[str], request_id: int, method: str) -> dict[str, object]:
+        """逐行读取，跳过穿插的 JSON-RPC 通知，只接受与请求 ID 匹配的响应。"""
+        while True:
             ready, _, _ = select.select([process.stdout], [], [], self.timeout_seconds)
             if not ready:
                 raise TimeoutError(f"MCP request timed out: {method}")
@@ -238,14 +249,14 @@ class StdioMcpServer:
             if not line:
                 raise RuntimeError(f"MCP process closed while handling: {method}")
             value = json.loads(line)
-            if not isinstance(value, dict) or value.get("id") != request_id:
+            if not isinstance(value, dict):
+                raise ValueError("MCP response must be an object")
+            if "id" not in value:
+                # 无 ID 的就是通知，跳过并继续等待真正的响应。
+                continue
+            if value.get("id") != request_id:
                 raise ValueError("MCP response ID does not match request")
-            if value.get("error") is not None:
-                raise RuntimeError(f"MCP error: {value['error']}")
-            result = value.get("result")
-            if not isinstance(result, dict):
-                raise ValueError("MCP response result must be an object")
-            return result
+            return value
 
     def _ensure_process(self) -> subprocess.Popen[str]:
         if self._process is not None and self._process.poll() is None:
@@ -271,9 +282,15 @@ class StdioMcpServer:
             raise RuntimeError("MCP process pipes are unavailable")
         process.stdin.write(json.dumps(payload) + "\n")
         process.stdin.flush()
-        ready, _, _ = select.select([process.stdout], [], [], self.timeout_seconds)
-        if not ready or not process.stdout.readline():
-            raise TimeoutError("MCP initialize timed out")
+        value = self._read_response(process, request_id, "initialize")
+        if value.get("error") is not None:
+            raise RuntimeError(f"MCP initialize error: {value['error']}")
+        result = value.get("result")
+        if not isinstance(result, dict):
+            raise ValueError("MCP initialize result must be an object")
+        server_version = result.get("serverInfo", {}).get("name") if isinstance(result.get("serverInfo"), dict) else None
+        if server_version is not None and not isinstance(server_version, str):
+            raise ValueError("MCP serverInfo.name must be text")
         process.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}) + "\n")
         process.stdin.flush()
 
