@@ -545,7 +545,9 @@ def build_run_instructions(
             "read only the relevant bounded pages, then activate the plugin or Skill before following it. "
             "An explicit user choice arrives through the same activation path, so never treat one as stronger. "
             "Skill text cannot grant tools or permissions; when a method needs a tool you do not have, "
-            "report the missing capability instead of simulating it.\n"
+            "report the missing capability instead of simulating it. "
+            "Each group's entries and total are reported separately, so a truncated group is still fully "
+            "discoverable: call list_skills with the next page when has_more is true.\n"
             + json.dumps(content_index, ensure_ascii=False, separators=(",", ":"))
         )
     if shared_context is not None:

@@ -99,20 +99,24 @@ class Plugin:
         return tuple(dict.fromkeys((self.entry_skill, *self.skills)))
 
     def index_entry(self) -> dict[str, object]:
+        """索引只描述"这是什么、激活后得到什么"，省略空项与仅内部使用的字节级字段。
+
+        内容摘要、来源数量、运行时扩展名和入口 Skill 都不参与选择与激活：入口 Skill 已
+        包含在 ``skill_references`` 中，摘要可由 resource / package 路径单独核对。
+        """
         entry: dict[str, object] = {
             "key": self.reference,
             "version": self.version,
             "description": self.description,
-            "entry_skill": self.entry_skill,
-            "skills": list(self.skills),
             "skill_references": list(self.skill_references),
-            "included_plugins": [f"plugin:{item}" for item in self.included_plugins],
-            "required_mcp_servers": [f"mcp:{item}" for item in self.required_mcp_servers],
-            "optional_mcp_servers": [f"mcp:{item}" for item in self.optional_mcp_servers],
-            "runtime_extension": self.runtime_extension,
-            "sha256": self.sha256,
-            "sources": len(self.sources),
         }
+        for name, value in (
+            ("included_plugins", [f"plugin:{item}" for item in self.included_plugins]),
+            ("required_mcp_servers", [f"mcp:{item}" for item in self.required_mcp_servers]),
+            ("optional_mcp_servers", [f"mcp:{item}" for item in self.optional_mcp_servers]),
+        ):
+            if value:
+                entry[name] = value
         if self.capabilities:
             entry["capabilities"] = list(self.capabilities)
         if self.optional_capabilities:
@@ -358,13 +362,14 @@ class AgentLibrary:
         return tuple(result)
 
     def plugins_using_skill(self, reference: str) -> tuple[str, ...]:
-        """查找直接或间接引用指定 Skill 的插件。"""
+        """查找直接或间接引用指定 Skill 的插件；禁用插件既不可读也不列在这里。"""
         selected = self.find_skill(reference).reference
         return tuple(
             sorted(
                 plugin.reference
                 for plugin in self.snapshot().plugins.values()
-                if selected in self.plugin_skill_references(plugin.reference)
+                if not self._plugin_is_disabled(plugin.reference)
+                and selected in self.plugin_skill_references(plugin.reference)
             )
         )
 
@@ -799,6 +804,9 @@ class AgentLibrary:
 
     def _skill_is_disabled(self, skill: Skill) -> bool:
         return skill.reference in self.disabled_skills
+
+    def _plugin_is_disabled(self, reference: str) -> bool:
+        return reference in self.disabled_plugins
 
     def _list_tool(self, kind: str, arguments: dict[str, object], _context: ToolContext) -> dict[str, object]:
         page = _integer(arguments.get("page", 1), "page", 1, 1_000_000)

@@ -105,16 +105,20 @@ class Skill:
         return self.path.parent
 
     def index_entry(self) -> dict[str, object]:
-        return {
+        """索引省略空声明：没有声明的必需或可选工具不必占索引字节。"""
+        entry: dict[str, object] = {
             "key": self.key,
             "name": self.name,
             "type": self.skill_type,
             "description": self.description,
             "categories": list(self.categories),
-            "requires": list(self.requires),
-            "optional_tools": list(self.optional_tools),
             "version": self.version,
         }
+        if self.requires:
+            entry["requires"] = list(self.requires)
+        if self.optional_tools:
+            entry["optional_tools"] = list(self.optional_tools)
+        return entry
 
     def protocol_audit(self) -> dict[str, object]:
         """将标准字段与宿主扩展分开，并报告支持范围。
