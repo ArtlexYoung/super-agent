@@ -385,7 +385,9 @@ class RunEvent:
 @dataclass(frozen=True)
 class RunLimits:
     # 这是 Skill 文本、工具结果、记忆和子 Agent 摘要共用的预算。
-    max_context_characters: int | None = 24_000
+    # 基础指令约 14.5k 字符，完整 code 插件再叠加约 8.2k；24k 会把正常装配变成启动失败，
+    # 因此按实测装配抬到 48k（约 12k token），仍保留失控保护。模型真实窗口另行检查。
+    max_context_characters: int | None = 48_000
     max_model_turns: int | None = None
     max_model_input_characters: int | None = None
     max_tool_output_characters: int | None = 8_000

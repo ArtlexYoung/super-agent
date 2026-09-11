@@ -3,9 +3,9 @@ name: "common"
 description: "General evidence-driven task method and deterministic calculation"
 metadata:
   super-agent-categories: "[\"general/task\",\"tool/general\"]"
-  super-agent-requires: "[\"calculate_numbers\"]"
+  super-agent-optional-tools: "[\"calculate_numbers\"]"
   super-agent-type: "task"
-  super-agent-version: "0.2.113"
+  super-agent-version: "0.2.114"
 ---
 # General task method
 

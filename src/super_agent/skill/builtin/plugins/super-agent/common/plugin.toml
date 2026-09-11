@@ -1,9 +1,10 @@
 schema = 1
 id = "super-agent/common"
-version = "0.2.113"
+version = "0.2.114"
 description = "General task methods"
 entry_skill = "skill:super-agent/common"
 skills = []
-included_plugins = ["plugin:super-agent/task", "plugin:super-agent/team", "plugin:super-agent/review"]
+# review 会要求真正的多 Agent 工具，因此只作为独立场景按需启用，不做每个任务的强制依赖。
+included_plugins = ["plugin:super-agent/task", "plugin:super-agent/team"]
 required_mcp_servers = []
 optional_mcp_servers = []

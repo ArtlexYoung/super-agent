@@ -52,6 +52,27 @@ critical_log_days = 365
 
 Unknown fields fail directly. Loading configuration creates no directory, opens no database, writes no Skill, and starts no process or MCP connection; later explicit actions own those effects.
 
+`models[].provider` 决定线上协议，不做静默回退：
+
+| provider | 协议 | 端点 |
+| --- | --- | --- |
+| `openai` / `openai-compatible` | Chat Completions | `POST {base_url}/chat/completions` |
+| `openai-responses` / `responses` | Responses | `POST {base_url}/responses` |
+| `anthropic` / `anthropic-compatible` | Anthropic Messages | `POST {base_url}/v1/messages` |
+| `mock` | 本地脚本响应，不联网 | 无 |
+
+`models[].provider` selects the wire protocol with no silent fallback.
+
+只支持 Responses 接口的供应商必须显式配置 `provider = "openai-responses"`；`base_url` 指到服务根路径（例如 `.../v3`），运行时追加 `responses`。请求使用 `input`、`instructions`、扁平的 `tools` 定义与 `store = false`（无状态，不依赖供应商保存响应），绝不会改发 `/chat/completions`。
+
+A provider that only speaks Responses must be configured explicitly. The request uses `input`, `instructions`,
+flat `tools`, and `store = false`; it is stateless and never falls back to `/chat/completions`.
+
+响应被截断（`response.incomplete`）、失败（`response.failed`）或状态不是 `completed` 时报错，不会把不完整结果当成正常回答；`reasoning_effort` 转成 Responses 的 `reasoning.effort`。
+
+Truncated, failed, or non-`completed` responses raise instead of being returned as a normal answer, and
+`reasoning_effort` maps to the Responses `reasoning.effort` field.
+
 `library_paths` 指向包含 `skills/`、`mcps/` 和 `plugins/` 的中央库根目录。Skill 与 MCP 只在中央目录定义；插件 TOML 只引用它们。标准外部 Skill 放入 `skills/<namespace>/<name>/` 即可，无需私有 front matter。
 
 `library_paths` points to central roots containing `skills/`, `mcps/`, and `plugins/`. Skills and MCP definitions live only in central directories; plugin TOML files refer to them. Put a standard external Skill under `skills/<namespace>/<name>/` without private front matter.

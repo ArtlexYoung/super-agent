@@ -26,18 +26,13 @@ class TaskBaselineTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
 
-    def test_paths_record_real_acceptance_and_explicit_plugin_blocker(self) -> None:
+    def test_paths_record_real_acceptance_and_single_agent_plugin(self) -> None:
         report = run_baseline(self.root / "report")
-        self.assertFalse(report["passed"])
         self.assertEqual(6, len(report["runs"]))
         for run in report["runs"]:
             with self.subTest(task=run["task"], variant=run["variant"]):
-                if run["task"] == "bug-fix" and run["variant"] == "plugin":
-                    self.assertIn("Skill requires unregistered tools", run["execution_error"])
-                    self.assertIn("skill:super-agent/team/multi-agent", run["execution_error"])
-                    self.assertEqual(0, run["model_calls"])
-                    self.assertFalse(run["acceptance"]["accepted"])
-                    continue
+                # v0.2.114 起完整 code 插件不再要求团队工具，六条路径都应真正装配并产出可验收结果。
+                self.assertEqual("", run["execution_error"])
                 self.assertTrue(run["execution_checks_passed"])
                 self.assertTrue(run["acceptance"]["accepted"], run["acceptance"])
                 self.assertEqual(0, run["live_model_calls"])
@@ -48,6 +43,11 @@ class TaskBaselineTests(unittest.TestCase):
                                  [item["event"] for item in actions])
                 self.assertEqual(1, len({item["run_id"] for item in actions}))
                 self.assertTrue(actions[0]["run_id"])
+        self.assertTrue(report["passed"])
+        # 反例不删除：原缺陷仍未修复时，同一检查器必须拒绝，产物不能算通过。
+        workspace = self.root / "unfixed"
+        prepare_workspace("bug-fix", workspace)
+        self.assertFalse(evaluate("bug-fix", workspace)["accepted"])
 
     def test_existing_report_directory_is_never_overwritten(self) -> None:
         existing = self.root / "report"

@@ -496,8 +496,26 @@ class AgentLibraryTests(unittest.TestCase):
         library = AgentLibrary((root,))
         self.assertEqual(25, library.list_skills().total)
         session = make_run_state()
-        with self.assertRaises(RuntimeError):
-            library.activate_plugin("plugin:super-agent/common", session)
+        # 单 Agent 没有团队工具，但通用任务方法必须仍可装配：缺的是可选能力，不是必需依赖。
+        activated = library.activate_plugin("plugin:super-agent/common", session)
+        self.assertIn("skill:super-agent/common", activated)
+        self.assertIn("skill:super-agent/team/multi-agent", activated)
+        # 缺失的可选能力必须逐项显式告知模型，不能静默假装多 Agent 或计算器可用。
+        notes = {item.split("]")[0] + "]": item for item in session.instructions
+                 if "unavailable optional tools" in item}
+        self.assertEqual(
+            {"[Skill skill:super-agent/common]", "[Skill skill:super-agent/team/multi-agent]"},
+            set(notes),
+        )
+        self.assertIn("calculate_numbers", notes["[Skill skill:super-agent/common]"])
+        self.assertIn("wait_for_agent_tasks", notes["[Skill skill:super-agent/team/multi-agent]"])
+        for note in notes.values():
+            self.assertIn("report it as a blocker", note)
+        # 声明为必需的工具缺失时仍然直接失败，不会降级成"缺了也能跑"。
+        code = library.find_skill("skill:super-agent/code")
+        self.assertTrue(code.requires)
+        with self.assertRaisesRegex(RuntimeError, "requires unregistered tools"):
+            library.activate_skill(code.reference, session)
 
     def test_evolution_uses_skill_reference_and_central_write_boundary(self):
         with tempfile.TemporaryDirectory() as directory:

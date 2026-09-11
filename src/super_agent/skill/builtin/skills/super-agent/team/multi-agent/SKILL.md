@@ -3,11 +3,13 @@ name: "multi-agent"
 description: "Coordinate child Agents through owned queues and event-driven completion"
 metadata:
   super-agent-categories: "[\"general/multi-agent\",\"coordination/producer-consumer\"]"
-  super-agent-requires: "[\"list_agent_tree\",\"create_agent_task\",\"dispatch_agent_task\",\"read_agent_tasks\",\"wait_for_agent_tasks\",\"cancel_agent_task\",\"post_shared_note\",\"read_shared_notes\",\"wait_for_shared_notes\",\"create_agent_decision\",\"wait_for_agent_decision\",\"read_agent_decisions\"]"
+  super-agent-optional-tools: "[\"list_agent_tree\",\"create_agent_task\",\"dispatch_agent_task\",\"dispatch_agent_tasks\",\"read_agent_tasks\",\"wait_for_agent_tasks\",\"cancel_agent_task\",\"collect_independent_agent_results\",\"post_shared_note\",\"read_shared_notes\",\"wait_for_shared_notes\",\"create_agent_decision\",\"wait_for_agent_decision\",\"read_agent_decisions\"]"
   super-agent-type: "task"
-  super-agent-version: "0.2.113"
+  super-agent-version: "0.2.114"
 ---
 # Multi-Agent producer-consumer method
+
+This method needs an Agent tree. When the tree tools above are not registered, no child Agent can be addressed: do not simulate one, do not decompose the work into pretend subtasks, and do not claim the result was reviewed by others. Finish the work you can do yourself, or report the missing capability as an explicit blocker.
 
 Act as task producer. Inspect the Agent tree, split only independent work, and create self-contained tasks with a purpose and required features. Target an Agent group when work belongs to one department; otherwise let the current group select a suitable child. Each Agent consumes its own queue serially while different Agents may run concurrently. A child with its own subtree can activate this same Skill at the next level.
 

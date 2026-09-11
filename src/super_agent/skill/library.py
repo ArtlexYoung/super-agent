@@ -738,6 +738,13 @@ class AgentLibrary:
             raise RuntimeError(f"Skill is too large for one activation: {skill.reference}")
         value = self.disclose_skill(skill.reference, max_characters=max(4_000, len(skill.body)))
         session.add_instruction(f"[Skill {skill.reference}]\n{value.content}")
+        # 可选工具缺失不是装配失败，但必须让模型知道哪部分方法当前不可用。
+        unavailable = sorted(set(skill.optional_tools) - set(session.tools))
+        if unavailable:
+            session.add_instruction(
+                f"[Skill {skill.reference}] unavailable optional tools: {', '.join(unavailable)}. "
+                "Do not simulate this capability or claim its result; report it as a blocker."
+            )
         session.activate_skill(skill.reference)
         activated.append(skill.reference)
 

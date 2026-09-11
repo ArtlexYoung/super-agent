@@ -183,6 +183,10 @@ class TokenBudget:
 _OPENAI_RUNTIME_BODY_FIELDS = frozenset(
     {"model", "messages", "tools", "stream", "stream_options"}
 )
+# Responses 接口用 input/instructions 表达同一语义：字段名不同，但同样由运行时控制。
+_OPENAI_RESPONSES_RUNTIME_BODY_FIELDS = frozenset(
+    {"model", "input", "instructions", "tools", "stream", "store"}
+)
 _ANTHROPIC_RUNTIME_BODY_FIELDS = frozenset(
     {"model", "messages", "tools", "stream", "system"}
 )
@@ -235,6 +239,8 @@ def validate_model_request_options(
     protected = (
         _OPENAI_RUNTIME_BODY_FIELDS
         if selected in {"openai", "openai-compatible"}
+        else _OPENAI_RESPONSES_RUNTIME_BODY_FIELDS
+        if selected in {"openai-responses", "responses"}
         else _ANTHROPIC_RUNTIME_BODY_FIELDS
         if selected in {"anthropic", "anthropic-compatible"}
         else frozenset()

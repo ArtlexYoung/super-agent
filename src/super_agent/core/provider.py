@@ -145,6 +145,59 @@ class OpenAIModel:
 
 
 @dataclass(frozen=True)
+class OpenAIResponsesModel:
+    """适配 OpenAI Responses 接口（``POST /responses``）的 SSE 流。
+
+    与 Chat Completions 是两套协议：这里显式使用 ``input``/``instructions`` 与 Responses
+    事件，不退回 ``/chat/completions``，避免在供应商只支持 Responses 时静默降级。
+    """
+
+    model: str
+    base_url: str = "https://api.openai.com/v1"
+    api_key: str | None = None
+    api_key_env: str | None = "OPENAI_API_KEY"
+    timeout_seconds: float = 120.0
+    request_body: Mapping[str, object] = field(default_factory=dict)
+    reasoning_effort: str | None = None
+    context_window_tokens: int | None = None
+
+    def __post_init__(self) -> None:
+        options = validate_model_request_options(
+            "openai-responses",
+            ModelRequestOptions(
+                request_body=self.request_body,
+                reasoning_effort=self.reasoning_effort,
+            ),
+        )
+        object.__setattr__(self, "request_body", options.request_body)
+        object.__setattr__(self, "reasoning_effort", options.reasoning_effort)
+        _validate_context_window(self.context_window_tokens)
+
+    def stream(self, request: ModelRequest) -> Iterator[ModelEvent]:
+        instructions, messages = _to_openai_responses_input(request.messages)
+        payload: dict[str, object] = {
+            **self.request_body,
+            "model": self.model,
+            "input": messages,
+            # 无状态调用：不要求供应商保存响应，也不依赖 previous_response_id 续接。
+            "store": False,
+            "stream": True,
+        }
+        if instructions:
+            payload["instructions"] = instructions
+        if request.tools:
+            payload["tools"] = [_responses_tool(tool) for tool in request.tools]
+        if self.reasoning_effort is not None:
+            payload["reasoning"] = {"effort": self.reasoning_effort}
+        headers = {"Content-Type": "application/json"}
+        key = _resolve_key(self.api_key, self.api_key_env, self.base_url)
+        if key:
+            headers["Authorization"] = f"Bearer {key}"
+        data_stream = _post_sse(_join_url(self.base_url, "responses"), payload, headers, self.timeout_seconds)
+        yield from _read_openai_responses_stream(data_stream)
+
+
+@dataclass(frozen=True)
 class AnthropicModel:
     """适配 Anthropic Messages API 的 SSE 接口。"""
 
@@ -509,6 +562,16 @@ def create_model(
             reasoning_effort=settings.reasoning_effort,
             context_window_tokens=context_window_tokens,
         )
+    if selected in {"openai-responses", "responses"}:
+        return OpenAIResponsesModel(
+            model=model,
+            base_url=base_url or "https://api.openai.com/v1",
+            api_key=api_key,
+            api_key_env=api_key_env or "OPENAI_API_KEY",
+            request_body=settings.request_body,
+            reasoning_effort=settings.reasoning_effort,
+            context_window_tokens=context_window_tokens,
+        )
     if selected in {"anthropic", "anthropic-compatible"}:
         return AnthropicModel(
             model=model,
@@ -592,6 +655,161 @@ def _collect_openai_calls(calls: dict[int, dict[str, str]], value: object) -> No
                 target["name"] += str(function["name"])
             if isinstance(function.get("arguments"), str):
                 target["arguments"] += str(function["arguments"])
+
+
+def _to_openai_responses_input(
+    messages: Iterable[Message | Mapping[str, object]],
+) -> tuple[str, list[dict[str, object]]]:
+    """把统一消息转换为 Responses 的 input 数组与顶层 instructions。"""
+    instructions: list[str] = []
+    values: list[dict[str, object]] = []
+    for item in messages:
+        message = Message.from_value(item)
+        if message.role == "system":
+            if message.content:
+                instructions.append(message.content)
+            continue
+        if message.role == "tool":
+            values.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": message.tool_call_id,
+                    "output": message.content,
+                }
+            )
+            continue
+        if message.role == "assistant" and message.tool_calls:
+            # 只有带文本的助手轮才回填；纯工具调用轮由 function_call 项自身表达。
+            if message.content:
+                values.append({"role": "assistant", "content": message.content})
+            for call in message.tool_calls:
+                values.append(
+                    {
+                        "type": "function_call",
+                        "call_id": call.call_id,
+                        "name": call.name,
+                        "arguments": json.dumps(dict(call.arguments), ensure_ascii=False),
+                    }
+                )
+            continue
+        values.append({"role": message.role, "content": message.content})
+    return "\n\n".join(instructions), values
+
+
+def _responses_tool(tool: Tool) -> dict[str, object]:
+    """Responses 的函数工具是扁平结构，与 Chat Completions 的嵌套 function 不同。"""
+    return {
+        "type": "function",
+        "name": tool.name,
+        "description": tool.description,
+        "parameters": dict(tool.input_schema) or {"type": "object", "properties": {}},
+    }
+
+
+def _read_openai_responses_stream(events: Iterable[dict[str, object]]) -> Iterator[ModelEvent]:
+    """读取 Responses SSE 事件；失败和不完整响应必须显式报错。"""
+    calls: dict[str, dict[str, str]] = {}
+    order: list[str] = []
+    stop_reason = "model_finished"
+    for event in events:
+        event_type = event.get("type")
+        if event_type == "response.output_text.delta":
+            delta = event.get("delta")
+            if isinstance(delta, str) and delta:
+                yield ModelEvent.text_delta(delta)
+        elif event_type == "response.output_item.added":
+            _start_responses_call(calls, order, event.get("item"), event.get("output_index"))
+        elif event_type == "response.function_call_arguments.delta":
+            _append_responses_arguments(calls, order, event)
+        elif event_type == "response.completed":
+            response = event.get("response")
+            if isinstance(response, Mapping):
+                usage = response.get("usage")
+                if isinstance(usage, Mapping):
+                    yield ModelEvent("usage", usage=_normalize_responses_usage(usage))
+                status = response.get("status")
+                if isinstance(status, str) and status and status != "completed":
+                    raise RuntimeError(f"Responses request did not complete: {status}")
+        elif event_type == "response.incomplete":
+            response = event.get("response")
+            detail = response.get("incomplete_details") if isinstance(response, Mapping) else None
+            raise RuntimeError(f"Responses request was truncated: {detail}")
+        elif event_type in {"response.failed", "error"}:
+            raise RuntimeError(f"Responses request failed: {event.get('response') or event.get('error') or event}")
+    for key in order:
+        call = calls[key]
+        if not call["name"]:
+            raise ValueError("Responses function call is missing a name")
+        try:
+            arguments = json.loads(call["arguments"] or "{}")
+        except json.JSONDecodeError as error:
+            raise ValueError(f"Responses tool arguments are not JSON: {error}") from error
+        if not isinstance(arguments, dict):
+            raise ValueError("Responses tool arguments must be an object")
+        yield ModelEvent.call(call["call_id"], call["name"], arguments)
+    yield ModelEvent.done(stop_reason)
+
+
+def _start_responses_call(
+    calls: dict[str, dict[str, str]],
+    order: list[str],
+    item: object,
+    output_index: object,
+) -> None:
+    if not isinstance(item, Mapping) or item.get("type") != "function_call":
+        return
+    key = str(item.get("id") or item.get("call_id") or output_index or len(order))
+    if key not in calls:
+        order.append(key)
+    target = calls.setdefault(key, {"call_id": "", "name": "", "arguments": ""})
+    for field, name in (("call_id", "call_id"), ("id", "call_id"), ("name", "name")):
+        value = item.get(field)
+        if isinstance(value, str) and value and not target[name]:
+            target[name] = value
+    arguments = item.get("arguments")
+    if isinstance(arguments, str) and arguments:
+        target["arguments"] = arguments
+
+
+def _append_responses_arguments(
+    calls: dict[str, dict[str, str]],
+    order: list[str],
+    event: Mapping[str, object],
+) -> None:
+    key = _responses_call_key(calls, order, event.get("item_id"), event.get("output_index"))
+    delta = event.get("delta")
+    if key is not None and isinstance(delta, str):
+        calls[key]["arguments"] += delta
+
+
+def _responses_call_key(
+    calls: dict[str, dict[str, str]],
+    order: list[str],
+    item_id: object,
+    output_index: object,
+) -> str | None:
+    if isinstance(item_id, str) and item_id:
+        if item_id in calls:
+            return item_id
+        if not order:
+            order.append(item_id)
+            calls.setdefault(item_id, {"call_id": "", "name": "", "arguments": ""})
+            return item_id
+        return None
+    if output_index is not None and order:
+        return order[0]
+    return None
+
+
+def _normalize_responses_usage(usage: Mapping[str, object]) -> dict[str, int | float | None]:
+    """Responses 用 input_tokens/output_tokens，与 Chat Completions 的 prompt/completion 对齐。"""
+    return _normalize_usage(
+        {
+            "prompt_tokens": usage.get("input_tokens", usage.get("prompt_tokens")),
+            "completion_tokens": usage.get("output_tokens", usage.get("completion_tokens")),
+            "total_tokens": usage.get("total_tokens"),
+        }
+    )
 
 
 def _read_anthropic_stream(events: Iterable[dict[str, object]]) -> Iterator[ModelEvent]:
@@ -719,7 +937,12 @@ def _normalize_usage(value: Mapping[str, object]) -> dict[str, object]:
 
 
 def _resolve_key(direct: str | None, environment_name: str | None, base_url: str) -> str:
-    if direct:
+    """解析密钥：显式传入即生效，空字符串不回退到环境变量，避免静默换用别的凭证。"""
+    if direct is not None:
+        if not isinstance(direct, str):
+            raise TypeError("model API key must be text or absent")
+        if not direct.strip():
+            raise ValueError("model API key is empty; omit it to use the environment variable instead")
         return direct
     if environment_name:
         value = os.environ.get(environment_name, "")
