@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from copy import deepcopy
 from collections.abc import Callable, Iterable, Mapping
@@ -80,6 +81,7 @@ class TaskQueue:
         required_features: Iterable[str] = ("text",),
         shared_context: Mapping[str, object] | None = None,
         runtime_lifecycle: RuntimeLifecycle | None = None,
+        depends_on: Iterable[str] = (),
     ) -> Task:
         with self._condition:
             if self.root is None:
@@ -94,8 +96,11 @@ class TaskQueue:
                 raise RuntimeError(
                     f"Agent task limit reached: {self.settings.max_tasks}"
                 )
+            # 先确定 ID，再用同一个 ID 做依赖环检查与建单，避免两处各生成一个 ID。
+            task_id = f"task-{uuid4().hex}"
+            dependencies = self._resolve_dependencies(depends_on, source_id, new_task_id=task_id)
             task = Task(
-                task_id=f"task-{uuid4().hex}",
+                task_id=task_id,
                 prompt=_text(prompt, "Agent task prompt"),
                 source_group_id=source_id,
                 target_group_id=target_id,
@@ -104,10 +109,105 @@ class TaskQueue:
                 shared_context=(
                     None if shared_context is None else dict(shared_context)
                 ),
+                dependencies=dependencies,
             )
             if runtime_lifecycle is not None:
                 self._task_lifecycles[task.task_id] = runtime_lifecycle
             return self._change(task)
+
+    def _resolve_dependencies(
+        self, depends_on: Iterable[str], source_id: str, *, new_task_id: str
+    ) -> tuple[Mapping[str, object], ...]:
+        """解析前置任务，拒绝自依赖与依赖环，并给出具体阻塞链。"""
+        resolved: list[Mapping[str, object]] = []
+        seen: set[str] = set()
+        for task_id in strings(depends_on, "dependency task IDs"):
+            dependency = self._owned_task(task_id, source_id)
+            if dependency.task_id == new_task_id:
+                raise ValueError(f"Agent task cannot depend on itself: {new_task_id}")
+            if dependency.task_id in seen:
+                continue
+            seen.add(dependency.task_id)
+            chain = self._blocking_chain(dependency, new_task_id)
+            if chain:
+                raise ValueError(
+                    "Agent task dependency cycle: "
+                    + " -> ".join((new_task_id, *chain))
+                )
+            resolved.append({"task_id": dependency.task_id, "accepted_submission_id": None,
+                             "accepted_artifact_sha256": None})
+        return tuple(resolved)
+
+    def _blocking_chain(self, dependency: Task, new_task_id: str) -> list[str]:
+        """若新任务已能从被依赖任务到达，则返回那条链；否则返回空。
+
+        新任务由 ``create_task`` 内部生成 ID，先把 ID 当作已存在节点，就能用同一套
+        图遍历同时覆盖自依赖和多任务环，并在报错时给出真实链条。
+        """
+        stack = [(dependency.task_id, [dependency.task_id])]
+        seen: set[str] = set()
+        while stack:
+            current, path = stack.pop()
+            if current == new_task_id:
+                return path
+            if current in seen:
+                continue
+            seen.add(current)
+            if not self._has_task(current):
+                continue
+            for item in self._require_task(current).dependencies:
+                parent = str(item["task_id"])
+                stack.append((parent, [*path, parent]))
+        return []
+
+    def _has_task(self, task_id: str) -> bool:
+        return task_id in self._tasks
+
+    def dependency_status(self, task_id: str, *, source_group_id: str | None = None) -> dict[str, object]:
+        """报告依赖是否满足；未满足时逐项给出原因，不猜测也不自动放行。"""
+        with self._condition:
+            task = self._require_task(task_id)
+            if source_group_id is not None and task.source_group_id != source_group_id:
+                raise PermissionError("task belongs to another scope")
+            values = [self._dependency_value(task, item) for item in task.dependencies]
+        unsatisfied = [item for item in values if not item["satisfied"]]
+        return {"task_id": task.task_id, "satisfied": not unsatisfied,
+                "dependencies": values, "blocked_by": [item["task_id"] for item in unsatisfied]}
+
+    def _dependency_value(self, task: Task, item: Mapping[str, object]) -> dict[str, object]:
+        dependency = self._require_task(str(item["task_id"]))
+        check = self._checks.get(dependency.task_id)
+        submission = self._current_submission(dependency)
+        satisfied = check is not None and submission is not None and self._acceptance_current(dependency, check)
+        if satisfied:
+            reason = ""
+        elif dependency.return_reasons and dependency.delivery is None:
+            # 返工比执行状态更能解释依赖为何失效，优先报告它。
+            reason = "dependency was returned for changes"
+        elif dependency.status in {"created", "queued", "running"}:
+            reason = f"dependency is {dependency.status}"
+        else:
+            reason = "dependency has no accepted submission"
+        return {
+            "task_id": dependency.task_id,
+            "stage": dependency.stage,
+            "status": dependency.status,
+            "satisfied": satisfied,
+            "reason": reason,
+            "accepted_submission_id": None if submission is None else submission["submission_id"],
+            "accepted_artifact_sha256": None if submission is None else _artifact_digest(submission),
+        }
+
+    def record_assignment(self, task_id: str, *, source_group_id: str, agent_name: str,
+                          reason: str) -> Task:
+        """记录负责人交接；只追加可追踪事实，不改变验收结论。"""
+        with self._condition:
+            task = self._owned_task(task_id, source_group_id)
+            entry = {"agent_name": _text(agent_name, "assignee name"),
+                     "reason": _text(reason, "handoff reason"), "at": utc_now()}
+            return self._change(task, event_type="agent_task.assigned",
+                                agent_name=entry["agent_name"],
+                                assignments=(*task.assignments, entry))
 
     def configure_task_check(self, task_id: str, check: TaskCheck, *, source_group_id: str,
                              criteria_revision: str = "current") -> Task:
@@ -149,6 +249,11 @@ class TaskQueue:
             task = self._owned_task(task_id, source_group_id)
             if task.status != "created" or task.delivery:
                 raise ValueError("execution requires a pending task; return the current work first")
+            blocked = [item for item in task.dependencies
+                       if not self._dependency_value(task, item)["satisfied"]]
+            if blocked:
+                raise ValueError("dependency is not accepted yet: "
+                                 + ", ".join(str(item["task_id"]) for item in blocked))
             task = self._change(task, status="running", stage="working", attempts=task.attempts + 1,
                                 attempt_id=f"attempt-{uuid4().hex}")
         try:
@@ -200,6 +305,20 @@ class TaskQueue:
                           "artifacts": snapshot, "submitted_at": utc_now(), "reviews": []}
             return self._change(task, event_type="agent_task.submitted", stage="awaiting_review",
                                 submissions=(*task.submissions, submission))
+
+    def record_review_finding(self, task_id: str, *, source_group_id: str, reviewer: str,
+                              finding: str, location: str = "") -> Task:
+        """记录独立检视意见为可追踪事实；多人一致也不等于宿主验收通过。"""
+        with self._condition:
+            task = self._owned_task(task_id, source_group_id)
+            entry = {
+                "reviewer": _text(reviewer, "reviewer name"),
+                "finding": _text(finding, "review finding"),
+                "location": location if isinstance(location, str) else "",
+                "at": utc_now(),
+            }
+            return self._change(task, event_type="agent_task.review_finding",
+                                submissions=_reviews_with_finding(task.submissions, entry))
 
     def check_task_result(self, task_id: str, *, source_group_id: str) -> Task:
         with self._condition:
@@ -324,6 +443,12 @@ class TaskQueue:
                 self._task_lifecycles[task_id] = runtime_lifecycle
             if task.source_group_id != source_group_id:
                 raise PermissionError("a group can dispatch only its own tasks")
+            # 前置任务只有被验收通过才满足依赖；运行返回或口头完成都不算。
+            blocked = [item for item in task.dependencies
+                       if not self._dependency_value(task, item)["satisfied"]]
+            if blocked:
+                raise ValueError("dependency is not accepted yet: "
+                                 + ", ".join(str(item["task_id"]) for item in blocked))
             _validate_task_transition(task.status, "queued")
             worker = self._choose(task, agent_name, set())
             queued = self._change(
@@ -419,6 +544,13 @@ class TaskQueue:
                 raise PermissionError("a group can read only its own task")
             value = task.to_dict(include_result=include_result)
             check = self._checks.get(task_id)
+            # 依赖状态随读取一并投影，调用方不必猜前置任务是否已验收。
+            if task.dependencies:
+                values = [self._dependency_value(task, item) for item in task.dependencies]
+                value["dependency_blocked_by"] = [
+                    item["task_id"] for item in values if not item["satisfied"]
+                ]
+                value["dependencies_satisfied"] = all(item["satisfied"] for item in values)
         if task.stage in {"accepted", "delivered"}:
             try:
                 current = check is not None and self._acceptance_current(task, check)
@@ -825,6 +957,26 @@ def _artifact_snapshot(check: TaskCheck) -> dict[str, str]:
                         for key, digest in value.items()):
         raise ValueError("artifact snapshot must contain named SHA-256 values")
     return value
+
+
+def _artifact_digest(submission: Mapping[str, object]) -> str:
+    """提交产物的整体摘要；依赖与绑定都以它为版本标识。"""
+    return hashlib.sha256(json.dumps(submission["artifacts"], ensure_ascii=False,
+                                     sort_keys=True).encode()).hexdigest()
+
+
+def _reviews_with_finding(
+    submissions: tuple[Mapping[str, object], ...], entry: Mapping[str, object]
+) -> tuple[Mapping[str, object], ...]:
+    """把检视意见挂到对应的提交上；没有提交时不凭空造一条。
+
+    意见只增补 ``findings``，不写入 ``reviews``——结论字段只由宿主检查产生。
+    """
+    if not submissions:
+        raise ValueError("review finding requires a submission to attach to")
+    current = dict(submissions[-1])
+    current["findings"] = [*current.get("findings", ()), dict(entry)]
+    return (*submissions[:-1], current)
 
 
 

@@ -170,8 +170,12 @@ class TaskDeliveryTests(unittest.TestCase):
 
     def test_model_tools_cannot_self_accept_or_deliver(self) -> None:
         tools = {tool.name: tool for tool in build_task_tools(self.queue, self.scope["source_group_id"], self.task.task_id)}
-        # 模型侧只暴露读取、提交和请求退回；验收与交付没有对应工具。
-        self.assertEqual({"read_agent_task", "submit_agent_task_result", "return_agent_task_for_changes"}, set(tools))
+        # 模型侧只暴露读取、提交、请求退回、依赖查询和检视意见；验收与交付没有对应工具。
+        self.assertEqual(
+            {"read_agent_task", "submit_agent_task_result", "return_agent_task_for_changes",
+             "read_agent_task_dependencies", "record_agent_task_finding"},
+            set(tools),
+        )
         self.queue.execute_task(self.task.task_id, self.agent.run, **self.scope)
         submitted = tools["submit_agent_task_result"].handler({}, _tool_context(self.agent))
         self.assertEqual("awaiting_review", submitted["stage"])

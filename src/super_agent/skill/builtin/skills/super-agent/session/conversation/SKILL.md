@@ -4,7 +4,7 @@ description: "Judge and manage turns in an explicitly selected conversation"
 metadata:
   super-agent-categories: "[\"evaluation/conversation\",\"session/conversation\"]"
   super-agent-type: "feedback"
-  super-agent-version: "0.2.115"
+  super-agent-version: "0.2.116"
 ---
 # Conversation method
 

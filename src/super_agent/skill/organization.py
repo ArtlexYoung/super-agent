@@ -128,6 +128,10 @@ class Task:
     criteria: tuple[str, str] = ()
     delivery: Mapping[str, object] | None = None
     return_reasons: tuple[str, ...] = ()
+    # 依赖绑定的是"前置任务被验收的那份提交"而不是它的运行状态：前置返工、产物或标准
+    # 变化后，这里记录的提交摘要不再成立，依赖重新变为未满足。
+    dependencies: tuple[Mapping[str, object], ...] = ()
+    assignments: tuple[Mapping[str, object], ...] = ()
 
     def to_dict(self, *, include_result: bool = True) -> dict[str, object]:
         value: dict[str, object] = {
@@ -154,6 +158,8 @@ class Task:
             "submissions": dataclass_data(self)["submissions"],
             "delivery": dataclass_data(self)["delivery"],
             "return_reasons": list(self.return_reasons),
+            "dependencies": dataclass_data(self)["dependencies"],
+            "assignments": dataclass_data(self)["assignments"],
         }
         if include_result:
             value["result"] = None if self.result is None else dict(self.result)

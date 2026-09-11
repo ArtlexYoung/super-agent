@@ -141,6 +141,8 @@ def _task_tool_definitions() -> tuple[ToolDefinition, ...]:
         ("read_agent_task", "Read this task's goal, stage, criteria and submission history", _read_task, "empty", read),
         ("submit_agent_task_result", "Submit the finished work for host verification; the host takes the artifact snapshot", _submit_task, "request", write),
         ("return_agent_task_for_changes", "Ask the owner to reopen this task with a reason when work cannot finish", _return_task, "return", write),
+        ("read_agent_task_dependencies", "Check whether this task's prerequisites are accepted yet", _read_dependencies, "empty", read),
+        ("record_agent_task_finding", "Record an independent review finding on the current submission; this never accepts the task", _record_finding, "finding", write),
     )
 
 
@@ -164,6 +166,23 @@ def _return_task(queue: TaskQueue, group_id: str, task_id: str, arguments: Argum
         task_id,
         text(arguments.get("reason"), "return reason"),
         source_group_id=group_id,
+    ).to_dict()
+
+
+def _read_dependencies(queue: TaskQueue, group_id: str, task_id: str, _arguments: Arguments, _context: ToolContext) -> dict[str, object]:
+    return queue.dependency_status(task_id, source_group_id=group_id)
+
+
+def _record_finding(queue: TaskQueue, group_id: str, task_id: str, arguments: Arguments, context: ToolContext) -> dict[str, object]:
+    # 检视人默认取当前运行身份；模型不能自报成别人，也不能借此产生通过结论。
+    reviewer = text(arguments.get("reviewer") or context.session.identity.agent_name, "reviewer name")
+    location = arguments.get("location")
+    return queue.record_review_finding(
+        task_id,
+        source_group_id=group_id,
+        reviewer=reviewer,
+        finding=text(arguments.get("finding"), "review finding"),
+        location="" if location is None else text(location, "review location"),
     ).to_dict()
 
 
@@ -340,11 +359,13 @@ def _schemas() -> dict[str, dict[str, object]]:
     text_array = {"type": "array", "items": text}
     task = _object_schema({"task_id": text}, "task_id")
     request = _object_schema({"request_id": text})
+    finding = _object_schema({"finding": text, "location": text, "reviewer": text}, "finding")
     return_task = _object_schema({"reason": text}, "reason")
     board = {"type": "string", "enum": ["current", "parent"]}
     return {
         "empty": _object_schema({}),
         "request": request,
+        "finding": finding,
         "return": return_task,
         "task": task,
         "dispatch": _object_schema({"task_id": text, "agent_name": text}, "task_id"),
