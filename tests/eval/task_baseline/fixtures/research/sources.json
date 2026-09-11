@@ -1,0 +1,20 @@
+{
+  "verified_on": "2026-09-11",
+  "kind": "short official excerpts, not full-page snapshots",
+  "sources": [
+    {
+      "id": "python-json",
+      "url": "https://docs.python.org/3.11/library/json.html#json.dump",
+      "excerpts": ["JSON is not a framed protocol", "trying to serialize multiple objects with repeated calls to dump() using the same fp will result in an invalid JSON file"],
+      "facts": ["json_requires_framing"],
+      "scope": "JSONL adds newline framing; this source does not establish that JSONL is unusable."
+    },
+    {
+      "id": "sqlite-wal",
+      "url": "https://www.sqlite.org/wal.html",
+      "excerpts": ["there can only be one writer at a time", "WAL does not work over a network filesystem", "writers do not block readers and readers do not block writers. This is mostly true", "applications should be prepared for that eventuality"],
+      "facts": ["wal_single_writer", "wal_same_host", "wal_read_write_overlap", "wal_busy_possible"],
+      "scope": "Section 9 qualifies concurrent access: SQLITE_BUSY remains possible. No task-specific speedup has been measured."
+    }
+  ]
+}

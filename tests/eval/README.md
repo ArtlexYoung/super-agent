@@ -5,6 +5,11 @@ this project should live under `tests/eval/`.
 
 ## Agent Benchmark Reports
 
+- [`task_baseline/PLAN.md`](task_baseline/PLAN.md) contains two controlled task
+  fixtures, independent artifact checks, and a zero-network scripted baseline
+  for plain Agent, individual Skill, and full plugin assembly. It records
+  blocked paths explicitly; it does not measure live model quality or cost.
+
 - [`reports/token-usage-glm4-9b-20260806/`](reports/token-usage-glm4-9b-20260806/)
   compares Codex, Claude Code, Super Agent, and a direct Raw Model baseline on
   HumanEval+ and LiveCodeBench Codegen using `THUDM/GLM-4-9B-0414`. It includes

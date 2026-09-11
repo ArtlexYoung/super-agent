@@ -1,0 +1,8 @@
+{
+  "id": "bug-fix",
+  "plugin": "plugin:super-agent/code",
+  "skill": "skill:super-agent/code",
+  "prompt": "修复 event_window.py：select_events 应返回 start <= timestamp < end 的事件，保留输入顺序，不修改输入；start >= end 返回空列表。只修改 event_window.py。提交实际补丁，完成说明不能替代测试。宿主将用工作区外的独立测试验收。",
+  "input": "event_window.py",
+  "artifact": "event_window.py"
+}

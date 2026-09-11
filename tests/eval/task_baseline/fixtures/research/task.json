@@ -1,0 +1,8 @@
+{
+  "id": "research",
+  "plugin": "plugin:super-agent/research",
+  "skill": "skill:super-agent/research",
+  "prompt": "根据 sources.json，为本机一个写入者、多个读取者、需要事务和索引查询的任务记录选择 sqlite-wal 或 jsonl。只创建 decision.json，不修改资料。JSON 顶层包含 choice、claims、not_claimed；claims 为每项资料事实的 {fact, source} 引用列表；not_claimed 列出资料没有支持的结论：jsonl_impossible、measured_speedup、unlimited_writers、network_wal。必须说明 JSON 缺少分帧不等于 JSONL 不可用，不能声称已实测性能。宿主检查固定事实与出处，本题不要求联网。",
+  "input": "sources.json",
+  "artifact": "decision.json"
+}
