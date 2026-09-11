@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
 from threading import Condition, RLock, Thread
@@ -16,6 +17,7 @@ from super_agent.skill.organization import (
     TeamNode,
     TeamMember,
     Task,
+    TaskCheck,
     TeamSettings,
 )
 from super_agent.skill.organization_tools import strings
@@ -24,11 +26,11 @@ from super_agent.skill.organization_workers import AgentWorkerPool, candidate_me
 TERMINAL = frozenset({"completed", "failed", "cancelled"})
 TASK_TRANSITIONS = {
     None: frozenset({"created"}),
-    "created": frozenset({"queued", "cancelled"}),
+    "created": frozenset({"queued", "running", "cancelled"}),
     "queued": frozenset({"running", "cancelled"}),
     "running": frozenset({"queued", "completed", "failed"}),
-    "completed": frozenset(),
-    "failed": frozenset(),
+    "completed": frozenset({"created"}),
+    "failed": frozenset({"created"}),
     "cancelled": frozenset(),
 }
 TASK_EVENTS = {
@@ -47,18 +49,22 @@ class TaskQueue:
 
     def __init__(
         self,
-        root: TeamNode,
-        settings: TeamSettings,
-        record_event: RecordEvent | None,
+        root: TeamNode | None = None,
+        settings: TeamSettings | None = None,
+        record_event: RecordEvent | None = None,
+        *,
+        scope: str = "local",
     ) -> None:
         self.root = root
-        self.settings = settings
+        self.settings = settings or TeamSettings()
+        self.scope = _text(scope, "task scope")
         self.record_event = record_event
         self._tasks: dict[str, Task] = {}
         self._version = 0
         self._condition = Condition(RLock())
-        self._workers = AgentWorkerPool(settings, self._record)
+        self._workers = AgentWorkerPool(self.settings, self._record)
         self._task_lifecycles: dict[str, RuntimeLifecycle] = {}
+        self._checks: dict[str, TaskCheck] = {}
 
     @property
     def version(self) -> int:
@@ -76,8 +82,14 @@ class TaskQueue:
         runtime_lifecycle: RuntimeLifecycle | None = None,
     ) -> Task:
         with self._condition:
-            source = self._require_group(source_group_id)
-            target = self._target_group(source, target_group_id)
+            if self.root is None:
+                if source_group_id != self.scope or target_group_id not in {None, self.scope}:
+                    raise PermissionError("task is outside this queue scope")
+                source_id = target_id = self.scope
+            else:
+                source = self._require_group(source_group_id)
+                target = self._target_group(source, target_group_id)
+                source_id, target_id = source.group_id, target.group_id
             if len(self._tasks) >= self.settings.max_tasks:
                 raise RuntimeError(
                     f"Agent task limit reached: {self.settings.max_tasks}"
@@ -85,8 +97,8 @@ class TaskQueue:
             task = Task(
                 task_id=f"task-{uuid4().hex}",
                 prompt=_text(prompt, "Agent task prompt"),
-                source_group_id=source.group_id,
-                target_group_id=target.group_id,
+                source_group_id=source_id,
+                target_group_id=target_id,
                 purpose=_text(purpose, "Agent task purpose"),
                 required_features=strings(required_features, "required features"),
                 shared_context=(
@@ -96,6 +108,206 @@ class TaskQueue:
             if runtime_lifecycle is not None:
                 self._task_lifecycles[task.task_id] = runtime_lifecycle
             return self._change(task)
+
+    def configure_task_check(self, task_id: str, check: TaskCheck, *, source_group_id: str,
+                             criteria_revision: str = "current") -> Task:
+        """仅供宿主配置，不作为模型工具；修改标准立即使原验收失效。
+
+        criteria_revision="current" 首次登记标准，不改变任务状态；重复登记须给出新版本号。
+        """
+        if not isinstance(check, TaskCheck):
+            raise TypeError("check must be a TaskCheck")
+        _text(criteria_revision, "criteria revision")
+        with self._condition:
+            task = self._owned_task(task_id, source_group_id)
+            if task.delivery:
+                raise ValueError("delivered task criteria cannot be changed")
+            same_identity = task.criteria == (check.name, check.version)
+            if same_identity and task_id in self._checks:
+                raise ValueError("replacing a check requires a new criteria version")
+            if same_identity:
+                # 同一标准重新绑定执行体不属于标准变更，不重置阶段也不使既有结论失效。
+                self._checks[task_id] = check
+                return deepcopy(task)
+            current = task.submissions[-1] if task.submissions else None
+            awaiting_review = bool(current) and current.get("attempt_id") == task.attempt_id and not current.get("reviews")
+            if awaiting_review:
+                # 已提交内容尚未得出结论时改标准会让结论与产物失去对应关系；先显式退回。
+                raise ValueError("changing criteria requires returning the submitted attempt first")
+            if current is not None and current.get("attempt_id") == task.attempt_id and (
+                current.get("reviews") and current["reviews"][-1].get("outcome") == "passed"
+            ):
+                raise ValueError("changing criteria requires returning the accepted attempt first")
+            updated = self._change(task, event_type="agent_task.criteria_changed",
+                                   criteria=(check.name, check.version), stage="pending", delivery=None)
+            self._checks[task_id] = check
+            return updated
+
+    def execute_task(self, task_id: str, execute: Callable[[str], RunResult], *, source_group_id: str) -> Task:
+        """直接执行已有 Agent，不创建虚拟团队，也不自动认可返回内容。"""
+        with self._condition:
+            task = self._owned_task(task_id, source_group_id)
+            if task.status != "created" or task.delivery:
+                raise ValueError("execution requires a pending task; return the current work first")
+            task = self._change(task, status="running", stage="working", attempts=task.attempts + 1,
+                                attempt_id=f"attempt-{uuid4().hex}")
+        try:
+            result = execute(task.prompt)
+            if not isinstance(result, RunResult):
+                raise TypeError("task executor must return RunResult")
+        except Exception as error:
+            with self._condition:
+                current = self._require_task(task_id)
+                # 执行期间被退回或取消时不得复活旧尝试，保留其状态供调用方核对。
+                if current.status == "running" and current.attempt_id == task.attempt_id:
+                    self._change(current, status="failed", stage="needs_attention",
+                                 error_type=type(error).__name__, error_message=str(error))
+            raise
+        with self._condition:
+            current = self._require_task(task_id)
+            if current.status != "running" or current.attempt_id != task.attempt_id:
+                raise RuntimeError("Agent task changed concurrently during execution")
+            return self._change(current, status="completed", stage="needs_attention",
+                                result=compact_child_result(result.to_dict(), mode="summary",
+                                summary_characters=self.settings.summary_characters, nested_results=0))
+
+    def submit_task_result(self, task_id: str, *, source_group_id: str, request_id: str) -> Task:
+        """宿主读取当前产物快照，模型不能指定伪造摘要。
+
+        一次尝试只对应一份提交；内容要再改必须先退回，避免同一次执行出现多份候选成果。
+        """
+        request_id = _text(request_id, "submission request ID")
+        with self._condition:
+            task = self._owned_task(task_id, source_group_id)
+            if task.status != "completed" or task.delivery:
+                raise ValueError("submission requires a completed, undelivered attempt")
+            check = self._require_check(task)
+            if self._current_submission(task) is not None:
+                raise ValueError("this attempt was already submitted; return it for changes first")
+        snapshot = _artifact_snapshot(check)
+        with self._condition:
+            for item in task.submissions:
+                if item["request_id"] == request_id:
+                    if (item["artifacts"] != snapshot or item["attempt_id"] != task.attempt_id
+                            or item["criteria"] != list(task.criteria)):
+                        raise ValueError("submission request ID reused with different content")
+                    current = self._require_task(task_id)
+                    if current.version != task.version:
+                        raise RuntimeError("task changed during submission")
+                    return deepcopy(current)
+            submission = {"submission_id": f"submission-{uuid4().hex}", "request_id": request_id,
+                          "attempt_id": task.attempt_id, "criteria": list(task.criteria),
+                          "artifacts": snapshot, "submitted_at": utc_now(), "reviews": []}
+            return self._change(task, event_type="agent_task.submitted", stage="awaiting_review",
+                                submissions=(*task.submissions, submission))
+
+    def check_task_result(self, task_id: str, *, source_group_id: str) -> Task:
+        with self._condition:
+            task = self._owned_task(task_id, source_group_id)
+            if task.delivery:
+                raise ValueError("delivered task cannot be checked again")
+            check = self._require_check(task)
+            # 已退回尝试的提交只作历史保存，不能被拿来顶替当前尝试的验收。
+            current = next(
+                (item for item in reversed(task.submissions) if item.get("attempt_id") == task.attempt_id),
+                None,
+            )
+            if current is None:
+                raise ValueError("check requires an undelivered submission of the current attempt")
+            submission = deepcopy(current)
+            if submission["criteria"] != list(task.criteria):
+                raise ValueError("submission is from an old attempt or criteria version")
+            if any(review.get("outcome") == "passed" for review in submission["reviews"]):
+                raise ValueError("submission was already accepted; return it for changes instead")
+        # 不持有队列锁执行外部检查，返回时以原版本条件提交结论。
+        if _artifact_snapshot(check) != submission["artifacts"]:
+            raise ValueError("artifacts changed since submission")
+        try:
+            report = dict(check.check())
+            if type(report.get("passed")) is not bool:
+                raise TypeError("check report requires a boolean passed")
+            report = json.loads(json.dumps(report, allow_nan=False))
+            outcome = "passed" if report["passed"] else "failed"
+        except Exception as error:
+            report = {"error_type": type(error).__name__, "error": str(error)}
+            outcome = "unverified"
+        if _artifact_snapshot(check) != submission["artifacts"]:
+            outcome = "stale"
+        submission["reviews"].append({"outcome": outcome, "report": report,
+                                      "criteria": list(task.criteria), "checked_at": utc_now()})
+        with self._condition:
+            current = self._require_task(task_id)
+            if self._checks.get(task_id) is not check or current.version != task.version:
+                raise RuntimeError("task changed concurrently during check")
+            keep = [item for item in current.submissions if item.get("submission_id") != submission["submission_id"]]
+            return self._change(current, event_type="agent_task.reviewed",
+                                stage="accepted" if outcome == "passed" else "needs_attention",
+                                submissions=(*keep, submission))
+
+    def return_task_for_changes(self, task_id: str, reason: str, *, source_group_id: str) -> Task:
+        """退回建立新尝试：已交付或被并发修改的任务不能静默重启。"""
+        reason = _text(reason, "return reason")
+        with self._condition:
+            task = self._owned_task(task_id, source_group_id)
+            if task.delivery:
+                raise ValueError("delivered task cannot be restarted")
+            if not task.submissions and task.attempts == 0:
+                raise ValueError("return requires an executed attempt or a submission")
+            return self._change(task, status="created", stage="pending", result=None,
+                                error_type=None, error_message=None,
+                                # 退回即关闭本次尝试：旧提交与旧结论保留为历史，不再对应当前尝试。
+                                attempt_id=f"attempt-{uuid4().hex}",
+                                return_reasons=(*task.return_reasons, reason))
+
+    def deliver_task_result(self, task_id: str, *, source_group_id: str,
+                            request_id: str = "default") -> Task:
+        """交付绑定当前提交与标准版本；相同请求返回既有交付，不重复产生效果。"""
+        request_id = _text(request_id, "delivery request ID")
+        with self._condition:
+            task = self._owned_task(task_id, source_group_id)
+            check = self._require_check(task)
+        if not self._acceptance_current(task, check):
+            raise ValueError("delivery requires current accepted artifacts and criteria")
+        with self._condition:
+            current = self._require_task(task_id)
+            if self._checks.get(task_id) is not check or not self._acceptance_current(current, check):
+                raise RuntimeError("task changed during delivery")
+            if current.delivery:
+                if current.delivery["request_id"] != request_id:
+                    raise ValueError("task is already delivered for another request")
+                return deepcopy(current)
+            return self._change(current, event_type="agent_task.delivered", stage="delivered",
+                                delivery={"submission_id": self._current_submission(current)["submission_id"],
+                                          "request_id": request_id, "delivered_at": utc_now()})
+
+    def _owned_task(self, task_id: str, scope: str) -> Task:
+        task = self._require_task(task_id)
+        if task.source_group_id != scope:
+            raise PermissionError("task belongs to another scope")
+        return task
+
+    def _require_check(self, task: Task) -> TaskCheck:
+        if task.task_id not in self._checks:
+            raise ValueError("host has not configured a task check")
+        return self._checks[task.task_id]
+
+    def _acceptance_current(self, task: Task, check: TaskCheck) -> bool:
+        """通过结论必须同时对应当前尝试的提交、当前标准版本和当前产物内容。"""
+        if self._checks.get(task.task_id) is not check:
+            return False
+        item = self._current_submission(task)
+        if item is None or item["criteria"] != list(task.criteria):
+            return False
+        if not item["reviews"] or item["reviews"][-1]["outcome"] != "passed":
+            return False
+        return item["artifacts"] == _artifact_snapshot(check)
+
+    def _current_submission(self, task: Task) -> Mapping[str, object] | None:
+        """当前尝试的提交；已退回尝试的提交只保留为历史。"""
+        return next(
+            (item for item in reversed(task.submissions) if item.get("attempt_id") == task.attempt_id),
+            None,
+        )
 
     def dispatch_task(
         self,
@@ -192,7 +404,7 @@ class TaskQueue:
     ) -> list[dict[str, object]]:
         with self._condition:
             return [
-                task.to_dict(include_result=include_results)
+                self.get_task(task.task_id, source_group_id=group_id, include_result=include_results)
                 for task in self._tasks.values()
                 if task.source_group_id == group_id
             ]
@@ -205,7 +417,18 @@ class TaskQueue:
             task = self._require_task(task_id)
             if source_group_id is not None and task.source_group_id != source_group_id:
                 raise PermissionError("a group can read only its own task")
-            return task.to_dict(include_result=include_result)
+            value = task.to_dict(include_result=include_result)
+            check = self._checks.get(task_id)
+        if task.stage in {"accepted", "delivered"}:
+            try:
+                current = check is not None and self._acceptance_current(task, check)
+            except (OSError, ValueError):
+                current = False
+            value["acceptance_current"] = current
+            if not current:
+                value["stage"] = "needs_attention"
+                value["reason"] = "accepted artifacts or criteria changed"
+        return value
 
     def wait_for_task(
         self, task_id: str, *, source_group_id: str, timeout_seconds: float
@@ -320,6 +543,8 @@ class TaskQueue:
                     task,
                     status="running",
                     attempts=task.attempts + 1,
+                    attempt_id=f"attempt-{uuid4().hex}",
+                    stage="working",
                 )
             planned_mode = self._record_mode(task_id)
             shared = {**(task.shared_context or {}), "record_mode": planned_mode}
@@ -342,6 +567,7 @@ class TaskQueue:
                 self._change(
                     self._require_task(task_id),
                     status="completed",
+                    stage="needs_attention",
                     result=compacted,
                 )
 
@@ -496,12 +722,15 @@ class TaskQueue:
             target = changes.get("status", task.status)
             if not isinstance(target, str):
                 raise TypeError("Agent task status must be text")
-            _validate_task_transition(previous, target)
-            self._version += 1
+            if previous != target or event_type is None:
+                _validate_task_transition(previous, target)
             updated = replace(
-                task, version=self._version, updated_at=utc_now(), **changes
+                task, version=self._version + 1, updated_at=utc_now(), **changes
             )
-            self._tasks[task.task_id] = updated
+            # 记录失败不提交内存状态；外部执行结果仍须由调用方核实，不能自动重跑。
+            self._record(event_type or TASK_EVENTS[target], updated.to_dict(include_result=target == "completed"))
+            self._version = updated.version
+            self._tasks[task.task_id] = deepcopy(updated)
             lifecycle = self._task_lifecycles.get(task.task_id)
             if lifecycle is not None:
                 lifecycle.record_task_event(
@@ -510,12 +739,6 @@ class TaskQueue:
                     agent_name=updated.agent_name,
                     worker_link_id=updated.worker_link_id,
                 )
-            self._record(
-                event_type or TASK_EVENTS[target],
-                updated.to_dict(
-                    include_result=target == "completed"
-                ),
-            )
             self._condition.notify_all()
             return updated
 
@@ -574,6 +797,8 @@ class TaskQueue:
         return target
 
     def _require_group(self, group_id: str) -> TeamNode:
+        if self.root is None:
+            raise ValueError("team dispatch requires an Agent tree; use execute_task for a single Agent")
         return self.root.find(group_id)
 
     def _require_task(self, task_id: str) -> Task:
@@ -591,6 +816,15 @@ def _validate_task_transition(previous: str | None, target: str) -> None:
     allowed = TASK_TRANSITIONS.get(previous)
     if allowed is None or target not in allowed:
         raise ValueError(f"invalid Agent task transition: {previous} -> {target}")
+
+
+def _artifact_snapshot(check: TaskCheck) -> dict[str, str]:
+    value = dict(check.snapshot())
+    if not value or any(not isinstance(key, str) or not key or not isinstance(digest, str)
+                        or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest)
+                        for key, digest in value.items()):
+        raise ValueError("artifact snapshot must contain named SHA-256 values")
+    return value
 
 
 

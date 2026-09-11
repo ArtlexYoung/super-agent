@@ -14,6 +14,11 @@ from threading import Lock, Thread
 from time import monotonic, sleep
 from uuid import uuid4
 
+# 读取线程已结束的进程最多保留这些条，防止长期运行的工具实例无界增长。
+_MAX_RETAINED_PROCESSES = 64
+# 回收管道前等待读取线程排空输出的上限，超时只影响证据完整性标记。
+_READER_JOIN_SECONDS = 5.0
+
 from super_agent.core import __version__, require_text as _text
 from super_agent.core.model import Tool
 
@@ -42,7 +47,9 @@ class _Process:
     stdout: bytearray = field(default_factory=bytearray)
     stderr: bytearray = field(default_factory=bytearray)
     output_truncated: bool = False
+    output_closed: bool = False
     lock: Lock = field(default_factory=Lock)
+    readers: list[Thread] = field(default_factory=list)
 
 
 class ProcessTools:
@@ -64,18 +71,20 @@ class ProcessTools:
         )
 
     def close(self) -> None:
-        """显式停止当前适配器实例启动的全部进程。"""
+        """显式停止当前适配器实例启动的全部进程，并回收输出管道。"""
         with self._lock:
             processes = tuple(self._processes.values())
         for item in processes:
-            if item.process.poll() is not None:
-                continue
-            _signal_group(item.process, signal.SIGTERM)
-            try:
-                item.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                _signal_group(item.process, signal.SIGKILL)
-                item.process.wait(timeout=5)
+            if item.process.poll() is None:
+                _signal_group(item.process, signal.SIGTERM)
+                try:
+                    item.process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    _signal_group(item.process, signal.SIGKILL)
+                    item.process.wait(timeout=5)
+            _drain(item)
+        with self._lock:
+            self._processes.clear()
 
     def __enter__(self) -> ProcessTools:
         return self
@@ -95,7 +104,14 @@ class ProcessTools:
     def _start(self, arguments: dict[str, object], _context: object) -> dict[str, object]:
         command = self._command(arguments)
         with self._lock:
+            self._purge_locked()
             active = sum(item.process.poll() is None for item in self._processes.values())
+            if active >= self.settings.max_processes:
+                # 已结束的记录不该占位；读取线程仍存活的记录保留，避免丢失其证据。
+                finished = [item for item in self._processes.values() if item.process.poll() is not None]
+                for item in finished:
+                    del self._processes[item.process_id]
+                active = sum(item.process.poll() is None for item in self._processes.values())
             if active >= self.settings.max_processes:
                 raise RuntimeError(f"process limit reached: {self.settings.max_processes}")
             process = subprocess.Popen(
@@ -108,10 +124,22 @@ class ProcessTools:
             )
             item = _Process(f"process-{uuid4().hex}", command, process, monotonic())
             self._processes[item.process_id] = item
-        Thread(target=self._read, args=(item, item.process.stdout, item.stdout), daemon=True).start()
-        Thread(target=self._read, args=(item, item.process.stderr, item.stderr), daemon=True).start()
+        for stream, target in ((item.process.stdout, item.stdout), (item.process.stderr, item.stderr)):
+            reader = Thread(target=self._read, args=(item, stream, target), daemon=True)
+            item.readers.append(reader)
+            reader.start()
         Thread(target=self._timeout, args=(item,), daemon=True).start()
         return self._snapshot(item)
+
+    def _purge_locked(self) -> None:
+        """调用方须持有 self._lock；只回收已结束且读取线程已退出的进程。"""
+        finished = [
+            item for item in self._processes.values()
+            if item.process.poll() is not None and all(not reader.is_alive() for reader in item.readers)
+        ]
+        # 每次启动前都回收，避免已结束进程记录把并发上限位占满。
+        for item in finished[: max(0, len(self._processes) - _MAX_RETAINED_PROCESSES + 1)]:
+            del self._processes[item.process_id]
 
     def _poll(self, arguments: dict[str, object], _context: object) -> dict[str, object]:
         return self._snapshot(self._require(_text(arguments.get("process_id"), "process ID")))
@@ -135,6 +163,8 @@ class ProcessTools:
         item = self._require(str(started["process_id"]))
         while item.process.poll() is None:
             sleep(0.02)
+        # 进程退出后必须等读取线程排空，否则返回的证据可能缺少尾部输出。
+        _drain(item)
         return self._snapshot(item)
 
     def _command(self, arguments: Mapping[str, object]) -> tuple[str, ...]:
@@ -147,16 +177,26 @@ class ProcessTools:
         return selected
 
     def _read(self, item: _Process, stream, target: bytearray) -> None:
+        """读取一个输出流；无论成功或异常都必须关闭管道，调用方无其他回收者。"""
         if stream is None:
-            return
-        while chunk := stream.read(8192):
             with item.lock:
-                remaining = self.settings.max_output_bytes - len(item.stdout) - len(item.stderr)
-                if remaining <= 0:
-                    item.output_truncated = True
-                    continue
-                target.extend(chunk[:remaining])
-                item.output_truncated = item.output_truncated or len(chunk) > remaining
+                item.output_closed = True
+            return
+        try:
+            while chunk := stream.read(8192):
+                with item.lock:
+                    remaining = self.settings.max_output_bytes - len(item.stdout) - len(item.stderr)
+                    if remaining <= 0:
+                        item.output_truncated = True
+                        continue
+                    target.extend(chunk[:remaining])
+                    item.output_truncated = item.output_truncated or len(chunk) > remaining
+        finally:
+            try:
+                stream.close()
+            finally:
+                with item.lock:
+                    item.output_closed = True
 
     def _timeout(self, item: _Process) -> None:
         deadline = item.started_at + self.settings.timeout_seconds
@@ -171,6 +211,8 @@ class ProcessTools:
             stdout = bytes(item.stdout).decode("utf-8", errors="replace")
             stderr = bytes(item.stderr).decode("utf-8", errors="replace")
             truncated = item.output_truncated
+            closed = item.output_closed
+        readers_alive = sum(reader.is_alive() for reader in item.readers)
         state = "running" if returncode is None else ("completed" if returncode == 0 else "failed")
         return {
             "process_id": item.process_id,
@@ -181,6 +223,8 @@ class ProcessTools:
             "stdout": stdout,
             "stderr": stderr,
             "output_truncated": truncated,
+            # 进程已结束但读取线程仍在跑，说明这份输出可能不是完整证据。
+            "output_complete": returncode is None or (closed and readers_alive == 0),
             "elapsed_seconds": round(monotonic() - item.started_at, 3),
         }
 
@@ -300,6 +344,12 @@ def _signal_group(process: subprocess.Popen[bytes], selected: signal.Signals) ->
         os.killpg(process.pid, selected)
     except ProcessLookupError:
         return
+
+
+def _drain(item: _Process) -> None:
+    """等待读取线程排空并关闭管道；这是管道唯一的回收点。"""
+    for reader in item.readers:
+        reader.join(timeout=_READER_JOIN_SECONDS)
 
 
 def _empty_schema() -> dict[str, object]:

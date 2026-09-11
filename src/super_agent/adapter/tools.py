@@ -97,6 +97,15 @@ class CodeWorkspace:
             values.append(Tool("delete_file", "Delete an unchanged file using its SHA-256", self._delete_file, _delete_schema(), ("delete",)))
         return tuple(values)
 
+    def snapshot_files(self) -> dict[str, str]:
+        """读取工作区内容身份，用于宿主检查前后核对，不创建文件。"""
+        values = {}
+        for path in self._files(self.root):
+            if path.is_symlink():
+                raise PermissionError(f"task snapshot does not follow symlinks: {self._relative(path)}")
+            values[self._relative(path)] = hashlib.sha256(path.read_bytes()).hexdigest()
+        return values
+
     def _list_files(self, arguments: dict[str, object], _context: object) -> dict[str, object]:
         root = self._resolve(_optional_text(arguments.get("path")) or ".")
         depth = _integer(arguments.get("max_depth", 3), "max_depth", 0, 12)

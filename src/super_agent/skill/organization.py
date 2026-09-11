@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -84,6 +84,22 @@ class TeamSettings:
 
 
 @dataclass(frozen=True)
+class TaskCheck:
+    """宿主登记的验收标准；快照和检查函数均不能由模型任意替换。"""
+
+    name: str
+    version: str
+    snapshot: Callable[[], Mapping[str, str]]
+    check: Callable[[], Mapping[str, object]]
+
+    def __post_init__(self) -> None:
+        _text(self.name, "check name")
+        _text(self.version, "check version")
+        if not callable(self.snapshot) or not callable(self.check):
+            raise TypeError("task check requires snapshot and check functions")
+
+
+@dataclass(frozen=True)
 class Task:
     """一条跨组可追踪的工作单。"""
 
@@ -106,6 +122,12 @@ class Task:
     updated_at: str = field(default_factory=utc_now)
     shared_context: Mapping[str, object] | None = None
     parent_identity: RunIdentity | None = None
+    stage: str = "pending"
+    attempt_id: str = ""
+    submissions: tuple[Mapping[str, object], ...] = ()
+    criteria: tuple[str, str] = ()
+    delivery: Mapping[str, object] | None = None
+    return_reasons: tuple[str, ...] = ()
 
     def to_dict(self, *, include_result: bool = True) -> dict[str, object]:
         value: dict[str, object] = {
@@ -126,6 +148,12 @@ class Task:
             "updated_at": self.updated_at,
             "prompt_sha256": hashlib.sha256(self.prompt.encode()).hexdigest(),
             "prompt_characters": len(self.prompt),
+            "stage": self.stage,
+            "attempt_id": self.attempt_id,
+            "criteria": list(self.criteria),
+            "submissions": dataclass_data(self)["submissions"],
+            "delivery": dataclass_data(self)["delivery"],
+            "return_reasons": list(self.return_reasons),
         }
         if include_result:
             value["result"] = None if self.result is None else dict(self.result)

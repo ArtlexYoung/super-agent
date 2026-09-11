@@ -19,6 +19,7 @@ from super_agent.skill.organization import TeamMember
 
 if TYPE_CHECKING:
     from super_agent.skill.organization_runtime import TeamRuntime
+    from super_agent.skill.organization_tasks import TaskQueue
 
 Arguments = dict[str, object]
 ToolDefinition = tuple[str, str, object, str, tuple[str, ...]]
@@ -120,6 +121,50 @@ def quorum_result(decisions: Iterable[Mapping[str, object]], quorum: int) -> str
     if values.count("reject") >= quorum:
         return "reject"
     return None
+
+
+def task_tools(queue: TaskQueue, group_id: str, task_id: str) -> tuple[Tool, ...]:
+    """创建绑定单个任务作用域的模型工具。
+
+    模型只能读取状态、提交结果和请负责人退回；验收与交付由宿主保证，模型无法自报通过。
+    """
+    schemas = _schemas()
+    return tuple(
+        Tool(name, description, partial(handler, queue, group_id, task_id), schemas[schema], effects)
+        for name, description, handler, schema, effects in _task_tool_definitions()
+    )
+
+
+def _task_tool_definitions() -> tuple[ToolDefinition, ...]:
+    read, write = ("read",), ("write",)
+    return (
+        ("read_agent_task", "Read this task's goal, stage, criteria and submission history", _read_task, "empty", read),
+        ("submit_agent_task_result", "Submit the finished work for host verification; the host takes the artifact snapshot", _submit_task, "request", write),
+        ("return_agent_task_for_changes", "Ask the owner to reopen this task with a reason when work cannot finish", _return_task, "return", write),
+    )
+
+
+def _read_task(queue: TaskQueue, group_id: str, task_id: str, _arguments: Arguments, _context: ToolContext) -> dict[str, object]:
+    return queue.get_task(task_id, source_group_id=group_id, include_result=False)
+
+
+def _submit_task(queue: TaskQueue, group_id: str, task_id: str, arguments: Arguments, context: ToolContext) -> dict[str, object]:
+    # request_id 由宿主派生，模型不能自报身份；同一结论重放时队列按该 ID 识别为同一次提交。
+    run_id = context.session.identity.run_id
+    request_id = text(arguments.get("request_id") or f"{task_id}:{run_id}", "submission request ID")
+    return queue.submit_task_result(
+        task_id,
+        source_group_id=group_id,
+        request_id=request_id,
+    ).to_dict()
+
+
+def _return_task(queue: TaskQueue, group_id: str, task_id: str, arguments: Arguments, _context: ToolContext) -> dict[str, object]:
+    return queue.return_task_for_changes(
+        task_id,
+        text(arguments.get("reason"), "return reason"),
+        source_group_id=group_id,
+    ).to_dict()
 
 
 def _list_tree(runtime: TeamRuntime, group_id: str, _arguments: Arguments, _context: ToolContext) -> dict[str, object]:
@@ -294,9 +339,13 @@ def _schemas() -> dict[str, dict[str, object]]:
     text = {"type": "string"}
     text_array = {"type": "array", "items": text}
     task = _object_schema({"task_id": text}, "task_id")
+    request = _object_schema({"request_id": text})
+    return_task = _object_schema({"reason": text}, "reason")
     board = {"type": "string", "enum": ["current", "parent"]}
     return {
         "empty": _object_schema({}),
+        "request": request,
+        "return": return_task,
         "task": task,
         "dispatch": _object_schema({"task_id": text, "agent_name": text}, "task_id"),
         "dispatch_many": _object_schema({"task_ids": {**text_array, "minItems": 2, "uniqueItems": True}, "different_models": {"type": "boolean"}}, "task_ids"),
@@ -320,6 +369,7 @@ def _object_schema(properties: Mapping[str, object], *required: str) -> dict[str
 
 __all__ = [
     "team_tools",
+    "task_tools",
     "boolean",
     "estimated_cost",
     "find_task",

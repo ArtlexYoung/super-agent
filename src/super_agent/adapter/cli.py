@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
+import hashlib
 import sys
 import tomllib
 from collections.abc import Mapping, Sequence
@@ -476,6 +478,7 @@ def _run_chat(
     current = conversation_id
     history: list[Message] = []
     announced_id: str | None = None
+    task_queue = None
     print("Super Agent. 输入 /help 查看命令，输入 /exit 退出。")
     while True:
         try:
@@ -488,7 +491,17 @@ def _run_chat(
         if prompt == "/exit" or prompt == "/quit":
             return 0
         if prompt == "/help":
-            print("/help  /plugins  /skills  /mcps  /clear  /exit")
+            print("/help  /plugins  /skills  /mcps  /task  /clear  /exit")
+            continue
+        if prompt == "/task" or prompt.startswith("/task "):
+            if task_queue is None:
+                from super_agent.skill.organization_tasks import TaskQueue
+
+                task_queue = TaskQueue(scope=cli.user_id)
+            try:
+                _task_command(agent, cli, prompt, task_queue, skill, plugin)
+            except (ValueError, RuntimeError, OSError, KeyError) as error:
+                print(f"任务操作失败：{error}")
             continue
         if prompt in {"/plugins", "/skills", "/mcps"}:
             kind = prompt.removeprefix("/")
@@ -525,6 +538,78 @@ def _run_chat(
         current = result.conversation_id or current
         if cli.show_summary:
             print(f"\n[{result.run_id}] {result.stop_reason}")
+
+
+def _task_command(agent: Agent, cli: CliConfig, prompt: str, queue: object,
+                  skill: str | None = None, plugin: str | None = None) -> None:
+    """聊天命令只调用同一个任务队列，不自行保存或推断业务状态。"""
+    args = shlex.split(prompt)[1:]
+    action = args[0] if args else "list"
+    scope = cli.user_id
+    if action == "list":
+        _print_value(queue.list_tasks(scope), cli.output)
+        return
+    if action == "new":
+        if len(args) < 2:
+            raise ValueError("/task new <goal>")
+        task = queue.create_task(" ".join(args[1:]), source_group_id=scope)
+        value = task.to_dict()
+    else:
+        tasks = queue.list_tasks(scope)
+        task_id = args[1] if len(args) > 1 else tasks[-1]["task_id"] if len(tasks) == 1 else ""
+        if not task_id:
+            raise ValueError("specify a task ID when there is not exactly one task")
+        queue.get_task(task_id, source_group_id=scope)
+        if action == "run":
+            task = queue.execute_task(task_id, lambda goal: _stream_to_terminal(
+                agent, goal, _context(cli, None, plugin, skill), print_text=True), source_group_id=scope)
+            value = task.to_dict()
+        elif action == "submit":
+            if not queue.get_task(task_id, source_group_id=scope)["criteria"]:
+                queue.configure_task_check(task_id, _workspace_task_check(cli.code_config), source_group_id=scope)
+            from uuid import uuid4
+
+            value = queue.submit_task_result(task_id, source_group_id=scope, request_id=uuid4().hex).to_dict()
+        elif action == "check":
+            if not queue.get_task(task_id, source_group_id=scope)["criteria"]:
+                # 与提交一致：检查也只用宿主声明的命令，不执行模型提供的评价器。
+                queue.configure_task_check(task_id, _workspace_task_check(cli.code_config), source_group_id=scope)
+            value = queue.check_task_result(task_id, source_group_id=scope).to_dict()
+        elif action == "return":
+            if len(args) < 3:
+                raise ValueError("/task return <id> <reason>")
+            value = queue.return_task_for_changes(task_id, " ".join(args[2:]), source_group_id=scope).to_dict()
+        elif action == "deliver":
+            value = queue.deliver_task_result(task_id, source_group_id=scope, request_id=task_id).to_dict()
+        elif action == "show":
+            value = queue.get_task(task_id, source_group_id=scope)
+        else:
+            raise ValueError("/task new|list|show|run|submit|check|return|deliver")
+    _print_value(value, cli.output)
+
+
+def _workspace_task_check(code_path: str | None):
+    """复用 code.toml 的命令及授权；不执行模型提供的评价器代码。"""
+    from super_agent.skill.organization import TaskCheck
+
+    settings = _load_code(code_path)
+    if settings.process is None:
+        raise ValueError("task verification requires declared code verification commands")
+    workspace = CodeWorkspace(settings.workspace)
+    commands = settings.process.allowed_commands
+    # 标准身份包含命令与工作区根，换一个工作区就不算同一套验收标准。
+    version = hashlib.sha256(json.dumps(
+        {"commands": [list(command) for command in commands], "workspace": str(workspace.root)}
+    ).encode()).hexdigest()
+
+    def check() -> dict[str, object]:
+        policy = ToolPolicy(settings.allowed_effects, _confirm_action)
+        with ProcessTools(settings.process) as processes:
+            tool = policy.protect(next(tool for tool in processes.tools() if tool.name == "run_check"))
+            results = [tool.handler({"command": list(command)}, None) for command in commands]
+        return {"passed": all(item.get("returncode") == 0 for item in results), "commands": results}
+
+    return TaskCheck("workspace-checks", version, workspace.snapshot_files, check)
 
 
 def _stream_to_terminal(

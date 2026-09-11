@@ -18,9 +18,34 @@ super-agent
 
 `--plugin` explicitly activates a plugin and its dependencies, while `--skill` activates one canonical Skill reference. Both affect only the current run and never rewrite configuration.
 
-没有参数时进入交互会话。`/help`、`/plugins`、`/skills`、`/mcps`、`/clear` 和 `/exit` 是终端控制命令，不会被发送给模型，也不是 Skill 触发词。
+没有参数时进入交互会话。`/help`、`/plugins`、`/skills`、`/mcps`、`/task`、`/clear` 和 `/exit` 是终端控制命令，不会被发送给模型，也不是 Skill 触发词。
 
-Without arguments the CLI starts an interactive session. `/help`, `/plugins`, `/skills`, `/mcps`, `/clear`, and `/exit` are terminal controls, are never sent to the model, and are not Skill trigger words.
+Without arguments the CLI starts an interactive session. `/help`, `/plugins`, `/skills`, `/mcps`, `/task`, `/clear`, and `/exit` are terminal controls, are never sent to the model, and are not Skill trigger words.
+
+## 任务交付 / Task Delivery
+
+```bash
+/task new 修复 answer.txt 的边界错误
+/task list
+/task run            # 执行当前任务；一个普通 Agent 就是执行者，不需要空团队
+/task show
+/task submit         # 宿主读取产物快照并登记一份提交
+/task check          # 按 code.toml 声明的命令验收，不由模型自报通过
+/task return <id> <原因>
+/task deliver
+```
+
+`/task run` 只结束一次执行，不等于任务已交付。只有当前提交在**当前标准版本**下通过宿主检查后才能 `/task deliver`；产物、标准或尝试发生变化都会使旧结论失效，模型返回“已完成”不会产生通过结论。
+
+`/task run` only ends one execution and never means the task was delivered. `/task deliver` requires the current submission to pass the host check under the current criteria version; changed artifacts, criteria, or attempts invalidate the earlier conclusion, and a model claiming success never creates a pass.
+
+`check` 使用 `code.toml` 中 `[verification] commands` 声明的命令；没有声明命令时明确报错，不会退化成“模型说通过就算通过”。退回会在同一任务下开启新尝试并保留旧提交与结论。
+
+`check` runs the commands declared in `code.toml` under `[verification] commands`; without declared commands it fails explicitly instead of degrading to "the model said it passed". Returning opens a new attempt inside the same task and keeps the earlier submissions and conclusions.
+
+本版任务状态只在当前进程内存中；重启后 CLI 不读取旧任务。`deliver` 只表示结果可在当前会话领取，不会自动提交 Git、推送、部署、发消息或覆盖外部文件。
+
+Task state in this version lives only in the current process; after a restart the CLI does not read old tasks. `deliver` means the result can be collected in this session only, and never triggers a Git commit, push, deployment, message, or external file overwrite.
 
 ## 目录命令 / Catalog Commands
 
