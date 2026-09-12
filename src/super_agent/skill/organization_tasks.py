@@ -160,9 +160,17 @@ class TaskQueue:
             elif snapshot.get("status") == "cancelled" and snapshot.get("stage") == "stopped":
                 # 只有已持久化且确认停止的任务才能恢复为 cancelled。
                 task = replace(task, status="cancelled", stage="stopped")
-            elif snapshot.get("status") == "failed" and snapshot.get("stage") == "stop_unknown":
-                # 取消后的迟到结果在重启后仍然未知，不能伪造成已停止。
-                task = replace(task, status="failed", stage="stop_unknown")
+            elif task.cancel_requested_at is not None:
+                # 其余取消请求都没有停止证据，恢复后必须阻止再次执行。
+                task = replace(
+                    task,
+                    status="failed",
+                    stage="stop_unknown",
+                    stop_unknown_reason=(
+                        task.stop_unknown_reason
+                        or "cancellation was recorded without confirmed stop evidence"
+                    ),
+                )
             if task.status != "created":
                 return self._change(task, event_type="agent_task.restored",
                                     allow_restore_transition=True)

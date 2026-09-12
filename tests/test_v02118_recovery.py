@@ -225,6 +225,22 @@ class TaskPersistenceTests(unittest.TestCase):
         self.assertEqual("stop_unknown", unknown.stage)
         self.assertEqual("executor returned after cancellation", unknown.stop_unknown_reason)
 
+        in_flight = queue.restore_task({
+            "task_id": "task-in-flight-stop",
+            "prompt": "an interrupted external operation",
+            "source_group_id": self.scope,
+            "target_group_id": self.scope,
+            "status": "running",
+            "stage": "stopping",
+            "cancel_requested_at": "2026-09-12T00:00:00Z",
+            "cancel_reason": "owner requested stop",
+            "submissions": [],
+        }, source_group_id=self.scope)
+        self.assertEqual("failed", in_flight.status)
+        self.assertEqual("stop_unknown", in_flight.stage)
+        with self.assertRaisesRegex(ValueError, "pending task"):
+            queue.execute_task(in_flight.task_id, self.agent.run, source_group_id=self.scope)
+
     def test_write_failure_is_reported_and_never_falls_back_to_memory(self) -> None:
         class BrokenStore(EventStore):
             def replace_state(self, *args: object, **kwargs: object):
