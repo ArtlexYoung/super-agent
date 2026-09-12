@@ -193,6 +193,38 @@ class TaskPersistenceTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             other.restore_task(snapshot, source_group_id="other")
 
+    def test_restore_preserves_terminal_delivery_and_unknown_stop_facts(self) -> None:
+        """恢复必须保留终态事实，不能因快照重建而伪造状态。"""
+        queue = TaskQueue(scope=self.scope)
+        delivered = queue.restore_task({
+            "task_id": "task-delivered",
+            "prompt": "already delivered",
+            "source_group_id": self.scope,
+            "target_group_id": self.scope,
+            "status": "completed",
+            "stage": "delivered",
+            "delivery": {"submission_id": "submission-1", "request_id": "deliver-1"},
+            "submissions": [],
+        }, source_group_id=self.scope)
+        self.assertEqual("completed", delivered.status)
+        self.assertEqual("delivered", delivered.stage)
+
+        unknown = queue.restore_task({
+            "task_id": "task-unknown-stop",
+            "prompt": "stop may have raced with an external call",
+            "source_group_id": self.scope,
+            "target_group_id": self.scope,
+            "status": "failed",
+            "stage": "stop_unknown",
+            "cancel_requested_at": "2026-09-12T00:00:00Z",
+            "cancel_reason": "owner requested stop",
+            "stop_unknown_reason": "executor returned after cancellation",
+            "submissions": [],
+        }, source_group_id=self.scope)
+        self.assertEqual("failed", unknown.status)
+        self.assertEqual("stop_unknown", unknown.stage)
+        self.assertEqual("executor returned after cancellation", unknown.stop_unknown_reason)
+
     def test_write_failure_is_reported_and_never_falls_back_to_memory(self) -> None:
         class BrokenStore(EventStore):
             def replace_state(self, *args: object, **kwargs: object):

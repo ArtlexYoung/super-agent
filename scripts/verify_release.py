@@ -197,7 +197,8 @@ def build_full_gate_commands(root: Path, output: Path) -> list[tuple[str, tuple[
 
 def _check_layout(source: Path) -> list[str]:
     errors: list[str] = []
-    actual = {path.name for path in source.iterdir() if path.name != "__pycache__"}
+    actual = {path.name for path in source.iterdir()
+              if path.name not in {"__pycache__", ".DS_Store"}}
     if actual != SOURCE_ROOTS:
         errors.append(f"src layout changed: {sorted(actual)}")
     for directory, expected in DOMAIN_FILES.items():
@@ -205,7 +206,8 @@ def _check_layout(source: Path) -> list[str]:
         if not path.is_dir():
             errors.append(f"missing src/{directory}")
             continue
-        actual_children = {item.name for item in path.iterdir() if item.name != "__pycache__"}
+        actual_children = {item.name for item in path.iterdir()
+                           if item.name not in {"__pycache__", ".DS_Store"}}
         if actual_children != expected:
             errors.append(f"src/{directory} layout changed: {sorted(actual_children)}")
     for path in source.rglob("*"):

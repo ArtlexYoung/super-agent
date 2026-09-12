@@ -136,6 +136,7 @@ class TaskQueue:
                 target_group_id=str(snapshot.get("target_group_id") or source_group_id),
                 purpose=str(snapshot.get("purpose") or "auto"),
                 required_features=tuple(str(item) for item in snapshot.get("required_features") or ("text",)),
+                # 历史工作默认不能被恢复成可运行状态；终态事实在下面显式还原。
                 status="created",
                 stage="pending",
                 attempts=int(snapshot.get("attempts") or 0),
@@ -154,9 +155,17 @@ class TaskQueue:
                                      else str(snapshot["stop_unknown_reason"])),
             )
             if task.delivery is not None:
-                task = replace(task, stage="delivered")
-            if task.cancel_requested_at is not None:
+                # 已交付是完成的业务结果，不是新建任务。
+                task = replace(task, status="completed", stage="delivered")
+            elif snapshot.get("status") == "cancelled" and snapshot.get("stage") == "stopped":
+                # 只有已持久化且确认停止的任务才能恢复为 cancelled。
                 task = replace(task, status="cancelled", stage="stopped")
+            elif snapshot.get("status") == "failed" and snapshot.get("stage") == "stop_unknown":
+                # 取消后的迟到结果在重启后仍然未知，不能伪造成已停止。
+                task = replace(task, status="failed", stage="stop_unknown")
+            if task.status != "created":
+                return self._change(task, event_type="agent_task.restored",
+                                    allow_restore_transition=True)
             return self._change(task)
 
     def _resolve_dependencies(
@@ -971,6 +980,7 @@ class TaskQueue:
         task: Task,
         *,
         event_type: str | None = None,
+        allow_restore_transition: bool = False,
         **changes: object,
     ) -> Task:
         with self._condition:
@@ -981,7 +991,7 @@ class TaskQueue:
             target = changes.get("status", task.status)
             if not isinstance(target, str):
                 raise TypeError("Agent task status must be text")
-            if previous != target or event_type is None:
+            if not allow_restore_transition and (previous != target or event_type is None):
                 _validate_task_transition(previous, target)
             updated = replace(
                 task, version=self._version + 1, updated_at=utc_now(), **changes

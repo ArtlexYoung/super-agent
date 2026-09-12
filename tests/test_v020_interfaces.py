@@ -242,6 +242,17 @@ commands = [["python3.11", "-V"]]
     def test_release_shape_matches_current_release(self):
         self.assertEqual([], verify_release(ROOT, "0.2.122"))
 
+    def test_release_shape_ignores_macos_metadata(self):
+        metadata = ROOT / "src" / ".DS_Store"
+        existed = metadata.exists()
+        if not existed:
+            metadata.write_bytes(b"macOS metadata")
+        try:
+            self.assertEqual([], verify_release(ROOT, "0.2.122"))
+        finally:
+            if not existed:
+                metadata.unlink()
+
 
 if __name__ == "__main__":
     unittest.main()
