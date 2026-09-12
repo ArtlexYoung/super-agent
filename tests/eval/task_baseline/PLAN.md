@@ -59,6 +59,31 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:tests /opt/homebrew/bin/python3.11 -m e
 
 请求字节是四次 `ModelRequest.to_openai()` 的紧凑 JSON 总和，包含历史、工具与方法。普通路径不挂资源库，其余路径同时增加资源库和方法装配；不能把差值全部归因于 Skill 正文，更不能当成 provider token、计费或性能收益。耗时只保存在报告供诊断，无重复测量结论。
 
+### 真实模型任务闭环验证（v0.2.122 后补做）
+
+用 `real_task_loop.py` 走 v0.2.113 的任务闭环，端点与密钥只从环境变量读取。报告目录
+`tests/eval/reports/real-task-loop-20260911-v02122`（被忽略）。
+
+| 路线 | 结果 | 模型调用 | 工具调用 | 耗时 | token 入/出 | 费用 |
+| --- | --- | ---: | ---: | ---: | --- | ---: |
+| Python 组合（execute/submit/check/deliver） | 交付成功，结论 `passed` | 9 | 10 | 120.3s | 63,008 / 3,149 | $0.0662 |
+| CLI `/task new/run/submit/check/deliver` | 五步全通过，交付成功 | 9 | 11 | 113.0s | 65,899 / 3,014 | $0.0689 |
+| 反例对照（产物未修复） | 检查 `failed`，交付被拒绝 | 1 | — | — | 3,180 / 556 | $0.0037 |
+
+合计 19 次模型调用、132,087 / 6,719 token、$0.1388，仍在要求的小规模范围内。
+
+关键结论：**运行 `completed` 不等于任务已交付**。反例对照里任务状态为 `completed`，但检查
+结论 `failed`、`stage=needs_attention`，交付被拒绝并给出 `delivery requires current accepted
+artifacts and criteria` —— 这正是 v0.2.113 想区分的两件事。
+
+过程中发现并修复的真实缺陷：验证脚本首次运行时 `code.toml` 只声明了 `execute`，`write` 仍为
+默认的 `ask`，导致模型调用 `replace_in_file` 被 `ToolPolicy` 拒绝（`tool effects are not
+allowed`）。这是宿主授权声明不完整，不是产品缺陷；补齐后两条路线都交付成功。该次失败记录
+保留为"权限未声明时副作用被拦下"的真实证据。
+
+仍未验证：真实模型只跑了各 1 次，不能作为能力、稳定性或费用比较；多人检视、依赖返工、
+取消与恢复均未接入真实模型。
+
 ### 确认的边界与后续
 
 - 子 Agent 仅声称“修好”即被队列记为 completed，而原始缺陷仍无法通过外部测试。T1 必须区分运行结束和成果验收。
