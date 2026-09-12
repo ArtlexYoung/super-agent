@@ -1,6 +1,6 @@
 schema = 1
 id = "super-agent/context-window"
-version = "0.2.120"
+version = "0.2.121"
 description = "Explicit token budget and context window rollover"
 entry_skill = "skill:super-agent/context-window"
 skills = []

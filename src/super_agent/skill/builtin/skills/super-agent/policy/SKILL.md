@@ -4,7 +4,7 @@ description: "Methods for explicit permission checks around tools and side effec
 metadata:
   super-agent-categories: "[\"policy\",\"safety\",\"tools\"]"
   super-agent-type: "method"
-  super-agent-version: "0.2.120"
+  super-agent-version: "0.2.121"
 ---
 # Explicit action policy
 

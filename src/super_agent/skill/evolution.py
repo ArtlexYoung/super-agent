@@ -153,10 +153,49 @@ def calculate_freshness(evidence: Iterable[SkillEvidence], *, now: datetime | No
 
 @dataclass(frozen=True)
 class SkillTestCase:
+    """一条测试用例。
+
+    ``required_text``/``forbidden_text`` 只能证明文本条件，不能证明代码或流程真的改善；
+    需要真实证据时用 ``artifact_check``（宿主登记的检查）并把用例标为留出任务。
+    """
+
     name: str
     prompt: str
     required_text: tuple[str, ...] = ()
     forbidden_text: tuple[str, ...] = ()
+    artifact_check: Callable[[str, str], bool] | None = None
+    held_out: bool = False
+
+
+@dataclass(frozen=True)
+class SkillEvidenceSet:
+    """一组可比较的证据：同样的用例与同样的预算，新旧方法各跑一遍。"""
+
+    name: str
+    prompt: str
+    held_out: bool
+    baseline_passed: bool
+    candidate_passed: bool
+    baseline_units: int
+    candidate_units: int
+    detail: str = ""
+
+    @property
+    def decisive(self) -> bool:
+        """只有候选通过而基线不通过，才算"这次改善"的证据。"""
+        return self.candidate_passed and not self.baseline_passed
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "held_out": self.held_out,
+            "baseline_passed": self.baseline_passed,
+            "candidate_passed": self.candidate_passed,
+            "baseline_units": self.baseline_units,
+            "candidate_units": self.candidate_units,
+            "decisive": self.decisive,
+            "detail": self.detail,
+        }
 
 
 @dataclass(frozen=True)
@@ -227,6 +266,10 @@ class SkillEvolution:
         return change
 
     def test(self, change_id: str, cases: Iterable[SkillTestCase]) -> SkillChange:
+        """跑测试用例：文本条件与宿主登记的产物检查，新旧方法各跑一次。
+
+        每条用例的请求数相同（各一次），因此新旧方法在**同一预算**下比较。
+        """
         change = self._require_change(change_id, "proposed")
         if self.runner is None:
             raise RuntimeError("Skill candidate runner is not configured")
@@ -237,26 +280,32 @@ class SkillEvolution:
         for case in selected:
             baseline = self.runner(change.baseline_body, case.prompt)
             candidate = self.runner(change.candidate_body, case.prompt)
-            passed = all(text in candidate for text in case.required_text) and all(
-                text not in candidate for text in case.forbidden_text
-            )
-            baseline_passed = all(text in baseline for text in case.required_text) and all(
-                text not in baseline for text in case.forbidden_text
-            )
+            baseline_passed = _case_passed(baseline, case)
+            candidate_passed = _case_passed(candidate, case)
             results.append(
                 {
                     "name": case.name,
-                    "passed": passed,
+                    "passed": candidate_passed,
                     "baseline_passed": baseline_passed,
+                    "held_out": case.held_out,
+                    "evidence_kind": "artifact_check" if case.artifact_check is not None else "text",
+                    "decisive": candidate_passed and not baseline_passed,
                     "candidate_characters": len(candidate),
                     "baseline_characters": len(baseline),
                 }
             )
+        held_out = [item for item in results if item["held_out"]]
+        artifact_cases = [item for item in results if item["evidence_kind"] == "artifact_check"]
         report = {
             "passed": all(bool(item["passed"]) for item in results),
             "cases": results,
             "candidate_sha256": _digest(change.candidate_body),
             "baseline_sha256": change.baseline_sha256,
+            # 证据强度随报告一起记录：只有文本条件不足以证明改善。
+            "held_out_cases": len(held_out),
+            "held_out_decisive": sum(1 for item in held_out if item["decisive"]),
+            "artifact_checked_cases": len(artifact_cases),
+            "budget_units_per_case": 2,
             "affected_skills": [
                 change.skill_key,
                 *self.library.reverse_dependencies(change.skill_key),
@@ -266,12 +315,20 @@ class SkillEvolution:
         self._save_change(tested, "skill_change.tested")
         return tested
 
-    def apply(self, change_id: str, *, actor: str = "agent") -> SkillChange:
+    def apply(self, change_id: str, *, actor: str = "agent", require_evidence: bool = True) -> SkillChange:
+        """按授权采用。
+
+        "证据不足不自动采用"针对自动路径（``actor == "agent"``）：它必须带上留出任务与
+        宿主产物检查。人类按显式决定采用时不套用这条自动门槛，但仍要求测试全通过。
+        """
         change = self._require_change(change_id, "tested")
         if not change.report or not change.report.get("passed"):
             raise ValueError("Skill change did not pass every test case")
         skill = self.library.find_skill(change.skill_key)
+        # 权限先于证据：没有自动采用权限时先报权限错误，不把两件事混成一个原因。
         self._check_permission(skill, actor=actor, auto_apply=True)
+        if require_evidence and actor == "agent":
+            _require_adoption_evidence(change.report)
         updated = self.library.update_skill(
             change.skill_key,
             change.candidate_body,
@@ -795,3 +852,59 @@ def _restore_all(written: list[tuple[Skill, bytes]]) -> tuple[list[str], list[st
         except OSError:
             failed.append(skill.reference)
     return restored, failed
+
+
+def compare_methods(
+    runner: Callable[[str, str], str],
+    *,
+    baseline_body: str,
+    candidate_body: str,
+    cases: Iterable[SkillTestCase],
+) -> list[SkillEvidenceSet]:
+    """在同样的用例与同样的预算下比较新旧方法；只如实记录，不判定"更好"。"""
+    evidence: list[SkillEvidenceSet] = []
+    for case in cases:
+        baseline = runner(baseline_body, case.prompt)
+        candidate = runner(candidate_body, case.prompt)
+        evidence.append(
+            SkillEvidenceSet(
+                name=case.name,
+                prompt=case.prompt,
+                held_out=case.held_out,
+                baseline_passed=_case_passed(baseline, case),
+                candidate_passed=_case_passed(candidate, case),
+                baseline_units=1,
+                candidate_units=1,
+                detail="same case, same single run per method",
+            )
+        )
+    return evidence
+
+
+def _case_passed(output: str, case: SkillTestCase) -> bool:
+    """文本条件与宿主登记的产物检查都必须成立。"""
+    if not isinstance(output, str):
+        raise TypeError("candidate runner must return text")
+    if not all(text in output for text in case.required_text):
+        return False
+    if any(text in output for text in case.forbidden_text):
+        return False
+    if case.artifact_check is not None:
+        return bool(case.artifact_check(case.prompt, output))
+    return True
+
+
+def _require_adoption_evidence(report: Mapping[str, object]) -> None:
+    """证据不足时拒绝自动采用：必须同时有留出任务与宿主产物检查。"""
+    held_out = report.get("held_out_cases")
+    decisive = report.get("held_out_decisive")
+    artifact = report.get("artifact_checked_cases")
+    missing: list[str] = []
+    if not isinstance(held_out, int) or held_out < 1:
+        missing.append("no held-out case")
+    if not isinstance(artifact, int) or artifact < 1:
+        missing.append("no host artifact check")
+    if not isinstance(decisive, int) or decisive < 1:
+        missing.append("no held-out case where the baseline failed and the candidate passed")
+    if missing:
+        raise ValueError("adoption evidence is insufficient: " + "; ".join(missing))

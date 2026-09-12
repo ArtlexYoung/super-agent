@@ -526,7 +526,7 @@ class AgentLibraryTests(unittest.TestCase):
             evolution = SkillEvolution(library, policy=policy, runner=lambda body, _prompt: body)
             change = evolution.propose(skill.reference, "new", reason="measured")
             evolution.test(change.change_id, [SkillTestCase("new", "run", required_text=("new",))])
-            evolution.apply(change.change_id)
+            evolution.apply(change.change_id, actor="human")
             library.refresh()
             self.assertEqual("new", library.find_skill(skill.reference).body)
 
@@ -560,7 +560,8 @@ class AgentLibraryTests(unittest.TestCase):
             change = evolution.propose(skill.reference, "new", reason="measured")
             evolution.test(
                 change.change_id,
-                [SkillTestCase("new", "run", required_text=("new",))],
+                [SkillTestCase("new", "run", required_text=("new",), artifact_check=lambda _p, _o: True,
+                               held_out=True)],
             )
             evolution.apply(change.change_id)
 
@@ -632,10 +633,12 @@ class AgentLibraryTests(unittest.TestCase):
                 skill.reference, "new method", reason="measured improvement"
             )
             with self.assertRaises(ValueError):
-                evolution.apply(change.change_id)
+                evolution.apply(change.change_id, actor="human")
             tested = evolution.test(
                 change.change_id,
-                [SkillTestCase("contains", "use", required_text=("new",))],
+                [SkillTestCase("contains", "use", required_text=("new",),
+                               artifact_check=lambda _prompt, output: output.startswith("new"),
+                               held_out=True)],
             )
             applied = evolution.apply(tested.change_id)
             records = store.read("skill_change", change.change_id)
