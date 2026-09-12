@@ -1109,3 +1109,84 @@ def _reviews_with_finding(
 
 
 __all__ = ["TERMINAL", "TaskQueue", "RecordEvent"]
+
+
+# --- 交办体验汇总 ---------------------------------------------------------------
+# 全部指标都是已有任务事实的投影：不新增埋点、不新增状态、不推测用户意图。
+
+
+def task_delivery_metrics(
+    tasks: Iterable[Mapping[str, object]],
+    *,
+    usage: Iterable[Mapping[str, object]] = (),
+) -> dict[str, object]:
+    """汇总人工接管、返工、验收通过率、尝试次数与费用。
+
+    ``tasks`` 取 ``TaskQueue.list_tasks`` 的投影，``usage`` 取各次模型调用的用量记录
+    （例如 ``model.usage`` 事件数据）。没有用量的任务不会被当成零费用。
+    """
+    selected = list(tasks)
+    delivered = [item for item in selected if item.get("delivery") is not None]
+    reviews: list[str] = []
+    attempts = 0
+    reworked = 0
+    handed_over = 0
+    rejected_delivery = 0
+    for item in selected:
+        attempts += int(item.get("attempts") or 0)
+        if item.get("return_reasons"):
+            reworked += 1
+        if item.get("assignments"):
+            handed_over += 1
+        for submission in item.get("submissions") or ():
+            for review in (submission.get("reviews") or ()) if isinstance(submission, Mapping) else ():
+                outcome = review.get("outcome") if isinstance(review, Mapping) else None
+                if isinstance(outcome, str):
+                    reviews.append(outcome)
+        # 通过结论在交付前失效，说明这是一次"差点交付"的返工信号。
+        if item.get("delivery") is None and item.get("stage") in {"needs_attention", "stop_unknown"}:
+            rejected_delivery += 1
+    passed = reviews.count("passed")
+    failed = reviews.count("failed")
+    unverified = reviews.count("unverified") + reviews.count("stale")
+    input_tokens = 0.0
+    output_tokens = 0.0
+    cost = 0.0
+    usage_seen = False
+    for entry in usage:
+        for key, target in (("input_tokens", "input"), ("output_tokens", "output"),
+                            ("estimated_cost", "cost")):
+            value = entry.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                usage_seen = True
+                if target == "input":
+                    input_tokens += float(value)
+                elif target == "output":
+                    output_tokens += float(value)
+                else:
+                    cost += float(value)
+    return {
+        "tasks": len(selected),
+        "delivered": len(delivered),
+        # 通过率的分母是"已经得出结论的验收次数"，不是任务数：一个任务可以被退回多次。
+        "acceptance_reviews": len(reviews),
+        "acceptance_passed": passed,
+        "acceptance_failed": failed,
+        "acceptance_unverified": unverified,
+        "acceptance_pass_rate": None if not reviews else round(passed / len(reviews), 4),
+        "reworked_tasks": reworked,
+        "handed_over_tasks": handed_over,
+        "needs_human_attention": rejected_delivery,
+        "attempts": attempts,
+        "attempts_per_task": None if not selected else round(attempts / len(selected), 2),
+        "usage_recorded": usage_seen,
+        "input_tokens": input_tokens if usage_seen else None,
+        "output_tokens": output_tokens if usage_seen else None,
+        "estimated_cost": cost if usage_seen else None,
+        "notes": [
+            "pass rate counts acceptance conclusions, not tasks",
+            "rework and handoff counts come from task facts, not user profiling",
+            *([] if usage_seen else
+              ["no usage records were supplied; token and cost fields stay unknown"]),
+        ],
+    }

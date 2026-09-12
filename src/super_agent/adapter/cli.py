@@ -372,7 +372,7 @@ def _skill_install_view(installed: object, writable: Path) -> dict[str, object]:
 def _data_command(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="super-agent data")
     parser.add_argument("resource", choices=("storage", "conversations", "runs", "agent", "tasks"))
-    parser.add_argument("action", choices=("verify", "list", "show", "prune", "recover"))
+    parser.add_argument("action", choices=("verify", "list", "show", "prune", "recover", "report"))
     parser.add_argument("--config")
     parser.add_argument("--user", default="local")
     parser.add_argument("--agent", default="super-agent")
@@ -387,8 +387,8 @@ def _data_command(arguments: list[str]) -> int:
         raise ValueError("run data supports only the list action")
     if parsed.resource == "agent" and parsed.action != "show":
         raise ValueError("agent data supports only the show action")
-    if parsed.resource == "tasks" and parsed.action not in {"list", "recover"}:
-        raise ValueError("task data supports only list or recover")
+    if parsed.resource == "tasks" and parsed.action not in {"list", "recover", "report"}:
+        raise ValueError("task data supports only list, recover or report")
     if parsed.resource == "agent":
         return _print_value(Agent(config=_load_general(parsed.config)).snapshot(), parsed.output)
     config = _load_general(parsed.config)
@@ -432,12 +432,22 @@ def _data_command(arguments: list[str]) -> int:
 
 
 def _task_data_command(agent: Agent, parsed: argparse.Namespace) -> int:
-    """列出已保存任务与恢复处置；只读，不执行任何外部操作。"""
+    """列出已保存任务、恢复处置与交办体验汇总；全部只读，不执行任何外部操作。"""
     from super_agent.adapter.storage import TaskPersistence, recovery_plan
+    from super_agent.skill.organization_tasks import task_delivery_metrics
 
     persistence = TaskPersistence(agent.get_record_store(_text(parsed.user, "data user")))
     agent_name = _text(parsed.agent, "agent name")
     persisted = persistence.list_tasks(agent_name=agent_name)
+    if parsed.action == "report":
+        # 费用只统计供应商回报的用量；没有记录时保持未知，不用 0 冒充。
+        usage = [
+            record.data
+            for record in agent.get_record_store(_text(parsed.user, "data user")).read(
+                stream="run", event_types=("model.usage",)
+            )
+        ]
+        return _print_value(task_delivery_metrics(persisted, usage=usage), parsed.output)
     if parsed.action == "list":
         return _print_value(
             {
