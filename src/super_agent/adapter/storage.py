@@ -7,12 +7,12 @@ import json
 import os
 import sqlite3
 import tempfile
-from collections.abc import Iterable, Mapping
-from dataclasses import replace
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
 from threading import RLock
 
-from super_agent.core.event import CheckpointConflictError, RunCheckpoint
+from super_agent.core.event import CheckpointConflictError, RunCheckpoint, utc_now
 from super_agent.core.records import EventStore, Record, RecordBackend, RecordQuery
 
 
@@ -505,3 +505,289 @@ def record_from_sql_row(row: Iterable[object]) -> Record:
         created_at=str(values[8]),
         position=int(values[9]),
     )
+
+
+# --- 任务快照与操作台账 ---------------------------------------------------------
+# 复用已有 EventStore 与 checkpoint 流：不新增存储框架，也不新增记录保留策略。
+
+TASK_STREAM = "checkpoint"
+SNAPSHOT_EVENT = "agent_task.snapshot"
+LEDGER_EVENT = "agent_task.operation"
+# 恢复结果的三种可能；只有"确定未开始"才允许重新执行。
+CONFIRMED = "confirmed"
+NOT_STARTED = "not_started"
+UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class OperationIdentity:
+    """跨重启稳定的逻辑操作身份，不使用会变化的模型 call_id。"""
+
+    agent_name: str
+    task_id: str
+    purpose: str
+    prompt_sha256: str
+    criteria: tuple[str, str] = ()
+
+    def __post_init__(self) -> None:
+        for name in ("agent_name", "task_id", "purpose"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"operation {name} cannot be empty")
+        if len(self.prompt_sha256) != 64 or any(
+            character not in "0123456789abcdef" for character in self.prompt_sha256
+        ):
+            raise ValueError("operation prompt hash must be a SHA-256 hex digest")
+
+    @property
+    def operation_id(self) -> str:
+        return task_operation_id(self.agent_name, self.task_id, self.purpose, self.prompt_sha256)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "agent_name": self.agent_name,
+            "task_id": self.task_id,
+            "purpose": self.purpose,
+            "prompt_sha256": self.prompt_sha256,
+            "criteria": list(self.criteria),
+            "operation_id": self.operation_id,
+        }
+
+
+@dataclass(frozen=True)
+class OperationOutcome:
+    """一次外部操作的已知结果。"""
+
+    operation_id: str
+    outcome: str
+    evidence: str = ""
+    recorded_at: str = ""
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.operation_id, str) or not self.operation_id.strip():
+            raise ValueError("operation ID cannot be empty")
+        if self.outcome not in {CONFIRMED, NOT_STARTED, UNKNOWN}:
+            raise ValueError(f"unknown operation outcome: {self.outcome}")
+        if self.outcome != NOT_STARTED and not str(self.evidence).strip():
+            raise ValueError("confirmed or unknown outcomes require evidence")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "operation_id": self.operation_id,
+            "outcome": self.outcome,
+            "evidence": self.evidence,
+            "recorded_at": self.recorded_at or utc_now(),
+        }
+
+
+@dataclass(frozen=True)
+class RecoveryDecision:
+    """一条持久化任务在恢复时得到的处置；只描述，不执行。"""
+
+    task_id: str
+    stage: str
+    action: str
+    reason: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {"task_id": self.task_id, "stage": self.stage,
+                "action": self.action, "reason": self.reason}
+
+
+def task_operation_id(agent_name: str, task_id: str, purpose: str, prompt_sha256: str) -> str:
+    """逻辑操作身份：同一任务、同一目标版本、同一用途算同一次操作。"""
+    payload = json.dumps(
+        {"agent_name": agent_name, "task_id": task_id, "purpose": purpose,
+         "prompt_sha256": prompt_sha256},
+        ensure_ascii=False, sort_keys=True,
+    )
+    return "operation-" + hashlib.sha256(payload.encode()).hexdigest()[:32]
+
+
+def operation_identity(agent_name: str, task: Mapping[str, object], *,
+                       criteria: Sequence[str] = ()) -> OperationIdentity:
+    """从持久化快照推导逻辑操作身份；沿用目标版本而不是运行时 call_id。"""
+    prompt = task.get("prompt")
+    if not isinstance(prompt, str) or not prompt:
+        raise ValueError("persisted task is missing its prompt")
+    task_id = task.get("task_id")
+    if not isinstance(task_id, str) or not task_id:
+        raise ValueError("persisted task is missing its ID")
+    purpose = task.get("purpose")
+    return OperationIdentity(
+        agent_name=agent_name,
+        task_id=task_id,
+        purpose=purpose if isinstance(purpose, str) and purpose else "auto",
+        prompt_sha256=hashlib.sha256(prompt.encode()).hexdigest(),
+        criteria=tuple(str(item) for item in criteria),
+    )
+
+
+class TaskPersistence:
+    """按任务保存快照与操作台账；读写失败一律抛出，不静默退回内存。
+
+    ``save_task`` 接受 ``TaskQueue.get_task`` 的投影并补上恢复真正需要的两样东西：
+    目标原文与工作目录引用。除此之外它不发明字段——快照仍是任务状态的纯投影。
+    """
+
+    def __init__(self, store: EventStore) -> None:
+        if not isinstance(store, EventStore):
+            raise TypeError("task persistence requires an EventStore")
+        self.store = store
+
+    def save_task(self, task: Mapping[str, object], *, agent_name: str,
+                  prompt: str | None = None,
+                  workspace: str | None = None) -> Mapping[str, object]:
+        """把当前任务投影为一条快照记录，不写对话正文。"""
+        task_id = _persisted_text(task.get("task_id"), "task ID")
+        goal = prompt if prompt is not None else task.get("prompt")
+        if not isinstance(goal, str) or not goal.strip():
+            raise ValueError("task snapshot requires the goal prompt text")
+        payload = dict(task)
+        payload["prompt"] = goal
+        if workspace is not None:
+            payload["workspace"] = _persisted_text(workspace, "workspace reference")
+        snapshot = {
+            "agent_name": _persisted_text(agent_name, "agent name"),
+            "saved_at": utc_now(),
+            "task": _plain_json(payload),
+        }
+        self.store.replace_state(TASK_STREAM, _task_stream_id(agent_name, task_id),
+                                 SNAPSHOT_EVENT, snapshot)
+        return snapshot
+
+    def save_tasks(self, queue: object, *, agent_name: str, source_group_id: str) -> int:
+        """保存该作用域内全部任务；返回写入条数。"""
+        written = 0
+        for task in queue.list_tasks(source_group_id, include_results=True):
+            self.save_task(task, agent_name=agent_name)
+            written += 1
+        return written
+
+    def load_task(self, task_id: str, *, agent_name: str) -> Mapping[str, object] | None:
+        records = self.store.read(TASK_STREAM, _task_stream_id(agent_name, task_id),
+                                  event_types=(SNAPSHOT_EVENT,), limit=1, descending=True)
+        if not records:
+            return None
+        task = records[0].data.get("task")
+        if not isinstance(task, Mapping):
+            raise ValueError("persisted task snapshot is malformed")
+        return task
+
+    def list_tasks(self, *, agent_name: str) -> list[Mapping[str, object]]:
+        """列出该 Agent 已保存的任务快照，按任务 ID 排序。"""
+        values: dict[str, Mapping[str, object]] = {}
+        for record in self.store.read(TASK_STREAM, event_types=(SNAPSHOT_EVENT,)):
+            if record.data.get("agent_name") != agent_name:
+                continue
+            task = record.data.get("task")
+            if not isinstance(task, Mapping):
+                continue
+            task_id = task.get("task_id")
+            if isinstance(task_id, str):
+                values[task_id] = task
+        return [values[key] for key in sorted(values)]
+
+    def record_outcome(self, identity: OperationIdentity, outcome: str,
+                       *, evidence: str) -> OperationOutcome:
+        """记录一次外部操作的已知结果。"""
+        value = OperationOutcome(identity.operation_id, outcome, evidence)
+        self.store.append(TASK_STREAM, f"operation:{identity.operation_id}", LEDGER_EVENT,
+                          {"identity": identity.to_dict(), **value.to_dict()})
+        return value
+
+    def operation_outcomes(self, *, agent_name: str) -> dict[str, OperationOutcome]:
+        """读取该 Agent 的操作台账；同一操作以最后一条记录为准。"""
+        values: dict[str, OperationOutcome] = {}
+        for record in self.store.read(TASK_STREAM, event_types=(LEDGER_EVENT,)):
+            identity = record.data.get("identity")
+            if not isinstance(identity, Mapping) or identity.get("agent_name") != agent_name:
+                continue
+            operation_id = record.data.get("operation_id")
+            outcome = record.data.get("outcome")
+            if not isinstance(operation_id, str) or outcome not in {CONFIRMED, NOT_STARTED, UNKNOWN}:
+                continue
+            evidence = record.data.get("evidence")
+            values[operation_id] = OperationOutcome(
+                operation_id, outcome, evidence if isinstance(evidence, str) else "recorded",
+                recorded_at=str(record.data.get("recorded_at") or record.created_at),
+            )
+        return values
+
+
+def recovery_plan(
+    persisted: Sequence[Mapping[str, object]],
+    outcomes: Mapping[str, OperationOutcome],
+    *,
+    agent_name: str,
+    current_agent_name: str,
+) -> list[RecoveryDecision]:
+    """为每条持久化任务给出恢复处置，不执行任何外部操作。
+
+    只承认一位恢复执行者：Agent 身份不一致时明确拒绝，不静默接手别人的任务。
+    """
+    if agent_name != current_agent_name:
+        raise PermissionError(
+            f"recovery executor mismatch: snapshot belongs to {agent_name}, current is {current_agent_name}"
+        )
+    decisions: list[RecoveryDecision] = []
+    for task in persisted:
+        task_id = task.get("task_id")
+        if not isinstance(task_id, str) or not task_id:
+            raise ValueError("persisted task is missing its ID")
+        if not isinstance(task.get("prompt"), str) or not task.get("prompt"):
+            # 不完整快照不能猜目标，也不能当成可执行任务。
+            decisions.append(RecoveryDecision(task_id, str(task.get("stage") or "unknown"), "verify",
+                                              "persisted snapshot is missing its goal; restore is blocked"))
+            continue
+        criteria = task.get("criteria")
+        identity = operation_identity(agent_name, task,
+                                      criteria=criteria if isinstance(criteria, list) else ())
+        decisions.append(_recovery_decision(task, outcomes.get(identity.operation_id)))
+    return decisions
+
+
+def _recovery_decision(task: Mapping[str, object], outcome: OperationOutcome | None) -> RecoveryDecision:
+    task_id = str(task.get("task_id"))
+    stage = str(task.get("stage") or "pending")
+    status = str(task.get("status") or "created")
+    if task.get("delivery") is not None:
+        # 已交付的任务是可复用证据，不重新执行。
+        return RecoveryDecision(task_id, stage, "reuse",
+                                "task was already delivered; reuse its recorded result")
+    if outcome is None:
+        if status in {"running", "queued"}:
+            # 无从判断上次执行是否已产生外部效果，必须显式核对后才能继续。
+            return RecoveryDecision(task_id, stage, "verify",
+                                    "no recorded outcome for an interrupted attempt; verify before rerunning")
+        return RecoveryDecision(task_id, stage, "execute",
+                                f"task was {status} with no external operation to replay")
+    if outcome.outcome == CONFIRMED:
+        return RecoveryDecision(task_id, stage, "block",
+                                f"external operation already confirmed; do not repeat it ({outcome.evidence})")
+    if outcome.outcome == UNKNOWN:
+        return RecoveryDecision(task_id, stage, "verify",
+                                f"external operation result is unknown; verify at the target system ({outcome.evidence})")
+    return RecoveryDecision(task_id, stage, "execute",
+                            "external operation was confirmed not to have started")
+
+
+def restore_task_from_snapshot(queue: object, snapshot: Mapping[str, object], *,
+                               source_group_id: str) -> object:
+    """把一条持久化快照放回队列；不重放任何外部副作用。"""
+    return queue.restore_task(snapshot, source_group_id=source_group_id)
+
+
+def _task_stream_id(agent_name: str, task_id: str) -> str:
+    return f"task:{_persisted_text(agent_name, 'agent name')}:{_persisted_text(task_id, 'task ID')}"
+
+
+def _persisted_text(value: object, name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} must be non-empty text")
+    return value.strip()
+
+
+def _plain_json(value: object) -> object:
+    """把快照转成纯 JSON 结构，避免共享可变容器。"""
+    return json.loads(json.dumps(value, ensure_ascii=False, default=str, sort_keys=True))

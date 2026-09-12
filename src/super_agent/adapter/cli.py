@@ -112,7 +112,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parsed = parser.parse_args(arguments)
         cli = _load_cli(parsed.cli_config)
         cli = _override_cli(cli, parsed)
-        agent, _store = _build_agent(cli, parsed.config, parsed.code_config)
+        agent, store = _build_agent(cli, parsed.config, parsed.code_config)
         if parsed.prompt:
             return _run_prompt(
                 agent,
@@ -123,7 +123,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 parsed.skill,
             )
         return _run_chat(
-            agent, cli, parsed.conversation_id, parsed.plugin, parsed.skill
+            agent, cli, parsed.conversation_id, parsed.plugin, parsed.skill,
+            _task_recorder(store, cli.user_id, agent.name),
         )
     except (TypeError, ValueError, RuntimeError, OSError) as error:
         print(f"super-agent: {error}", file=sys.stderr)
@@ -370,10 +371,11 @@ def _skill_install_view(installed: object, writable: Path) -> dict[str, object]:
 
 def _data_command(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="super-agent data")
-    parser.add_argument("resource", choices=("storage", "conversations", "runs", "agent"))
-    parser.add_argument("action", choices=("verify", "list", "show", "prune"))
+    parser.add_argument("resource", choices=("storage", "conversations", "runs", "agent", "tasks"))
+    parser.add_argument("action", choices=("verify", "list", "show", "prune", "recover"))
     parser.add_argument("--config")
     parser.add_argument("--user", default="local")
+    parser.add_argument("--agent", default="super-agent")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--output", choices=("text", "json"), default="json")
     parsed = parser.parse_args(arguments)
@@ -385,6 +387,8 @@ def _data_command(arguments: list[str]) -> int:
         raise ValueError("run data supports only the list action")
     if parsed.resource == "agent" and parsed.action != "show":
         raise ValueError("agent data supports only the show action")
+    if parsed.resource == "tasks" and parsed.action not in {"list", "recover"}:
+        raise ValueError("task data supports only list or recover")
     if parsed.resource == "agent":
         return _print_value(Agent(config=_load_general(parsed.config)).snapshot(), parsed.output)
     config = _load_general(parsed.config)
@@ -393,6 +397,8 @@ def _data_command(arguments: list[str]) -> int:
     backend = _storage_from_config(config)
     agent = Agent(config=config)
     agent.use_storage(backend)
+    if parsed.resource == "tasks":
+        return _task_data_command(agent, parsed)
     if parsed.resource == "storage":
         if parsed.action == "verify":
             value = verify_storage(backend)
@@ -423,6 +429,44 @@ def _data_command(arguments: list[str]) -> int:
     else:
         value = agent.for_user(parsed.user).runs.list()
     return _print_value(value, parsed.output)
+
+
+def _task_data_command(agent: Agent, parsed: argparse.Namespace) -> int:
+    """列出已保存任务与恢复处置；只读，不执行任何外部操作。"""
+    from super_agent.adapter.storage import TaskPersistence, recovery_plan
+
+    persistence = TaskPersistence(agent.get_record_store(_text(parsed.user, "data user")))
+    agent_name = _text(parsed.agent, "agent name")
+    persisted = persistence.list_tasks(agent_name=agent_name)
+    if parsed.action == "list":
+        return _print_value(
+            {
+                "agent": agent_name,
+                "tasks": [
+                    {
+                        "task_id": task.get("task_id"),
+                        "stage": task.get("stage"),
+                        "status": task.get("status"),
+                        "criteria": task.get("criteria"),
+                        "attempts": task.get("attempts"),
+                    }
+                    for task in persisted
+                ],
+            },
+            parsed.output,
+        )
+    # recover 只报告处置，不重放：结果未知或已确认的外部操作必须由人核对。
+    decisions = recovery_plan(persisted, persistence.operation_outcomes(agent_name=agent_name),
+                              agent_name=agent_name, current_agent_name=agent_name)
+    return _print_value(
+        {
+            "agent": agent_name,
+            "applied": False,
+            "note": "recovery is reported only; no external operation is replayed",
+            "decisions": [decision.to_dict() for decision in decisions],
+        },
+        parsed.output,
+    )
 
 
 def _run_prompt(
@@ -468,12 +512,33 @@ def _ensure_conversation(
     return conversation.conversation_id
 
 
+def _task_recorder(store: object, user_id: str, agent_name: str):
+    """把任务状态变化写进已有记录存储；--save 未启用时不写任何东西。
+
+    这是任务快照的唯一持久化入口：它只记录状态，不写对话正文，也不读取凭据。
+    作用域由记录存储自身固定（用户 + Agent），这里只补上审计需要的来源字段。
+    """
+    if store is None:
+        return None
+
+    def record(kind: str, data: Mapping[str, object]) -> None:
+        try:
+            store.append("task", str(data.get("task_id") or "unknown"), kind,
+                         {**dict(data), "recorded_by": agent_name, "user_id": user_id})
+        except (OSError, RuntimeError, ValueError, TypeError) as error:
+            # 保存失败必须让调用方看到，不能静默退回内存。
+            raise RuntimeError(f"task record could not be saved: {error}") from error
+
+    return record
+
+
 def _run_chat(
     agent: Agent,
     cli: CliConfig,
     conversation_id: str | None,
     plugin: str | None,
     skill: str | None,
+    task_recorder: object | None = None,
 ) -> int:
     current = conversation_id
     history: list[Message] = []
@@ -497,7 +562,7 @@ def _run_chat(
             if task_queue is None:
                 from super_agent.skill.organization_tasks import TaskQueue
 
-                task_queue = TaskQueue(scope=cli.user_id)
+                task_queue = TaskQueue(scope=cli.user_id, record_event=task_recorder or None)
             try:
                 _task_command(agent, cli, prompt, task_queue, skill, plugin)
             except (ValueError, RuntimeError, OSError, KeyError) as error:

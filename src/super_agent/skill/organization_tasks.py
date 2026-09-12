@@ -115,6 +115,50 @@ class TaskQueue:
                 self._task_lifecycles[task.task_id] = runtime_lifecycle
             return self._change(task)
 
+    def restore_task(self, snapshot: Mapping[str, object], *, source_group_id: str) -> Task:
+        """把已保存的快照放回队列，供显式恢复使用；不重放任何外部副作用。
+
+        只接受宿主提供、且作用域一致、ID 未占用的快照；已交付与已停止的结果一并还原，
+        因此恢复后的任务不会凭空变成可执行状态。
+        """
+        if not isinstance(snapshot, Mapping):
+            raise TypeError("task snapshot must be an object")
+        task_id = _text(snapshot.get("task_id"), "task ID")
+        with self._condition:
+            if task_id in self._tasks:
+                raise ValueError(f"task is already restored: {task_id}")
+            if snapshot.get("source_group_id") != source_group_id:
+                raise PermissionError("task snapshot belongs to another scope")
+            task = Task(
+                task_id=task_id,
+                prompt=_text(snapshot.get("prompt"), "Agent task prompt"),
+                source_group_id=source_group_id,
+                target_group_id=str(snapshot.get("target_group_id") or source_group_id),
+                purpose=str(snapshot.get("purpose") or "auto"),
+                required_features=tuple(str(item) for item in snapshot.get("required_features") or ("text",)),
+                status="created",
+                stage="pending",
+                attempts=int(snapshot.get("attempts") or 0),
+                criteria=tuple(str(item) for item in snapshot.get("criteria") or ()),
+                return_reasons=tuple(str(item) for item in snapshot.get("return_reasons") or ()),
+                dependencies=tuple(dict(item) for item in snapshot.get("dependencies") or ()),
+                assignments=tuple(dict(item) for item in snapshot.get("assignments") or ()),
+                # 恢复不复活旧尝试：历史提交与取消请求只作为只读记录保留。
+                submissions=tuple(dict(item) for item in snapshot.get("submissions") or ()),
+                delivery=None if snapshot.get("delivery") is None else dict(snapshot["delivery"]),
+                cancel_requested_at=(None if snapshot.get("cancel_requested_at") is None
+                                     else str(snapshot["cancel_requested_at"])),
+                cancel_reason=(None if snapshot.get("cancel_reason") is None
+                               else str(snapshot["cancel_reason"])),
+                stop_unknown_reason=(None if snapshot.get("stop_unknown_reason") is None
+                                     else str(snapshot["stop_unknown_reason"])),
+            )
+            if task.delivery is not None:
+                task = replace(task, stage="delivered")
+            if task.cancel_requested_at is not None:
+                task = replace(task, status="cancelled", stage="stopped")
+            return self._change(task)
+
     def _resolve_dependencies(
         self, depends_on: Iterable[str], source_id: str, *, new_task_id: str
     ) -> tuple[Mapping[str, object], ...]:
