@@ -174,6 +174,7 @@ class DependencyAndHandoffTests(unittest.TestCase):
         self.assertIn("record_agent_task_finding", tools)
         # 验收与交付仍然没有模型工具。
         for forbidden in ("check_agent_task", "deliver_agent_task", "accept_agent_task"):
+            # 停止是请求，不是"已取消"的结论工具。
             self.assertNotIn(forbidden, tools)
 
         class _Session:

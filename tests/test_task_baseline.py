@@ -1,5 +1,6 @@
 """检查任务样本的真产物、反例，以及当前队列和副作用边界。"""
 
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -16,8 +17,9 @@ from super_agent.adapter.tools import CodeWorkspace, WorkspaceSettings
 from super_agent.core.model import ModelEvent
 from super_agent.core.provider import MockModel
 from super_agent.core.run import FatalToolError, RunInput, collect_run, stream_run
-from super_agent.skill.organization import TeamSettings, team_node
+from super_agent.skill.organization import TaskCheck, TeamSettings, team_node
 from super_agent.skill.organization_runtime import TeamRuntime
+from super_agent.skill.organization_tasks import TaskQueue
 
 
 class TaskBaselineTests(unittest.TestCase):
@@ -168,7 +170,7 @@ class TaskBaselineTests(unittest.TestCase):
                 runtime.dispatch_task(task.task_id, source_group_id=group)
             self.assertEqual([], model.requests)
 
-    def test_queued_cancel_skips_worker_but_running_cancel_is_rejected(self) -> None:
+    def test_cancel_queued_work_and_request_stop_for_running_work(self) -> None:
         entered, release, cancelled_worker_exited = Event(), Event(), Event()
 
         class HeldModel(MockModel):
@@ -197,19 +199,60 @@ class TaskBaselineTests(unittest.TestCase):
             runtime.dispatch_task(first.task_id, source_group_id=group)
             try:
                 self.assertTrue(entered.wait(5))
-                with self.assertRaisesRegex(ValueError, "running -> cancelled"):
+                # 在跑的任务不能靠改一个状态就算取消：先记录停止请求，等运行真正退出。
+                with self.assertRaisesRegex(ValueError, "not a confirmed stop"):
                     runtime.cancel_task(first.task_id, source_group_id=group)
+                stopping = runtime.request_task_cancellation(
+                    first.task_id, "user stopped the run", source_group_id=group)
+                # status 仍是执行事实（还在跑），stage 表示取消走到"停止中"。
+                self.assertEqual("running", stopping.status)
+                self.assertEqual("stopping", stopping.stage)
+                self.assertEqual("user stopped the run", stopping.cancel_reason)
+                self.assertIsNotNone(stopping.cancel_requested_at)
+                self.assertTrue(runtime._cancel_check(first.task_id)())
                 # 等待被取消的消费者真正退出，避免在其尚未检查状态时误判通过。
                 with patch.object(runtime, "_consume", side_effect=observe_consumer):
                     runtime.dispatch_task(second.task_id, source_group_id=group, agent_name="worker")
                 self.assertEqual("queued", runtime.get_task(second.task_id)["status"])
-                self.assertEqual("cancelled", runtime.cancel_task(second.task_id, source_group_id=group).status)
+                cancelled = runtime.cancel_task(second.task_id, source_group_id=group)
+                self.assertEqual("cancelled", cancelled.status)
+                self.assertEqual("stopped", cancelled.stage)
             finally:
                 release.set()
                 finished = runtime.wait_for_task(first.task_id, source_group_id=group, timeout_seconds=5)
-            self.assertEqual("completed", finished["task"]["status"])
+            # 停止请求后运行确实退出：第一阶段被记为已停止，而不是完成。
+            self.assertEqual("cancelled", finished["task"]["status"])
+            self.assertEqual("stopped", finished["task"]["stage"])
+            self.assertIsNone(finished["task"]["stop_unknown_reason"])
             self.assertTrue(cancelled_worker_exited.wait(5))
             self.assertEqual(1, len(model.requests))
+
+    def test_late_result_after_cancellation_is_never_delivered(self) -> None:
+        # 执行体在停止请求后仍然返回结果时，这份结果不能算完成，也不能交付。
+        agent = Agent(MockModel("已完成的回答"))
+        self.addCleanup(agent.close)
+        queue = TaskQueue(scope="local")
+        task = queue.create_task("work", source_group_id="local")
+        queue.configure_task_check(
+            task.task_id,
+            TaskCheck("text", "1", lambda: {"answer": hashlib.sha256(b"x").hexdigest()},
+                      lambda: {"passed": True}),
+            source_group_id="local",
+        )
+
+        def ignoring_executor(prompt: str):
+            queue.request_task_cancellation(task.task_id, "user pressed stop", source_group_id="local")
+            return agent.run(prompt)
+
+        result = queue.execute_task(task.task_id, ignoring_executor, source_group_id="local")
+        # 结果迟到：既不算完成也不算"已确认停止"，明确标为停止未确认。
+        self.assertEqual("failed", result.status)
+        self.assertEqual("stop_unknown", result.stage)
+        self.assertIn("after the cancellation request", result.stop_unknown_reason)
+        self.assertIsNone(result.result)
+        # 结果未知时不能提交、不能交付。
+        with self.assertRaisesRegex(ValueError, "completed, undelivered attempt"):
+            queue.submit_task_result(task.task_id, request_id="late", source_group_id="local")
 
 
 if __name__ == "__main__":

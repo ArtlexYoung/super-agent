@@ -143,6 +143,7 @@ def _task_tool_definitions() -> tuple[ToolDefinition, ...]:
         ("return_agent_task_for_changes", "Ask the owner to reopen this task with a reason when work cannot finish", _return_task, "return", write),
         ("read_agent_task_dependencies", "Check whether this task's prerequisites are accepted yet", _read_dependencies, "empty", read),
         ("record_agent_task_finding", "Record an independent review finding on the current submission; this never accepts the task", _record_finding, "finding", write),
+        ("request_agent_task_stop", "Request stopping this task; it becomes cancelled only after the running work actually stops", _request_stop, "return", write),
     )
 
 
@@ -184,6 +185,12 @@ def _record_finding(queue: TaskQueue, group_id: str, task_id: str, arguments: Ar
         finding=text(arguments.get("finding"), "review finding"),
         location="" if location is None else text(location, "review location"),
     ).to_dict()
+
+
+def _request_stop(queue: TaskQueue, group_id: str, task_id: str, arguments: Arguments, _context: ToolContext) -> dict[str, object]:
+    # 只发出停止请求；是否真的停下由运行自己确认，模型不能宣称"已取消"。
+    reason = text(arguments.get("reason") or "stop requested by the assigned Agent", "stop reason")
+    return queue.request_task_cancellation(task_id, reason, source_group_id=group_id).to_dict()
 
 
 def _list_tree(runtime: TeamRuntime, group_id: str, _arguments: Arguments, _context: ToolContext) -> dict[str, object]:

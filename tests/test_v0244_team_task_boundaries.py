@@ -42,7 +42,8 @@ class TeamTaskBoundaryTests(unittest.TestCase):
             task_ids=(task.task_id,),
         )
 
-        with self.assertRaisesRegex(ValueError, "completed -> cancelled"):
+        # 已结束的任务不能再被取消；错误信息必须说明真实状态，不做假装取消。
+        with self.assertRaisesRegex(ValueError, "already ended: completed"):
             runtime.cancel_task(task.task_id, source_group_id=group_id)
 
     def test_task_status_and_wait_share_one_explicit_queue_view(self):

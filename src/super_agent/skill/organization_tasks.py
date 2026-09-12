@@ -29,7 +29,7 @@ TASK_TRANSITIONS = {
     None: frozenset({"created"}),
     "created": frozenset({"queued", "running", "cancelled"}),
     "queued": frozenset({"running", "cancelled"}),
-    "running": frozenset({"queued", "completed", "failed"}),
+    "running": frozenset({"queued", "completed", "failed", "cancelled"}),
     "completed": frozenset({"created"}),
     "failed": frozenset({"created"}),
     "cancelled": frozenset(),
@@ -263,13 +263,22 @@ class TaskQueue:
         except Exception as error:
             with self._condition:
                 current = self._require_task(task_id)
-                # 执行期间被退回或取消时不得复活旧尝试，保留其状态供调用方核对。
+                if current.cancel_requested_at is not None:
+                    # 执行体对停止请求的报错就是停止证据；错误本身仍作为证据一并保留。
+                    return self._publish_stopped_locked(current, type(error).__name__,
+                                                        error=error)
+                # 执行期间被退回时不得复活旧尝试，保留其状态供调用方核对。
                 if current.status == "running" and current.attempt_id == task.attempt_id:
                     self._change(current, status="failed", stage="needs_attention",
                                  error_type=type(error).__name__, error_message=str(error))
             raise
         with self._condition:
             current = self._require_task(task_id)
+            if current.cancel_requested_at is not None:
+                # 迟到的结果不能交付：请求停止后仍返回的结果一律丢弃，并标明停止未被确认。
+                return self._change(current, status="failed", stage="stop_unknown",
+                                    stop_unknown_reason="executor returned a result after the cancellation request",
+                                    result=None)
             if current.status != "running" or current.attempt_id != task.attempt_id:
                 raise RuntimeError("Agent task changed concurrently during execution")
             return self._change(current, status="completed", stage="needs_attention",
@@ -658,18 +667,74 @@ class TaskQueue:
             )
             return value
 
-    def cancel_task(self, task_id: str, *, source_group_id: str) -> Task:
+    def request_task_cancellation(self, task_id: str, reason: str, *, source_group_id: str) -> Task:
+        """请求取消：先记录请求并让在跑的运行看到它，不假装已经停止。
+
+        ``status`` 始终表示执行事实；``stage`` 表示这次取消走到哪一步——在跑的任务停在
+        ``stopping``，只有拿到停止证据才落成 ``status=cancelled`` / ``stage=stopped``。
+        """
+        reason = _text(reason, "cancellation reason")
         with self._condition:
-            task = self._require_task(task_id)
-            if task.source_group_id != source_group_id:
-                raise PermissionError("a group can cancel only its own tasks")
-            return self._change(task, status="cancelled")
+            task = self._owned_task(task_id, source_group_id)
+            if task.status in TERMINAL:
+                raise ValueError(f"task already ended: {task.status}; a completed task cannot be cancelled")
+            if task.cancel_requested_at is not None:
+                raise ValueError("task is already stopping")
+            requested = self._change(task, event_type="agent_task.cancel_requested",
+                                     cancel_requested_at=utc_now(), cancel_reason=reason,
+                                     stage="stopping", stop_unknown_reason=None)
+            if task.status == "running":
+                # 在跑的运行必须自己确认停止；这里只把请求传出去。
+                return requested
+            return self._change(requested, status="cancelled", stage="stopped")
+
+    def cancel_task(self, task_id: str, *, source_group_id: str) -> Task:
+        """取消尚未开始的排队任务；在跑的必须走 request_task_cancellation。"""
+        with self._condition:
+            task = self._owned_task(task_id, source_group_id)
+        if task.status == "running":
+            raise ValueError("running -> cancelled is not a confirmed stop; request cancellation instead")
+        return self.request_task_cancellation(task_id, "cancelled by owner", source_group_id=source_group_id)
+
+    def _cancel_check(self, task_id: str) -> Callable[[], bool]:
+        """把取消请求接入运行中断检查；运行循环每个模型轮次都会查询它。"""
+
+        def cancelled() -> bool:
+            with self._condition:
+                task = self._tasks.get(task_id)
+                return task is not None and task.cancel_requested_at is not None
+
+        return cancelled
+
+    def _publish_stopped(self, task_id: str, reason: str) -> Task:
+        """运行确实退出后写 cancelled；调用方须自行确认已停止。"""
+        with self._condition:
+            return self._publish_stopped_locked(self._require_task(task_id), reason)
+
+    def _publish_stopped_locked(self, task: Task, reason: str,
+                                *, error: BaseException | None = None) -> Task:
+        """调用方须持有 self._condition；已有停止证据才落成 cancelled。
+
+        一次写入完成状态与证据，避免二次变更在已终止状态上再次转移。
+        """
+        if task.cancel_requested_at is None:
+            raise RuntimeError(f"task was not asked to stop: {task.task_id}")
+        if task.status == "cancelled":
+            return task
+        return self._change(task, status="cancelled", stage="stopped",
+                            stop_unknown_reason=None,
+                            cancel_reason=task.cancel_reason or reason,
+                            error_type=None if error is None else type(error).__name__,
+                            error_message=None if error is None else str(error))
 
     def _consume(self, task_id: str, worker: TeamMember) -> None:
         with self._workers.lock_for(worker):
             with self._condition:
                 task = self._require_task(task_id)
-                if task.status == "cancelled":
+                if task.status == "cancelled" or task.cancel_requested_at is not None:
+                    # 排队期间被取消：不再调用模型，直接确认已停止。
+                    if task.status != "cancelled":
+                        self._change(task, status="cancelled", stage="stopped")
                     return
                 task = self._change(
                     task,
@@ -695,9 +760,18 @@ class TaskQueue:
             )
             compacted.update(record_mode=mode, compression_reason=reason)
             with self._condition:
+                current = self._require_task(task_id)
+                if current.cancel_requested_at is not None:
+                    # 迟到的结果不能交付：停止请求之后回来的一律丢弃，只确认已停止。
+                    self._workers.mark_success(worker)
+                    self._change(current, status="cancelled", stage="stopped",
+                                 stop_unknown_reason=None,
+                                 error_type="RunInterrupted",
+                                 error_message="result arrived after a cancellation request")
+                    return
                 self._workers.mark_success(worker)
                 self._change(
-                    self._require_task(task_id),
+                    current,
                     status="completed",
                     stage="needs_attention",
                     result=compacted,
@@ -731,6 +805,9 @@ class TaskQueue:
             team_runtime=self,
             agent_group_id=worker.group_id,
             runtime_lifecycle=lifecycle,
+            # 取消请求必须贯通到运行循环，而不是只在任务表上改一个状态。
+            cancel_check=self._cancel_check(task.task_id),
+            interrupt_check=self._cancel_check(task.task_id),
         )
         return worker.agent.run(task.prompt, context=context)
 
@@ -740,6 +817,12 @@ class TaskQueue:
         with self._condition:
             temporary = self._workers.mark_failure(worker, error)
             task = self._require_task(task_id)
+            if task.cancel_requested_at is not None:
+                # 停止请求导致的退出不是失败，也不触发重试或换模型。
+                self._change(task, status="cancelled", stage="stopped",
+                             stop_unknown_reason=None,
+                             error_type=type(error).__name__, error_message=str(error))
+                return
             if (
                 temporary
                 and task.fallback_count < self.settings.retry_unavailable_times

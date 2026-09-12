@@ -132,6 +132,10 @@ class Task:
     # 变化后，这里记录的提交摘要不再成立，依赖重新变为未满足。
     dependencies: tuple[Mapping[str, object], ...] = ()
     assignments: tuple[Mapping[str, object], ...] = ()
+    # 取消请求与"确实已停止"是两件事：请求先记录，只有拿到停止证据才写 cancelled。
+    cancel_requested_at: str | None = None
+    cancel_reason: str | None = None
+    stop_unknown_reason: str | None = None
 
     def to_dict(self, *, include_result: bool = True) -> dict[str, object]:
         value: dict[str, object] = {
@@ -160,6 +164,9 @@ class Task:
             "return_reasons": list(self.return_reasons),
             "dependencies": dataclass_data(self)["dependencies"],
             "assignments": dataclass_data(self)["assignments"],
+            "cancel_requested_at": self.cancel_requested_at,
+            "cancel_reason": self.cancel_reason,
+            "stop_unknown_reason": self.stop_unknown_reason,
         }
         if include_result:
             value["result"] = None if self.result is None else dict(self.result)

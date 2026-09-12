@@ -579,12 +579,16 @@ def _task_command(agent: Agent, cli: CliConfig, prompt: str, queue: object,
             if len(args) < 3:
                 raise ValueError("/task return <id> <reason>")
             value = queue.return_task_for_changes(task_id, " ".join(args[2:]), source_group_id=scope).to_dict()
+        elif action == "stop":
+            # 只发出停止请求；在跑的任务停在 stopping，等运行确认后才显示已停止。
+            reason = " ".join(args[2:]) if len(args) > 2 else "stopped from the CLI"
+            value = queue.request_task_cancellation(task_id, reason, source_group_id=scope).to_dict()
         elif action == "deliver":
             value = queue.deliver_task_result(task_id, source_group_id=scope, request_id=task_id).to_dict()
         elif action == "show":
             value = queue.get_task(task_id, source_group_id=scope)
         else:
-            raise ValueError("/task new|list|show|run|submit|check|return|deliver")
+            raise ValueError("/task new|list|show|run|submit|check|return|stop|deliver")
     _print_value(value, cli.output)
 
 

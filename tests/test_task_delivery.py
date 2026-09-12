@@ -173,7 +173,8 @@ class TaskDeliveryTests(unittest.TestCase):
         # 模型侧只暴露读取、提交、请求退回、依赖查询和检视意见；验收与交付没有对应工具。
         self.assertEqual(
             {"read_agent_task", "submit_agent_task_result", "return_agent_task_for_changes",
-             "read_agent_task_dependencies", "record_agent_task_finding"},
+             "read_agent_task_dependencies", "record_agent_task_finding",
+             "request_agent_task_stop"},
             set(tools),
         )
         self.queue.execute_task(self.task.task_id, self.agent.run, **self.scope)
