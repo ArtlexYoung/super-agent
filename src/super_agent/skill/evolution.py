@@ -534,3 +534,117 @@ def _change_schema() -> dict[str, object]:
 
 def _reference_schema() -> dict[str, object]:
     return {"type": "object", "required": ["skill"], "properties": {"skill": {"type": "string"}}}
+
+
+# --- 任务经验到场景草稿 ---------------------------------------------------------
+# 草稿只描述"以后怎样做"，不复制项目事实，也不把一次成功升级成通用方法。
+
+
+@dataclass(frozen=True)
+class TaskExperience:
+    """一次已交办任务的可复用经验，来源是任务证据而不是整段对话。"""
+
+    task_id: str
+    goal: str
+    outcome: str
+    correction: str = ""
+    source_criteria: tuple[str, ...] = ()
+    artifact_sha256: str = ""
+
+    def __post_init__(self) -> None:
+        _text(self.task_id, "experience task ID")
+        _text(self.goal, "experience goal")
+        if self.outcome not in {"delivered", "returned", "failed", "confirmed_not_started"}:
+            raise ValueError(f"unknown task outcome: {self.outcome}")
+        if self.outcome == "returned" and not self.correction.strip():
+            # 退回必须有纠正内容，否则学不到"以后怎样做"。
+            raise ValueError("a returned task needs the correction that was asked for")
+
+    @property
+    def supports_general_method(self) -> bool:
+        """一次成功只支持窄范围草稿；失败与纠正才说明边界。"""
+        return bool(self.correction.strip())
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "task_id": self.task_id,
+            "outcome": self.outcome,
+            "goal_characters": len(self.goal),
+            "correction_characters": len(self.correction),
+            "source_criteria": list(self.source_criteria),
+            "artifact_sha256": self.artifact_sha256,
+        }
+
+
+def scenario_draft_plan(
+    experience: TaskExperience,
+    *,
+    approved_targets: Iterable[str],
+    existing_bodies: Mapping[str, str],
+    candidate_body: str,
+) -> dict[str, object]:
+    """决定补充、派生还是不新增；只描述打算做什么，不写任何内容。
+
+    - 目标已有正文且候选内容不在其中 → ``augment``
+    - 候选内容与已有正文不同且目标尚无正文 → ``derive``
+    - 候选内容已经存在（含语义重复的近似）或没有可用目标 → ``no_action``
+    """
+    body = _text(candidate_body, "scenario draft body")
+    approved = tuple(dict.fromkeys(_text(item, "approved target") for item in approved_targets))
+    if not approved:
+        return {"decision": "no_action", "reason": "no approved scenario target",
+                "target": None, "duplicate_of": None}
+    for target in approved:
+        existing = existing_bodies.get(target, "")
+        if existing and body in existing:
+            return {"decision": "no_action", "reason": "the candidate text already exists",
+                    "target": target, "duplicate_of": target}
+    for target in approved:
+        if existing_bodies.get(target):
+            return {"decision": "augment", "reason": "extend an existing scenario method",
+                    "target": target, "duplicate_of": None}
+    return {"decision": "derive", "reason": "no existing body for the approved target",
+            "target": approved[0], "duplicate_of": None}
+
+
+def propose_scenario_draft(
+    evolution: SkillEvolution,
+    experience: TaskExperience,
+    *,
+    target: str,
+    candidate_body: str,
+    existing_bodies: Mapping[str, str],
+    actor: str = "agent",
+) -> dict[str, object]:
+    """按计划生成草稿候选；关闭学习时不产生任何写入或额外调用。
+
+    权限仍由 ``SkillEvolution`` 的配置决定：``approved_targets`` 只有在这里出现
+    的引用才算"逐资源授权"，共享依赖不会因为某个插件被允许而自动获得写权限。
+    """
+    if actor != "agent":
+        raise ValueError("only the Agent actor can be gated by evolution policy")
+    target = _text(target, "scenario draft target")
+    approved = tuple(evolution.policy.allow)
+    if target not in approved:
+        # 逐资源授权：调用方指定的目标本身也必须获批，不能借别的目标的名义写入。
+        return {"decision": "no_action", "reason": "the requested target is not approved",
+                "target": None, "duplicate_of": None, "change": None,
+                "experience": experience.to_dict()}
+    plan = scenario_draft_plan(experience, approved_targets=approved,
+                               existing_bodies=existing_bodies, candidate_body=candidate_body)
+    if plan["decision"] == "no_action":
+        return {**plan, "change": None, "experience": experience.to_dict()}
+    if not existing_bodies.get(target):
+        # 派生需要目标已存在正文；否则应补充到已有场景，而不是凭空新建。
+        raise ValueError(f"scenario draft target has no existing body: {target}")
+    change = evolution.propose(
+        target,
+        _augmented_body(existing_bodies[target], candidate_body),
+        reason=f"task {experience.task_id} ({experience.outcome})",
+        actor=actor,
+    )
+    return {**plan, "change": change.to_dict(), "experience": experience.to_dict()}
+
+
+def _augmented_body(existing: str, addition: str) -> str:
+    return f"{existing.rstrip()}\n\n{addition.strip()}\n"
