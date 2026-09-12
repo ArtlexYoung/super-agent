@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 from dataclasses import fields, is_dataclass
 
-__version__ = "0.2.119"
+__version__ = "0.2.120"
 
 
 def require_text(value: object, name: str) -> str:

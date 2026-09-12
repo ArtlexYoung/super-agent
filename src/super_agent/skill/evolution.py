@@ -20,8 +20,8 @@ from super_agent.core.event import RunResult, utc_now
 from super_agent.core.model import Tool
 from super_agent.core.records import EventStore
 from super_agent.core.run import ToolContext
-from super_agent.skill.document import Skill
-from super_agent.skill.library import AgentLibrary
+from super_agent.skill.document import Skill, format_skill
+from super_agent.skill.library import AgentLibrary, _atomic_write, _next_patch
 
 
 CandidateRunner = Callable[[str, str], str]
@@ -648,3 +648,150 @@ def propose_scenario_draft(
 
 def _augmented_body(existing: str, addition: str) -> str:
     return f"{existing.rstrip()}\n\n{addition.strip()}\n"
+
+
+# --- 跨资源安全采用与撤销 -------------------------------------------------------
+# 一次采用可能同时改动多份内容；要么全部生效，要么回到改动前的字节。
+
+
+@dataclass(frozen=True)
+class CompositeTarget:
+    """复合采用中的一个目标：引用 + 期望的改动前内容身份 + 新正文。"""
+
+    reference: str
+    expected_sha256: str
+    candidate_body: str
+    description: str | None = None
+
+    def __post_init__(self) -> None:
+        _text(self.reference, "composite target reference")
+        _text(self.expected_sha256, "composite target baseline hash")
+        _text(self.candidate_body, "composite target body")
+
+
+def apply_composite_change(
+    library: AgentLibrary,
+    targets: Iterable[CompositeTarget],
+    *,
+    store: EventStore | None = None,
+    acknowledged_shared: Iterable[str] = (),
+) -> dict[str, object]:
+    """一次采用多份内容：先全部核对前置条件，再逐份原子替换，失败即整体回滚。
+
+    不把"第一份替换成功"当成整批完成：任何一份失败都会把已写入的部分恢复到原字节，
+    并把结果标为 ``rolled_back`` 而不是部分成功。
+
+    被多个插件共享的目标必须显式列进 ``acknowledged_shared``：改它会影响别人的场景，
+    因此默认拒绝而不是"顺手一起改"。
+    """
+    selected = tuple(targets)
+    if not selected:
+        raise ValueError("composite change requires at least one target")
+    references = [item.reference for item in selected]
+    if len(set(references)) != len(references):
+        raise ValueError("composite change targets must be unique")
+
+    acknowledged = {_text(item, "acknowledged shared target") for item in acknowledged_shared}
+    plan: list[tuple[CompositeTarget, Skill, bytes]] = []
+    for target in selected:
+        skill = library.find_skill(target.reference)
+        if not skill.writable:
+            raise PermissionError(f"Skill is not in the writable scope: {target.reference}")
+        users = library.plugins_using_skill(skill.reference)
+        if len(users) > 1 and skill.reference not in acknowledged:
+            raise ValueError(
+                "composite target is shared by several scenarios and was not acknowledged: "
+                + f"{skill.reference} ({', '.join(users)})"
+            )
+        # 同期编辑：读取时的内容身份必须与调用方看到的一致。
+        if skill.sha256 != target.expected_sha256:
+            raise RuntimeError(f"Skill changed before the composite write: {target.reference}")
+        metadata = dict(skill.metadata)
+        metadata["version"] = _next_patch(skill.version)
+        if target.description is not None:
+            metadata["description"] = target.description
+        plan.append((target, skill, format_skill(metadata, target.candidate_body).encode()))
+
+    written: list[tuple[Skill, bytes]] = []
+    try:
+        for target, skill, content in plan:
+            original = skill.path.read_bytes()
+            _atomic_write(skill.path, content)
+            written.append((skill, original))
+    except BaseException as error:
+        restored, failed = _restore_all(written)
+        result = {
+            "status": "rolled_back",
+            "targets": references,
+            "error": f"{type(error).__name__}: {error}",
+            "restored": restored,
+            "restore_failed": failed,
+        }
+        if store is not None:
+            store.append("skill_change", "composite", "skill_change.rolled_back", result)
+        if failed:
+            raise RuntimeError(
+                "composite change failed and could not be fully restored: " + ", ".join(failed)
+            ) from error
+        raise
+    library.refresh()
+    result = {
+        "status": "applied",
+        "targets": references,
+        "applied_sha256": {skill.reference: library.find_skill(skill.reference).sha256
+                           for skill, _ in written},
+        "undo": {skill.reference: original.decode("utf-8", errors="replace")
+                 for skill, original in written},
+    }
+    if store is not None:
+        store.append("skill_change", "composite", "skill_change.applied",
+                     {key: value for key, value in result.items() if key != "undo"})
+    return result
+
+
+def undo_composite_change(
+    library: AgentLibrary,
+    result: Mapping[str, object],
+    *,
+    store: EventStore | None = None,
+) -> dict[str, object]:
+    """撤销一次复合采用，不抹掉其后出现的用户编辑。
+
+    只恢复"当前内容仍等于本次采用写入的内容"的目标；被用户改过的目标明确跳过
+    并给出原因，而不是覆盖。
+    """
+    undo = result.get("undo")
+    if not isinstance(undo, Mapping) or not undo:
+        raise ValueError("composite result does not carry undo content")
+    applied = result.get("applied_sha256")
+    skipped: dict[str, str] = {}
+    restored: list[str] = []
+    pending: list[tuple[Skill, bytes]] = []
+    for reference, original in undo.items():
+        skill = library.find_skill(str(reference))
+        expected = applied.get(reference) if isinstance(applied, Mapping) else None
+        if isinstance(expected, str) and skill.sha256 != expected:
+            # 同期编辑：不覆盖用户的改动。
+            skipped[str(reference)] = "content changed after the composite apply"
+            continue
+        pending.append((skill, str(original).encode()))
+    for skill, content in pending:
+        _atomic_write(skill.path, content)
+        restored.append(skill.reference)
+    library.refresh()
+    outcome = {"status": "reverted", "restored": restored, "skipped": skipped}
+    if store is not None:
+        store.append("skill_change", "composite", "skill_change.reverted", outcome)
+    return outcome
+
+
+def _restore_all(written: list[tuple[Skill, bytes]]) -> tuple[list[str], list[str]]:
+    restored: list[str] = []
+    failed: list[str] = []
+    for skill, original in reversed(written):
+        try:
+            _atomic_write(skill.path, original)
+            restored.append(skill.reference)
+        except OSError:
+            failed.append(skill.reference)
+    return restored, failed
