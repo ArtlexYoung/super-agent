@@ -494,7 +494,7 @@ class AgentLibraryTests(unittest.TestCase):
     def test_builtin_scene_uses_central_paths_and_activates(self):
         root = Path(__file__).resolve().parents[1] / "src" / "super_agent" / "skill" / "builtin"
         library = AgentLibrary((root,))
-        self.assertEqual(25, library.list_skills().total)
+        self.assertEqual(28, library.list_skills().total)
         session = make_run_state()
         # 单 Agent 没有团队工具，但通用任务方法必须仍可装配：缺的是可选能力，不是必需依赖。
         activated = library.activate_plugin("plugin:super-agent/common", session)

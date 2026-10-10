@@ -97,6 +97,26 @@ EvalPlus HumanEval+ and LiveCodeBench Code Generation data and execution rules a
 
 ## 许可证与版权 / Licensing and Copyright
 
+### ARTEX 的通用研究借鉴 / ARTEX Design Study
+
+2026-10-10 研究本地 ARTEX 源码快照 `5c0dbd4bec940f3c0faf20705a56d879b57d3dfe`：
+`agent/goals.go`、`planner.go`、`coldgraph.go`、`compaction.go`，以及
+`db/constants.go`、`exploration.go`、`digest.go`。借鉴目标与步骤分离、事件后再规划、
+负结果保留和摘要失效的通用思路，形成独立的研究方法与实验比较器。未复制上游代码、
+提示词或领域工具，也未执行其服务。具体映射和边界见[通用研究文档](general-research.md)。
+
+The local ARTEX snapshot was studied for goal/execution separation, event-driven
+replanning, negative-result retention and invalidatable summaries. Super Agent's
+research methods and experiment comparison are independent implementations; no
+upstream code, prompts or domain tools were copied or executed.
+
+该快照的 `LICENSE` 为 AGPL-3.0；本说明记录设计参考，不将其源码纳入 Super Agent 的
+Apache-2.0 分发，也不声称两个应用功能等价。其外部 Norma 依赖未在本次审查范围内。
+
+The snapshot declares AGPL-3.0. This design reference does not incorporate its source
+into Super Agent's Apache-2.0 distribution or claim application equivalence. Its
+external Norma dependency was outside this study.
+
 Super Agent 自身使用仓库根目录 [Apache License 2.0](../LICENSE)。Codex、Hermes Agent、OpenClaw、DeepSeek Harness 和 Agent Skills 的许可证信息以各自上游仓库和随附许可证文件为准；本文只记录研究时的公开声明，不替代上游许可证文本。
 
 Super Agent is licensed under the [Apache License 2.0](../LICENSE). License information for Codex, Hermes Agent, OpenClaw, DeepSeek Harness, and Agent Skills is governed by each upstream repository and its included license files; this document records the public notices observed during study and does not replace upstream license text.

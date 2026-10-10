@@ -98,12 +98,12 @@ class DisclosureInputTests(unittest.TestCase):
         self.assertEqual(plugin.version, self.library.resource_index()["plugins"]["items"][0]["version"])
 
     def test_reduction_is_measured_not_assumed(self) -> None:
-        # 精简必须有可复核的字节证据：字段成本下降，而条目数不变。
+        # 精简必须有可复核的字节证据；新增研究方法后仍限制每条索引的成本。
         index = self.library.resource_index()
         plugin_bytes = len(json.dumps(index["plugins"], ensure_ascii=False))
         skill_bytes = len(json.dumps(index["skills"], ensure_ascii=False))
         self.assertEqual(16, index["plugins"]["total"])
-        self.assertEqual(25, index["skills"]["total"])
+        self.assertEqual(28, index["skills"]["total"])
         # 每个插件条目平均不超过 260 字符（精简前约 500）。
         self.assertLess(plugin_bytes / max(1, index["plugins"]["total"]), 260)
         self.assertLess(skill_bytes / max(1, len(index["skills"]["items"])), 330)

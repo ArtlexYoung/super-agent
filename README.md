@@ -28,6 +28,12 @@ The central library manages Skills and MCP definitions; plugins keep canonical r
 
 Builtin plugins are split by purpose: `common`, `code`, `session`, `audit`, `policy`, `research`, `knowledge`, `automation`, `memory`, `evolution`, `task`, `team`, `review`, `model-routing`, `context-window`, and `context-compression`; enable only what the current task needs.
 
+通用研究新增按需加载的实验、算法和量化方法，并提供基于宿主测量的候选比较器。用法、ARTEX 设计借鉴与可运行示例见[通用研究、算法与量化](docs/general-research.md)。项目不提供攻击或渗透功能。
+
+General research includes optional experiment, algorithm and quantitative methods,
+plus comparison of host-measured candidates. See the [research guide](docs/general-research.md)
+for usage, the ARTEX design study and runnable offline examples. Attack and penetration-testing features are outside this project's scope.
+
 `enable_memory()` 和 `enable_skill_evolution()` 只选择对应内置插件；`list_enabled_features()` 直接报告由此启用的可选功能，不维护另一套开关。
 
 `enable_memory()` and `enable_skill_evolution()` only select their builtin plugins; `list_enabled_features()` reports the resulting optional functions without maintaining another switch.

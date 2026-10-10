@@ -6,6 +6,10 @@
 
 > Skill is all you need.
 
+General research includes optional experiment, algorithm and quantitative methods,
+plus comparison of host-measured candidates. See the [research guide](docs/general-research.md)
+for usage, the ARTEX design study and runnable offline examples. Attack and penetration-testing features are outside this project's scope.
+
 Super Agent gives a model compact plugin and Skill indexes. The model decides what it needs,
 opens only that content, and activates the selected method. Prompts, task instructions, run
 policies, memory methods, and tool-use methods all use the same Skill format and progressive
