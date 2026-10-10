@@ -7,7 +7,7 @@
 > Skill is all you need.
 
 General research includes optional experiment, algorithm and quantitative methods,
-plus host-measured candidate comparison and claim/evidence linkage. Source changes
+plus a shared [exploration graph Skill](docs/exploration.md), host-measured comparison and claim/evidence linkage. Source changes
 or expiry invalidate bound acceptance. See the [research guide](docs/general-research.md)
 for usage, the ARTEX design study and runnable offline examples. Attack and penetration-testing features are outside this project's scope.
 

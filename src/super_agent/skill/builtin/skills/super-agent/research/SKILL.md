@@ -4,6 +4,7 @@ description: "Evidence-led research: questions, sources, hypotheses, counterexam
 metadata:
   super-agent-categories: "[\"research\",\"sources\"]"
   super-agent-type: "method"
+  super-agent-includes: "[\"skill:super-agent/research/exploration\"]"
   super-agent-version: "0.2.122"
 ---
 # Research method
@@ -40,11 +41,10 @@ permissions, open connections or create persistent memory.
 
 ## Adaptive execution
 
-Start with the simplest useful baseline. Choose the next investigation by the
-uncertainty it can resolve and its cost. Replan after new evidence, changed goals,
-failed checks or invalidated dependencies. Keep the goal and acceptance criteria
-stable unless the user changes them. Stop when the question is answered within its
-scope, the budget is reached, or remaining progress needs unavailable evidence.
+Use the included exploration method when new findings can change the next useful
+investigation. Its shared graph preserves goals, directions, work and results,
+including negative branches; it owns frontier and stopping records. Keep small
+source lookups simple. Evidence review and the research deliverable remain here.
 
 Use `skill:super-agent/research/experiments` for measured alternatives,
 `skill:super-agent/research/algorithms` for algorithm design and validation, and

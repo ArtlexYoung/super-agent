@@ -103,7 +103,7 @@ class DisclosureInputTests(unittest.TestCase):
         plugin_bytes = len(json.dumps(index["plugins"], ensure_ascii=False))
         skill_bytes = len(json.dumps(index["skills"], ensure_ascii=False))
         self.assertEqual(16, index["plugins"]["total"])
-        self.assertEqual(28, index["skills"]["total"])
+        self.assertEqual(29, index["skills"]["total"])
         # 每个插件条目平均不超过 260 字符（精简前约 500）。
         self.assertLess(plugin_bytes / max(1, index["plugins"]["total"]), 260)
         self.assertLess(skill_bytes / max(1, len(index["skills"]["items"])), 330)

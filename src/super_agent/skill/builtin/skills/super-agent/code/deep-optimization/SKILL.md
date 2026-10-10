@@ -1,28 +1,41 @@
 ---
 name: "deep-optimization"
-description: "Nested, measured optimization batches with Agent and model rotation"
+description: "Search measured optimization alternatives with a reproducible baseline, guardrails and optional independent batches"
 metadata:
-  super-agent-categories: "[\"code/optimization\",\"experiment/multi-agent\",\"competition\"]"
-  super-agent-includes: "[\"skill:super-agent/code\",\"skill:super-agent/team/multi-agent\"]"
+  super-agent-categories: "[\"code/optimization\",\"experiment\",\"competition\"]"
+  super-agent-includes: "[\"skill:super-agent/code\",\"skill:super-agent/research/exploration\",\"skill:super-agent/research/experiments\"]"
   super-agent-type: "task"
   super-agent-version: "0.2.122"
 ---
-# Multi-Agent deep optimization method
+# Measured deep optimization
 
-Use this method for competitions, performance work, search problems, or objectives that need many measured alternatives. Optimize explicit primary and guardrail metrics, never an unmeasured impression.
+Use for performance work, competitions and search problems that need measured
+alternatives. Freeze the workload, reproducible baseline, evaluator, primary metric,
+guardrails, allowed artifacts, budget and stopping conditions. Preserve input/output
+behavior and account for preprocessing or resource costs included in the workload.
 
-## Main Agent: global search owner
+Use the included exploration graph for the global search: each direction states
+a distinct hypothesis, expected value and cost; each work attempt records exact
+changes, measurements and failures. Use the included experimental method for
+candidate comparison. Keep one shared graph and one evaluation protocol across
+batches. A promising local candidate must still beat the global baseline under
+the same checks. Retain rejected and inconclusive branches and counterexamples.
 
-Establish a reproducible baseline, evaluation command, metrics, resource budget, and stopping conditions. Keep a global experiment ledger. Divide search into batches covering meaningfully different hypotheses, models, perspectives, or regions. Dispatch independent batches through rotating compatible Agents and sleep on task events. Compare all batches globally so one locally promising family does not monopolize the search.
+Change one useful factor per attempt. Separate search data from final evaluation;
+do not retune on the holdout. Replan after measurements or invalidated evidence,
+not after every routine edit. Stop at the declared budget or when further gains
+cannot be supported. No qualifying candidate means retain the baseline.
 
-Use a staged Agent decision for uncertain batch selection, close measurements, regression disputes, candidate promotion, or stopping decisions. Routine reversible work remains one task. Shared packets contain the baseline, prior evidence, metric contract, allowed artifacts, budget, and expected report. Distinct members propose, seek counterexamples, and reproduce measurements. Parallel batch groups publish compact findings to their parent shared board so the main group compares evidence without copying every child transcript.
+When independent experiments justify parallel work and the host permits delegation,
+activate `skill:super-agent/team/multi-agent`. Give each batch a bounded hypothesis,
+baseline, protocol, allowed paths and expected report. Use isolated worktrees or
+separate workspaces for concurrent writes. Agent/model rotation is useful when
+it adds independent hypotheses or checks; it is optional, as is nested delegation.
+Wait on existing task events. Missing team tools do not block a single Agent's
+measured search. The search owner compares batches and owns final acceptance.
 
-## First-level Agent: batch lead
-
-Treat the assignment as one bounded batch. Create second-level tasks that vary one smallest useful hypothesis at a time and dispatch without permanent ownership. Rotation must change Agents and, where configured, model families. Collect every result before classifying hypotheses as proven, rejected, or inconclusive. Return a compact batch report containing exact changes, commands, metric deltas, regressions, reproducibility limits, best verified candidate, unexplored directions, and a continue, branch, or stop recommendation. The main Agent owns cross-batch planning.
-
-## Second-level Agent: experiment owner
-
-Use one isolated run for one experiment. State the hypothesis, change one factor, implement it, and execute the declared test or benchmark. Use an isolated worktree or explicitly separate workspace for concurrent writes. Report measured output, failures, resource cost, affected artifacts, and reproduction evidence. Do not delegate unless the task explicitly requires it. An experiment without executed evidence is inconclusive.
-
-Adaptive records keep early child runs in full and later high-volume runs as bounded summaries in the parent queue; summary-mode child runs do not persist their detailed model stream. This changes audit volume, not the returned result. Unavailable Agents open a recorded circuit and rejoin only after its wait period. Finish after all tasks are terminal and the declared budget or stopping condition is reached.
+Deliver the best verified candidate or unchanged baseline, metric deltas, guardrail
+results, artifact/evaluator/data identities, reproduction commands, failed trials,
+costs, graph and remaining directions. A model recommendation or graph result does
+not pass the host's TaskCheck. Avoid claiming a speedup from operation counts alone
+or a general improvement from one synthetic workload.

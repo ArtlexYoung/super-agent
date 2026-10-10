@@ -28,10 +28,10 @@ The central library manages Skills and MCP definitions; plugins keep canonical r
 
 Builtin plugins are split by purpose: `common`, `code`, `session`, `audit`, `policy`, `research`, `knowledge`, `automation`, `memory`, `evolution`, `task`, `team`, `review`, `model-routing`, `context-window`, and `context-compression`; enable only what the current task needs.
 
-通用研究提供按需加载的实验、算法和量化方法、基于宿主测量的候选比较器，以及主张与证据的关联检查；来源变化或过期会使绑定的旧验收失效。用法、ARTEX 设计借鉴与可运行示例见[通用研究、算法与量化](docs/general-research.md)。项目不提供攻击或渗透功能。
+通用研究提供实验、算法和量化方法，以及[探索图预设 Skill](docs/exploration.md)：连接目标、方向、任务和正/负结果，支持前沿、预算、可视化与恢复。证据与候选比较复用宿主验收，来源变化或过期使旧验收失效。用法、ARTEX 设计借鉴与示例见[研究指南](docs/general-research.md)。项目不提供攻击或渗透功能。
 
 General research includes optional experiment, algorithm and quantitative methods,
-plus host-measured candidate comparison and claim/evidence linkage. Source changes
+plus a shared [exploration graph Skill](docs/exploration.md), host-measured comparison and claim/evidence linkage. Source changes
 or expiry invalidate bound acceptance. See the [research guide](docs/general-research.md)
 for usage, the ARTEX design study and runnable offline examples. Attack and penetration-testing features are outside this project's scope.
 

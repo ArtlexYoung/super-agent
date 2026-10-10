@@ -604,6 +604,13 @@ class TaskQueue:
                 if task.source_group_id == group_id
             ]
 
+    def get_task_execution(self, task_id: str, *, source_group_id: str) -> dict[str, object]:
+        """只读执行身份，供证据绑定使用；不调用验收器也不表示产物已通过验收。"""
+        with self._condition:
+            task = self._owned_task(task_id, source_group_id)
+            return {"task_id": task.task_id, "attempt_id": task.attempt_id,
+                    "status": task.status, "stage": task.stage}
+
     def get_task(
         self, task_id: str, *, source_group_id: str | None = None, include_result: bool = True
     ) -> dict[str, object]:

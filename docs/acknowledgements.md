@@ -100,14 +100,14 @@ EvalPlus HumanEval+ and LiveCodeBench Code Generation data and execution rules a
 ### ARTEX 的通用研究借鉴 / ARTEX Design Study
 
 2026-10-10 研究本地 ARTEX 源码快照 `5c0dbd4bec940f3c0faf20705a56d879b57d3dfe`：
-`agent/goals.go`、`planner.go`、`coldgraph.go`、`compaction.go`，以及
+`agent/goals.go`、`planner.go`、`tools.go`、`coldgraph.go`、`compaction.go`，以及
 `db/constants.go`、`exploration.go`、`digest.go`。借鉴目标与步骤分离、事件后再规划、
-负结果保留和摘要失效的通用思路，形成独立的研究方法与实验比较器。未复制上游代码、
+负结果保留、多父谱系和摘要失效的通用思路，形成独立的研究方法、探索内核与实验比较器。未复制上游代码、
 提示词或领域工具，也未执行其服务。具体映射和边界见[通用研究文档](general-research.md)。
 
 The local ARTEX snapshot was studied for goal/execution separation, event-driven
 replanning, negative-result retention and invalidatable summaries. Super Agent's
-research methods and experiment comparison are independent implementations; no
+research methods, exploration kernel and experiment comparison are independent implementations; no
 upstream code, prompts or domain tools were copied or executed.
 
 该快照的 `LICENSE` 为 AGPL-3.0；本说明记录设计参考，不将其源码纳入 Super Agent 的

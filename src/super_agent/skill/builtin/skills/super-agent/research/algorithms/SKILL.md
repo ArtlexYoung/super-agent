@@ -4,6 +4,7 @@ description: "Design and evaluate algorithms with a reference oracle, invariants
 metadata:
   super-agent-categories: "[\"research/algorithms\",\"optimization\"]"
   super-agent-type: "method"
+  super-agent-includes: "[\"skill:super-agent/research/exploration\",\"skill:super-agent/research/experiments\"]"
   super-agent-version: "0.2.122"
 ---
 # Algorithm research

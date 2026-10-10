@@ -2,7 +2,7 @@
 
 Super Agent 的研究方向是：提出可检验的问题，取得证据，运行实验，保留反例，再交付经过验收的结果。适用于技术调研、算法设计、数据分析和离线量化研究；不提供攻击或渗透功能。
 
-目前已补充研究方法、实验比较器、主张与证据关联，以及可运行的离线示例。实验和证据关联复用现有任务验收；这些基础尚未证明真实模型的研究质量、长任务成功率或投资表现。
+目前已补充研究方法、实验比较器、主张与证据关联，以及[可操作的探索图与预设 Skill](exploration.md)。探索图连接目标、方向、工作、结果与派生方向，支持前沿、预算、可视化和显式恢复，并复用现有任务验收；这些功能尚未证明真实模型的研究质量、长任务成功率或投资表现。
 
 ## 从 ARTEX 学到什么
 
@@ -11,22 +11,23 @@ Super Agent 的研究方向是：提出可检验的问题，取得证据，运�
 | ARTEX 中的设计与源码 | 通用价值 | Super Agent 的落点 |
 | --- | --- | --- |
 | `agent/goals.go` 区分最终目标和执行步骤；`planner.go` 按触发事件读取局部变化 | 避免把完成步骤当作达成目标；有新证据再调整方向 | 沿用 TaskQueue 的提交、验收、退回、交付；研究方法要求事件后重估假设 |
-| `db/constants.go` / `exploration.go` 将目标、工作、事实及关系分开，事实也包含负结果 | 解释为什么继续某个方向，避免重复失败 | 主张绑定来源、实验、反例和前置结论；纯检查器报告关联与传递失效，不另建图数据库 |
+| `db/constants.go` / `exploration.go` 将目标、工作、事实及关系分开，`agent/tools.go` 维护方向来源及有界总览 | 解释为什么继续某个方向，避免重复失败 | exploration Skill 与独立探索内核连接目标、方向、工作、结果；支持负结果、多父谱系、前沿与恢复，不另建图数据库 |
 | `agent/planner.go` 保留跨唤醒待办，并读取已完成工作的结果 | 长任务保留负责人和进度，依赖成立后才继续 | 复用现有任务依赖、共享板和等待机制；不增加第二套运行循环 |
 | `agent/coldgraph.go` 保护活跃工作及其依赖；`compaction.go` / `db/digest.go` 保留摘要成员和内容版本 | 摘要是可失效的派生视图，不能替代原始证据 | 继续使用中央资源引用；图关系驱动的自动压缩留待长任务基线验证 |
 
-ARTEX 的应用领域与本项目不同。本项目独立实现通用方法和比较器，没有复制其 Go 代码、提示词、领域 Skill 或工具，也没有引入其服务、数据库和部署依赖。许可证记录见[致谢与借鉴](acknowledgements.md)。
+ARTEX 的应用领域与本项目不同。本项目独立实现通用探索内核、方法和比较器，没有复制其 Go 代码、提示词、领域 Skill 或工具，也没有引入其服务、数据库和部署依赖。许可证记录见[致谢与借鉴](acknowledgements.md)。
 
 ## 按需选择方法
 
 | 引用 | 用途 | 关键交付 |
 | --- | --- | --- |
 | `plugin:super-agent/research` | 带来源的研究与选型 | 主张、出处、反证、结论范围和未确定事项 |
+| `skill:super-agent/research/exploration` | 按新发现调整探索方向 | 目标、方向、工作、正/负结果、前沿、预算、可视化与恢复 |
 | `skill:super-agent/research/experiments` | 比较实验候选 | 固定协议、基线、原始测量、检查、保护指标和停止条件 |
 | `skill:super-agent/research/algorithms` | 设计或优化算法 | 输入契约、正确性说明、独立 oracle、反例、复杂度和测量 |
 | `skill:super-agent/research/quantitative` | 金融数据分析与离线回测 | 数据出处、因果时间、时间切分、成本、风险和局限 |
 
-research 插件仍只默认加载研究入口和 citations。三个新方法可单独启用，由模型根据索引按需选择，或通过现有 CLI 指定：
+research 插件加载研究入口、citations 及其引用的公共 exploration。算法和量化复用 exploration 与 experiments；深度优化也引用同一公共方法，团队保持可选。方法可单独启用，由模型根据索引按需选择，或通过现有 CLI 指定：
 
 ```bash
 super-agent --skill skill:super-agent/research/algorithms "分析这个算法，并给出可复现的验证方案"
@@ -123,6 +124,7 @@ assessment = assess_claims([claim], [source], now=now)
 PYTHONPATH=src python3.11 examples/algorithm_research.py
 PYTHONPATH=src python3.11 examples/quantitative_research.py
 PYTHONPATH=src python3.11 examples/evidence_research.py
+PYTHONPATH=src python3.11 examples/exploration_research.py
 ```
 
 [算法示例](../examples/algorithm_research.py) 比较线性和二分 lower-bound，使用标准库 `bisect_left` 独立核对结果，在三个固定数据批次记录元素比较次数。排序后的数组是输入前提，排序成本未计入；这里的优势仅指该工作负载的比较次数，不是实际耗时提升。测试还穷举小数组，包括空输入、重复值和边界目标。
@@ -141,7 +143,8 @@ PYTHONPATH=src python3.11 examples/evidence_research.py
 | --- | --- | --- |
 | 已完成：实验基础 | 候选是否可比较、是否正确、是否真的改善 | 离线计算与反例测试；保持唯一 Runtime、零默认依赖 |
 | 已完成：证据关联基础 | 哪个结论依赖哪个来源、实验和反例 | 固定契约样本；来源缺失/过期或产物变更会使对应结论待复核，沿用任务事件与资源引用；语义质量仍需独立任务评测 |
+| 已完成：通用探索图与预设 Skill | 把目标、方向、工作、结果与再规划连起来 | 前沿/预算、负分支、多父谱系、TaskCheck、可视化与显式恢复；离线反例到交付闭环，四类预设复用 |
 | 自适应推进 | 下一步怎样降低不确定性，何时停止 | 用真实长任务比较再规划前后的通过率、费用、人工接管；团队保持可选，不以 Agent 数量证明能力 |
 | 验证后积累 | 成功方法是否能复用到新任务 | 独立留出任务、失败场景、量化未知时间区间；只有收益得到证实才进入既有进化采用路径 |
 
-“超级 Agent”需要由这些任务上的交付质量、复现率、人工接管和成本证明。这两批优化没有运行付费模型或接入行情服务；联网研究、真实模型能力和量化有效性仍待相应集成评测。
+“超级 Agent”需要由这些任务上的交付质量、复现率、人工接管和成本证明。这些批次没有运行付费模型或接入行情服务；联网研究、真实模型能力和量化有效性仍待相应集成评测。

@@ -260,6 +260,13 @@ def agent_tools(
     mcp_by_server: dict[str, tuple[Tool, ...]] = {}
     if library is not None:
         registry.register_many(library.tools(), exposure="always")
+        from super_agent.skill.exploration_tools import EXPLORATION_TOOLS, ExplorationTools
+
+        supplied = (set(registry.active) | set(registry.available)) & EXPLORATION_TOOLS
+        if supplied and supplied != EXPLORATION_TOOLS:
+            raise ValueError("host exploration tools must be registered together")
+        if not supplied:
+            registry.register_many(ExplorationTools(identity.run_id).tools(), exposure="after_skill")
         if agent._mcp_servers:
             from super_agent.adapter.tools import mcp_tools
 

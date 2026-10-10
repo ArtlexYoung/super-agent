@@ -4,6 +4,7 @@ description: "Research financial data and strategies with causal timing, chronol
 metadata:
   super-agent-categories: "[\"research/quantitative\",\"time-series\",\"backtesting\"]"
   super-agent-type: "method"
+  super-agent-includes: "[\"skill:super-agent/research/exploration\",\"skill:super-agent/research/experiments\"]"
   super-agent-version: "0.2.122"
 ---
 # Quantitative research

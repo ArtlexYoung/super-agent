@@ -1,0 +1,37 @@
+flowchart TD
+  n0["origin: Find a lower-bound method and verify its input preconditions"]
+  n1["goal: Deliver a correct lower-bound method with explicit input scope (accepted)"]
+  n2["direction: Can binary lookup omit the sorted-input precondition? (reported)"]
+  n3["work: Can binary lookup omit the sorted-input precondition? (reported)"]
+  n4["result/negative: Unsorted input gives different binary and linear lower-bound positions (linked)"]
+  n5["direction: Check the scoped method against a linear oracle (reported)"]
+  n6["work: Check the scoped method against a linear oracle (reported)"]
+  n7["result/positive: Binary lookup agrees with a linear oracle on 882 exhaustive sorted cases (linked)"]
+  n8["direction: Combine the verified scope and counterexample into a deliverable (reported)"]
+  n9["work: Combine the verified scope and counterexample into a deliverable (reported)"]
+  n10["result/positive: Use binary lower-bound for nondecreasing input and retain the unsorted exclusion (linked)"]
+  n11["task: Combine the verified scope and counterexample into a deliverable (delivered)"]
+  n0 -->|sets_goal| n1
+  n10 -->|submitted_for| n1
+  n11 -->|checks| n1
+  n0 -->|spawns| n2
+  n1 -->|explores| n2
+  n2 -->|starts| n3
+  n3 -->|yields| n4
+  n4 -->|spawns| n5
+  n1 -->|explores| n5
+  n5 -->|starts| n6
+  n6 -->|yields| n7
+  n4 -->|depends_on| n7
+  n4 -->|spawns| n8
+  n7 -->|spawns| n8
+  n1 -->|explores| n8
+  n8 -->|starts| n9
+  n9 -->|binds| n11
+  n9 -->|yields| n10
+  n4 -->|depends_on| n10
+  n7 -->|depends_on| n10
+  classDef negative fill:#ffe4e6,stroke:#64748b
+  class n4 negative
+  classDef positive fill:#dcfce7,stroke:#64748b
+  class n7,n10 positive
