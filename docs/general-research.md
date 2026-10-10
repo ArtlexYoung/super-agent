@@ -2,7 +2,7 @@
 
 Super Agent 的研究方向是：提出可检验的问题，取得证据，运行实验，保留反例，再交付经过验收的结果。适用于技术调研、算法设计、数据分析和离线量化研究；不提供攻击或渗透功能。
 
-本批补充研究方法、实验比较器和可运行的离线示例。它是研究闭环的第一步，尚未证明真实模型的研究质量、长任务成功率或投资表现。
+目前已补充研究方法、实验比较器、主张与证据关联，以及可运行的离线示例。实验和证据关联复用现有任务验收；这些基础尚未证明真实模型的研究质量、长任务成功率或投资表现。
 
 ## 从 ARTEX 学到什么
 
@@ -11,7 +11,7 @@ Super Agent 的研究方向是：提出可检验的问题，取得证据，运�
 | ARTEX 中的设计与源码 | 通用价值 | Super Agent 的落点 |
 | --- | --- | --- |
 | `agent/goals.go` 区分最终目标和执行步骤；`planner.go` 按触发事件读取局部变化 | 避免把完成步骤当作达成目标；有新证据再调整方向 | 沿用 TaskQueue 的提交、验收、退回、交付；研究方法要求事件后重估假设 |
-| `db/constants.go` / `exploration.go` 将目标、工作、事实及关系分开，事实也包含负结果 | 解释为什么继续某个方向，避免重复失败 | 方法要求保存主张、出处、反例、失败实验；本批不另建图数据库 |
+| `db/constants.go` / `exploration.go` 将目标、工作、事实及关系分开，事实也包含负结果 | 解释为什么继续某个方向，避免重复失败 | 主张绑定来源、实验、反例和前置结论；纯检查器报告关联与传递失效，不另建图数据库 |
 | `agent/planner.go` 保留跨唤醒待办，并读取已完成工作的结果 | 长任务保留负责人和进度，依赖成立后才继续 | 复用现有任务依赖、共享板和等待机制；不增加第二套运行循环 |
 | `agent/coldgraph.go` 保护活跃工作及其依赖；`compaction.go` / `db/digest.go` 保留摘要成员和内容版本 | 摘要是可失效的派生视图，不能替代原始证据 | 继续使用中央资源引用；图关系驱动的自动压缩留待长任务基线验证 |
 
@@ -71,11 +71,58 @@ report = compare_experiments(baseline, candidates, criteria)
 
 **信任边界：** SHA-256 格式正确不等于文件存在或评价器可信。比较器无法识别伪造测量；模型填写的数字、摘要和 `true` 不能变成独立证据。宿主必须自行执行、核对产物并生成检查结果。最终交付沿用现有 `TaskCheck`，绑定标准版本和提交时的产物快照；产物变化使旧验收失效。参考 [test_research_experiments.py](../tests/test_research_experiments.py) 的完整提交、失效、退回和交付集成用例。
 
+## 主张、证据与失效
+
+`super_agent.skill.evidence` 是可选的纯检查器，将来源与实验的确切版本关联到结论。它不联网、不写状态、不运行实验，也不自动批准交付：
+
+```python
+from datetime import datetime, timedelta, timezone
+from super_agent.core.resources import ResourceCenter
+from super_agent.skill.evidence import Claim, Evidence, EvidenceLink, assess_claims
+
+# 本例为宿主提供的本地研究记录，不是外部文献。
+now = datetime(2026, 10, 10, tzinfo=timezone.utc)
+body = "Binary lower-bound requires nondecreasing input."
+resource = ResourceCenter().preview_resource("source:lookup-contract", body)
+source = Evidence(resource.reference, resource.sha256, "source", now,
+                  expires_at=now + timedelta(days=1))
+claim = Claim(
+    "sorted-input", "Binary lower-bound assumes sorted input.",
+    "Nondecreasing integer arrays only.", "observation",
+    supports=(EvidenceLink(source.reference, source.sha256, "whole body"),),
+)
+assessment = assess_claims([claim], [source], now=now)
+# assessment["claims"]: 每条主张的关联、当前证据、状态与原因。
+# assessment["snapshot"]: 可并入宿主 TaskCheck.snapshot 的命名摘要。
+```
+
+宿主实际读取原始资料后构造 `Evidence`：稳定引用、内容 SHA-256、`source` 或 `experiment`、取得时间和可选到期时间。时间必须带时区，到期时刻即失效；不设到期时间只表示不做时间失效，不能表示永久正确。实验引用应指向可信评测器生成的完整报告，保留协议、数据、实现和原始记录。中央资源的内容摘要可直接使用，但宿主仍需检查原始来源是否更新。
+
+`Claim` 保存稳定 ID、主张、适用范围、类型、支持、反证和前置主张；`EvidenceLink` 固定内容版本和段落或结果位置。报告状态如下：
+
+| 状态 | 含义与后续动作 |
+| --- | --- |
+| `linked` | 所需关联当前完整；宿主仍要核对原文支持、推理和实验正确性 |
+| `hypothesis` | 未确立的假设；有支持材料也不会自动升级 |
+| `contested` | 保留了未解决反证；需要解释、补充实验或缩小结论范围，不能按支持来源数量表决 |
+| `needs_review` | 支持或反证缺失、变更、过期、尚未取得，或前置主张未确定；报告列出具体原因 |
+
+观察需有直接支持，推论可以依赖已关联的主张。假设、争议或失效会让依赖它的结论待复核，其他分支保留自己的状态。主张图为空、重复身份、悬空前置主张或依赖环会抛错；不会丢掉错误关系后报告成功。反证缺失或过期也需要复核，不能把“读不到反证”当作“反证不存在”。
+
+宿主将 `assessment["snapshot"]` 与结果产物的摘要合入现有 `TaskCheck.snapshot`，为不同类型的快照键保留不同前缀；在 `TaskCheck.check` 中组合关联检查与独立的语义/实验检查。每次快照都要重新取得当前证据记录和当前时间，不能重复返回固定的旧报告。快照覆盖主张文本、范围、关系、所有被引用的当前材料和有效性；不包含不断变化的当前时间或无关来源。因此，同一有效期间内快照稳定，材料变化、定义重写或恰好到期会使旧验收失效。
+
+`observed_at` 与 `expires_at` 属于该次观测记录的固定元数据。重新读取相同内容时，宿主应保留本次记录；若更新取得时间或有效期，会形成不同快照，需要重新验收。不要在每次调用快照时把这些字段无条件重写成当前时间。
+
+失效沿用现有队列：读取任务时投影为 `needs_attention`，旧验收不能用于交付；退回后重新读材料、核对适用范围、提出新提交并验收。历史提交与检查结果仍保留。没有后台来源监视，也不能追溯两次观察之间已变化又恢复的材料。仅修改引用摘要不会证明新材料支持原结论。
+
+**信任边界：** `linked` 只表示声明的关系完整，不证明内容真实。检查器不认证模型填写的材料、不验证段落的存在或含义，也不判断来源独立性。宿主必须拥有来源读取、可信时间和独立检查；只有标准 Skill 或 CLI 启用研究方法时，不会自动配置这些能力。错误的主张可以拥有完整关联；测试明确展示这种主张仍被宿主算术检查拒绝。
+
 ## 可运行的离线示例
 
 ```bash
 PYTHONPATH=src python3.11 examples/algorithm_research.py
 PYTHONPATH=src python3.11 examples/quantitative_research.py
+PYTHONPATH=src python3.11 examples/evidence_research.py
 ```
 
 [算法示例](../examples/algorithm_research.py) 比较线性和二分 lower-bound，使用标准库 `bisect_left` 独立核对结果，在三个固定数据批次记录元素比较次数。排序后的数组是输入前提，排序成本未计入；这里的优势仅指该工作负载的比较次数，不是实际耗时提升。测试还穷举小数组，包括空输入、重复值和边界目标。
@@ -84,13 +131,17 @@ PYTHONPATH=src python3.11 examples/quantitative_research.py
 
 量化示例没有参数拟合或搜索，不展示真实市场收益。它采用按目标敞口变化计费的简化模型，未计权重漂移引起的再平衡换手、价差、冲击、融资、借券和交易容量，不作为实盘会计或交易引擎。示例允许没有候选胜出，并保留拒绝原因。
 
+[证据示例](../examples/evidence_research.py) 使用虚构的本地研究记录、固定时间和实际执行的算法检查。无序数组 `[3, 1, 2]` 对目标 `2` 的线性首个满足位置为 `0`，二分返回 `2`，因而保留对“所有整数数组都适用”的反证。来源修改后，相关结论及其推论变为待复核，独立的费用记录不受影响；旧任务验收阻断交付。宿主重新核对修订内容和算法后，新的限定结论得到交付，过宽的主张仍保留为争议。`MockModel` 只演示队列流转，不代表真实模型完成研究。
+
+固定的[研究契约资料](../tests/fixtures/research-evidence/README.md)在检查器实施前确定预期状态，包含原始记录、反例和六组来源变化场景。它们是公开回归样本，不能充当衡量模型能力的未见任务集。另见 [test_research_evidence.py](../tests/test_research_evidence.py) 的来源变化、删除、到期、检查中到期、重写结论与独立验收集成测试。
+
 ## 后续可验收的迭代
 
 | 批次 | 要解决的问题 | 进入条件与验收 |
 | --- | --- | --- |
-| 本批：实验基础 | 候选是否可比较、是否正确、是否真的改善 | 离线计算与反例测试；保持唯一 Runtime、零默认依赖 |
-| 证据关联 | 哪个结论依赖哪个来源、实验和反例 | 先固定研究留出样本；来源缺失/过期或产物变更会使对应结论待复核，沿用任务事件与资源引用 |
+| 已完成：实验基础 | 候选是否可比较、是否正确、是否真的改善 | 离线计算与反例测试；保持唯一 Runtime、零默认依赖 |
+| 已完成：证据关联基础 | 哪个结论依赖哪个来源、实验和反例 | 固定契约样本；来源缺失/过期或产物变更会使对应结论待复核，沿用任务事件与资源引用；语义质量仍需独立任务评测 |
 | 自适应推进 | 下一步怎样降低不确定性，何时停止 | 用真实长任务比较再规划前后的通过率、费用、人工接管；团队保持可选，不以 Agent 数量证明能力 |
 | 验证后积累 | 成功方法是否能复用到新任务 | 独立留出任务、失败场景、量化未知时间区间；只有收益得到证实才进入既有进化采用路径 |
 
-“超级 Agent”需要由这些任务上的交付质量、复现率、人工接管和成本证明。本批没有运行付费模型或接入行情服务；联网研究、真实模型能力和量化有效性仍待相应集成评测。
+“超级 Agent”需要由这些任务上的交付质量、复现率、人工接管和成本证明。这两批优化没有运行付费模型或接入行情服务；联网研究、真实模型能力和量化有效性仍待相应集成评测。

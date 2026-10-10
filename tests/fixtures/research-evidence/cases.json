@@ -1,0 +1,194 @@
+{
+  "records": [
+    {
+      "reference": "fixture:lookup",
+      "kind": "source",
+      "path": "algorithm-contract.md",
+      "sha256": "d5b36e6381e5ae388575fd271d7b953421318da02fea71fb6b48823ba3fdb6f2",
+      "observed_at": "2026-10-01T00:00:00+00:00",
+      "expires_at": "2026-10-11T00:00:00+00:00"
+    },
+    {
+      "reference": "fixture:fees",
+      "kind": "source",
+      "path": "quantitative-protocol.md",
+      "sha256": "e1b59b26cecc0f26626847f99ed97c15a7b5b156acfe54c913576ccb9cbbf697",
+      "observed_at": "2026-10-01T00:00:00+00:00",
+      "expires_at": "2026-10-11T00:00:00+00:00"
+    },
+    {
+      "reference": "fixture:unsorted",
+      "kind": "experiment",
+      "path": "unsorted-counterexample.json",
+      "sha256": "df106ac27621f178ad2871c6f8a5aa8631f3dd40db001de0444aafcfc82b21f4",
+      "observed_at": "2026-10-01T00:00:00+00:00",
+      "expires_at": "2026-10-11T00:00:00+00:00"
+    }
+  ],
+  "claims": [
+    {
+      "claim_id": "lookup-contract",
+      "statement": "Binary lower-bound assumes sorted input.",
+      "scope": "Nondecreasing integer arrays only.",
+      "kind": "observation",
+      "supports": [
+        {
+          "reference": "fixture:lookup",
+          "sha256": "d5b36e6381e5ae388575fd271d7b953421318da02fea71fb6b48823ba3fdb6f2",
+          "locator": "Sorted input"
+        }
+      ]
+    },
+    {
+      "claim_id": "scoped-recommendation",
+      "statement": "Keep the sorted-input precondition in the API.",
+      "scope": "The lower-bound API in this study.",
+      "kind": "inference",
+      "depends_on": [
+        "lookup-contract"
+      ]
+    },
+    {
+      "claim_id": "universal-lookup",
+      "statement": "Binary lower-bound is correct for every integer array.",
+      "scope": "Including unsorted arrays.",
+      "kind": "inference",
+      "supports": [
+        {
+          "reference": "fixture:lookup",
+          "sha256": "d5b36e6381e5ae388575fd271d7b953421318da02fea71fb6b48823ba3fdb6f2",
+          "locator": "Sorted input"
+        }
+      ],
+      "counterevidence": [
+        {
+          "reference": "fixture:unsorted",
+          "sha256": "df106ac27621f178ad2871c6f8a5aa8631f3dd40db001de0444aafcfc82b21f4",
+          "locator": "values, target, binary_result"
+        }
+      ]
+    },
+    {
+      "claim_id": "quant-fees",
+      "statement": "Charge entry and exit position-change fees.",
+      "scope": "The simplified offline accounting protocol only.",
+      "kind": "observation",
+      "supports": [
+        {
+          "reference": "fixture:fees",
+          "sha256": "e1b59b26cecc0f26626847f99ed97c15a7b5b156acfe54c913576ccb9cbbf697",
+          "locator": "Fees and timing"
+        }
+      ]
+    },
+    {
+      "claim_id": "fee-recommendation",
+      "statement": "Report net returns after the specified fees.",
+      "scope": "The simplified protocol only.",
+      "kind": "inference",
+      "depends_on": [
+        "quant-fees"
+      ]
+    },
+    {
+      "claim_id": "momentum-profit",
+      "statement": "Momentum may outperform after fees.",
+      "scope": "An untested proposal for a future independent sample.",
+      "kind": "hypothesis"
+    }
+  ],
+  "cases": [
+    {
+      "name": "current_records",
+      "now": "2026-10-10T00:00:00+00:00",
+      "expected": {
+        "lookup-contract": "linked",
+        "scoped-recommendation": "linked",
+        "universal-lookup": "contested",
+        "quant-fees": "linked",
+        "fee-recommendation": "linked",
+        "momentum-profit": "hypothesis"
+      }
+    },
+    {
+      "name": "revised_support",
+      "now": "2026-10-10T00:00:00+00:00",
+      "change": {
+        "reference": "fixture:lookup",
+        "sha256": "1ca1b59614c68f7ca65adcbadf9199c9aed9cf42034c9a510c78ef6772af0fdb"
+      },
+      "expected": {
+        "lookup-contract": "needs_review",
+        "scoped-recommendation": "needs_review",
+        "universal-lookup": "needs_review",
+        "quant-fees": "linked",
+        "fee-recommendation": "linked",
+        "momentum-profit": "hypothesis"
+      }
+    },
+    {
+      "name": "missing_experiment",
+      "now": "2026-10-10T00:00:00+00:00",
+      "change": {
+        "reference": "fixture:unsorted",
+        "missing": true
+      },
+      "expected": {
+        "lookup-contract": "linked",
+        "scoped-recommendation": "linked",
+        "universal-lookup": "needs_review",
+        "quant-fees": "linked",
+        "fee-recommendation": "linked",
+        "momentum-profit": "hypothesis"
+      }
+    },
+    {
+      "name": "revised_counterevidence",
+      "now": "2026-10-10T00:00:00+00:00",
+      "change": {
+        "reference": "fixture:unsorted",
+        "sha256": "fc478eda38aa4671f04b8f9b7aff70c3aa2bcbd998e8761e4dbb45cd34a954c3"
+      },
+      "expected": {
+        "lookup-contract": "linked",
+        "scoped-recommendation": "linked",
+        "universal-lookup": "needs_review",
+        "quant-fees": "linked",
+        "fee-recommendation": "linked",
+        "momentum-profit": "hypothesis"
+      }
+    },
+    {
+      "name": "expiry_boundary",
+      "now": "2026-10-10T00:00:00+00:00",
+      "change": {
+        "reference": "fixture:fees",
+        "expires_at": "2026-10-10T00:00:00+00:00"
+      },
+      "expected": {
+        "lookup-contract": "linked",
+        "scoped-recommendation": "linked",
+        "universal-lookup": "contested",
+        "quant-fees": "needs_review",
+        "fee-recommendation": "needs_review",
+        "momentum-profit": "hypothesis"
+      }
+    },
+    {
+      "name": "not_yet_observed",
+      "now": "2026-10-10T00:00:00+00:00",
+      "change": {
+        "reference": "fixture:lookup",
+        "observed_at": "2026-10-10T00:00:01+00:00"
+      },
+      "expected": {
+        "lookup-contract": "needs_review",
+        "scoped-recommendation": "needs_review",
+        "universal-lookup": "needs_review",
+        "quant-fees": "linked",
+        "fee-recommendation": "linked",
+        "momentum-profit": "hypothesis"
+      }
+    }
+  ]
+}

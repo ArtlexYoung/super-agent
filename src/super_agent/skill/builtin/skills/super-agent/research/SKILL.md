@@ -24,6 +24,15 @@ contradictions and the next observation that could falsify it. Record negative a
 inconclusive results so later attempts do not silently repeat failed directions.
 Multiple summaries of the same source are one source, not independent confirmation.
 
+When the host provides `super_agent.skill.evidence`, propose scoped `Claim` records
+with exact `EvidenceLink` hashes and locations, retained counterevidence and claim
+dependencies. The host supplies current `Evidence` observations and a freshness
+policy. Its `assess_claims` report checks linkage only: `linked` does not establish
+truth, `hypothesis` is unproved, `contested` retains opposition, and `needs_review`
+identifies unavailable, changed, expired or unresolved prerequisites. Investigate
+those causes before building further conclusions. Never remove a counterexample
+or repin a new source version merely to clear a check; re-read and reassess it.
+
 Use only tools supplied by the host. Missing source access blocks claims requiring
 fresh sources; missing execution blocks measured claims. Never invent citations,
 measurements or independent reviews. These methods do not register tools, grant
@@ -51,4 +60,8 @@ steps, limitations and open questions. Distinguish a plausible proposal from a
 verified result. Summaries retain links to originals and unresolved contradictions;
 changed sources or artifacts require rechecking affected conclusions. A summary,
 finished model call or candidate comparison does not itself pass task acceptance.
+If the host uses TaskCheck, bind both the result artifacts and the evidence report's
+snapshot. Recompute current source observations and time at review and delivery;
+an immutable cached source alone cannot detect changes at its origin. Semantic
+source review and independent experiment checks remain required by the host.
 This research scope excludes attack and penetration-testing workflows.

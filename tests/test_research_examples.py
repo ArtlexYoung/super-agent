@@ -5,6 +5,7 @@ from itertools import combinations_with_replacement
 import unittest
 
 from examples.algorithm_research import binary_lower_bound, linear_lower_bound, run_experiment
+from examples.evidence_research import run_example as run_evidence
 from examples.quantitative_research import backtest, momentum_signals, run_experiment as run_quantitative
 
 
@@ -65,6 +66,21 @@ class QuantitativeResearchTests(unittest.TestCase):
         self.assertEqual(1, len(report["candidates"]))
         self.assertEqual(3, len(report["runs"]["momentum"]))
         self.assertEqual({"causality": True, "accounting": True}, report["candidates"][0]["checks"])
+
+
+class EvidenceResearchTests(unittest.TestCase):
+    def test_source_change_requires_new_review_and_preserves_counterexample(self) -> None:
+        report = run_evidence()
+        self.assertEqual(report, run_evidence())
+        self.assertTrue(report["old_delivery_blocked"])
+        self.assertEqual(["accepted", "needs_attention", "delivered"], report["task_stages"])
+        self.assertEqual(2, report["retained_submissions"])
+        self.assertEqual("linked", report["after_source_change"]["fee-contract"])
+        self.assertEqual("needs_review", report["after_source_change"]["recommendation"])
+        self.assertEqual("linked", report["after_host_recheck"]["recommendation"])
+        self.assertEqual("contested", report["after_host_recheck"]["universal-lookup"])
+        negative = report["counterexample"]
+        self.assertNotEqual(negative["linear_result"], negative["binary_result"])
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ import tomllib
 from pathlib import Path
 
 VERSION = "0.2.122"
-MAX_SOURCE_FILES = 41
+MAX_SOURCE_FILES = 42
 # 源码非空行预算随功能按需增长：CLI 连续聊天、会话保存恢复、模型诊断、编码验证、Skill 管理。
 # 通用能力需求（capability.py）、内容寻址（content.py）、自包含资源包（package.py）、
 # Harness 兼容报告（harness.py）、声明式投影（projection.py）、能力解析（resolve.py）、
@@ -22,8 +22,8 @@ MAX_SOURCE_FILES = 41
 # skill 层，随 P2-02/P2-04/P2-05 与 P3-02/P3-03 按 development-plan P0-00 调整。
 # 按 development-plan P0-00 调整，保留增长预算但不取消版本、依赖与资源一致性检查。
 # v0.2.113/114 增加任务提交-验收-交付闭环与显式 Responses 适配（provider.py）。
-# Optional host-measured experiment comparison; no new Runtime or dependencies.
-MAX_SOURCE_LINES = 16_200
+# Optional host-measured experiments and claim/evidence checks; no new Runtime or dependencies.
+MAX_SOURCE_LINES = 16_400
 SOURCE_ROOTS = {"super_agent", "cli.py"}
 DOMAIN_FILES = {
     "super_agent/adapter": {"cli.py", "database.py", "process.py", "storage.py", "tools.py"},
@@ -35,6 +35,7 @@ DOMAIN_FILES = {
         "capability.py",
         "content.py",
         "document.py",
+        "evidence.py",
         "evolution.py",
         "experiments.py",
         "exit.py",

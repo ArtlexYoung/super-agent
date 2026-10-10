@@ -17,3 +17,9 @@ When sources disagree, show the disagreement and its likely cause. Do not
 silently choose the source that supports the requested answer. Do not claim
 that a source was checked when the host did not provide a source-reading
 tool.
+
+Keep the exact retrieved content version and passage location, not just a URL.
+Preserve unavailable or superseded references as unresolved evidence. Check both
+supporting and opposing sources under the host's freshness policy before final
+delivery. A source hash verifies identity only; it does not prove that the passage
+exists, supports the claim, or is independent of another citation.

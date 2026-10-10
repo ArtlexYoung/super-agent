@@ -1,0 +1,7 @@
+{
+  "values": [3, 1, 2],
+  "target": 2,
+  "linear_first_at_least": 0,
+  "binary_result": 2,
+  "conclusion": "An unsorted array can violate binary lower-bound's contract."
+}
