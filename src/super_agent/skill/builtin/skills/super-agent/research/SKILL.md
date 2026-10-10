@@ -5,7 +5,7 @@ metadata:
   super-agent-categories: "[\"research\",\"sources\"]"
   super-agent-type: "method"
   super-agent-includes: "[\"skill:super-agent/research/exploration\"]"
-  super-agent-version: "0.2.122"
+  super-agent-version: "0.2.123"
 ---
 # Research method
 

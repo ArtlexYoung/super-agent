@@ -11,7 +11,7 @@ PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
 python3.11 -m unittest discover -s tests -p 'test_*.py' -v
 
 PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
-python3.11 scripts/verify_release.py --version 0.2.92 --full
+python3.11 scripts/verify_release.py --version 0.2.123 --full
 ```
 
 发布检查验证版本、Python 最低版本、零默认依赖、源码布局、旧目录删除、构建范围、内置插件去重关系和离线评测资产。
@@ -23,6 +23,14 @@ The release gate checks version, Python minimum, zero default dependencies, sour
 Log writes never trigger retention cleanup. Run `super-agent data storage prune --config common.toml --user alice` to preview, then add `--apply` to delete expired logs in the current user, Agent, and working-directory scope and record the cleanup; state streams are not expired by this policy.
 
 ## 版本 / Version
+
+v0.2.123 增加通用研究探索图：连接目标、方向、工作、任务与正/负结果，支持多来源谱系、前沿、预算、Mermaid 导出及显式检查点恢复。研究、算法、离线量化与深度优化复用同一探索 Skill；实验比较和主张/证据版本关联复用宿主 TaskCheck，证据变更或过期使旧验收失效。保持唯一 Runtime、零默认依赖，不提供攻击、渗透或实盘交易功能。
+
+v0.2.123 adds a general research exploration graph linking goals, directions, work, tasks and positive/negative results, with multiple-source lineage, frontier queries, budgets, Mermaid export and explicit checkpoint recovery. Research, algorithms, offline quantitative studies and deep optimization share one exploration Skill. Experiment comparison and versioned claim/evidence links use host TaskCheck acceptance; changed or expired evidence invalidates prior acceptance. The release retains one Runtime and zero default dependencies, with no attack, penetration-testing or live-trading features.
+
+用法见[探索图指南](exploration.md)和[通用研究指南](general-research.md)。离线示例实际验证 882 个算法 oracle 用例并完成验收与恢复；真实模型探索质量、长任务收益和投资表现仍未验证。
+
+See the [exploration guide](exploration.md) and [general research guide](general-research.md). The offline example runs 882 algorithm oracle cases and demonstrates acceptance and recovery; research quality with real models, long-task benefits and investment performance remain unverified.
 
 v0.2.92 完善标准 Skill 解析：支持 YAML 流列表与转义，内置 `code` Skill 增加宿主中立能力需求并将概述与工具绑定分离。
 

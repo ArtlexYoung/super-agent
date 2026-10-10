@@ -240,7 +240,7 @@ commands = [["python3.11", "-V"]]
         self.assertNotIn("private failure detail", json.dumps(insight))
 
     def test_release_shape_matches_current_release(self):
-        self.assertEqual([], verify_release(ROOT, "0.2.122"))
+        self.assertEqual([], verify_release(ROOT, "0.2.123"))
 
     def test_release_shape_ignores_macos_metadata(self):
         metadata = ROOT / "src" / ".DS_Store"
@@ -248,7 +248,7 @@ commands = [["python3.11", "-V"]]
         if not existed:
             metadata.write_bytes(b"macOS metadata")
         try:
-            self.assertEqual([], verify_release(ROOT, "0.2.122"))
+            self.assertEqual([], verify_release(ROOT, "0.2.123"))
         finally:
             if not existed:
                 metadata.unlink()
