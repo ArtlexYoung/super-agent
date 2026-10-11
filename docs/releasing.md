@@ -11,7 +11,7 @@ PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
 python3.11 -m unittest discover -s tests -p 'test_*.py' -v
 
 PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
-python3.11 scripts/verify_release.py --version 0.2.125 --full
+python3.11 scripts/verify_release.py --version 0.2.126 --full
 ```
 
 发布检查验证版本、Python 最低版本、零默认依赖、源码布局、旧目录删除、构建范围、内置插件去重关系和离线评测资产。
@@ -23,6 +23,14 @@ The release gate checks version, Python minimum, zero default dependencies, sour
 Log writes never trigger retention cleanup. Run `super-agent data storage prune --config common.toml --user alice` to preview, then add `--apply` to delete expired logs in the current user, Agent, and working-directory scope and record the cleanup; state streams are not expired by this policy.
 
 ## 版本 / Version
+
+v0.2.126 将 MCP 工具解析移至相关方法激活：未选中服务的故障不阻断普通任务，成功解析在本次运行内复用，绑定对象、schema 和 effects 保持冻结。自带 stdio 提供不启动服务的只读 service_status；描述与进程代次同时捕获，旧工具在退出或重建后派发前拒绝，不隐式换进程。unknown 仍需宿主显式核对，直接静态 RunInput、第三方两方法协议和借用服务所有权保持兼容。
+
+v0.2.126 moves MCP tool resolution to activation of the relevant method: failures in unselected services no longer block ordinary tasks, successful resolutions are reused within the run, and binding objects, schemas and effects remain frozen. The built-in stdio adapter provides read-only service_status without starting a service; descriptions and process generation are captured together, and old tools reject dispatch after exit or replacement without implicitly switching processes. Unknown outcomes still require explicit host reconciliation. Static RunInput bindings, the third-party two-method protocol and borrowed-service ownership remain compatible.
+
+使用和恢复边界见[按需服务与状态](runtime.md#按需服务与状态--on-demand-services-and-status)。继续 44 个生产 Python 文件；既有文件净增 92 非空行，门禁按实际必需增长收至 17,480。零新增默认依赖、后台执行体、模型调用或持久化，不加入服务注册中心、状态聚合 API 或新调度器。只读状态不授予权限，也不提供任意同进程代码崩溃隔离。
+
+See [on-demand services and status](runtime.md#按需服务与状态--on-demand-services-and-status) for usage and recovery boundaries. The release keeps 44 production Python files and adds 92 non-empty lines in existing files, with a measured source ceiling of 17,480. It adds no default dependencies, background workers, model calls or persistence, and no service registry, status aggregation API or scheduler. Read-only status grants no permissions and does not isolate crashes in arbitrary in-process code.
 
 v0.2.125 增加被动资源的局部诊断与停用：损坏 Skill、MCP 描述或插件清单及其依赖从健康索引中排除，明确选中时返回 ResourceUnavailableError，其他健康方法仍可运行。不可变诊断和内容摘要参与快照身份，修复后显式 refresh 恢复；损坏副本/覆盖层不回退旧方法。Python 分页 API、模型 list_resource_diagnostics 和 CLI check 共用唯一 AgentLibrary，发行门禁拒绝内置资源受阻。保持零默认依赖、唯一 Runtime，无新增后台服务或持久化。
 

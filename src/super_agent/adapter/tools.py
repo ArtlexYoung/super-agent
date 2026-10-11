@@ -8,6 +8,7 @@ import hashlib
 import re
 import subprocess
 from collections.abc import Callable, Iterable, Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -275,9 +276,17 @@ def mcp_tools(
     declared_tools: Iterable[str] | None = None,
 ) -> tuple[Tool, ...]:
     """MCP 描述不授予权限，每个工具必须由代码声明完整副作用。"""
+    from super_agent.adapter.process import StdioMcpServer
+
     values: list[Tool] = []
-    definitions = tuple(server.list_tools())
+    generation = None
+    if isinstance(server, StdioMcpServer):
+        definitions, generation = server._list_tools()
+    else:
+        definitions = tuple(server.list_tools())
     names = tuple(_required_text(item.get("name"), "MCP tool name") for item in definitions)
+    if len(names) != len(set(names)):
+        raise ValueError(f"MCP tools contain duplicate names: {server_name}")
     if declared_tools is not None and set(names) != set(declared_tools):
         raise ValueError(f"MCP tools do not match the central definition: {server_name}")
     for definition, remote_name in zip(definitions, names, strict=True):
@@ -289,9 +298,11 @@ def mcp_tools(
         local_name = f"mcp_{_safe_name(server_name)}_{_safe_name(remote_name)}"
 
         def call(arguments: dict[str, object], _context: object, name: str = remote_name) -> object:
+            if isinstance(server, StdioMcpServer):
+                return server.call_tool(name, arguments, expected_generation=generation)
             return server.call_tool(name, arguments)
 
-        values.append(Tool(local_name, str(definition.get("description") or f"MCP tool {remote_name}"), call, dict(schema), effects[remote_name]))
+        values.append(Tool(local_name, str(definition.get("description") or f"MCP tool {remote_name}"), call, deepcopy(dict(schema)), tuple(effects[remote_name])))
     return tuple(values)
 
 

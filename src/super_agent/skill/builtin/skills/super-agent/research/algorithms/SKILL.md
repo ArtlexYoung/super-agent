@@ -5,7 +5,7 @@ metadata:
   super-agent-categories: "[\"research/algorithms\",\"optimization\"]"
   super-agent-type: "method"
   super-agent-includes: "[\"skill:super-agent/research/exploration\",\"skill:super-agent/research/experiments\"]"
-  super-agent-version: "0.2.125"
+  super-agent-version: "0.2.126"
 ---
 # Algorithm research
 

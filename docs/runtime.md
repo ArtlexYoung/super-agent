@@ -82,6 +82,63 @@ finally:
     server.close()
 ```
 
+## 按需服务与状态 / On-Demand Services and Status
+
+v0.2.126 中，`Agent.connect_mcp_server(...)` 只绑定宿主提供的对象和副作用声明。每次运行冻结绑定对象、effects 和资源快照；只有宿主指定相关 plugin 或模型调用 `activate_plugin` 时，才列举该方法引用的服务。普通任务不探测未选中的服务，同一运行内成功解析的工具只列举一次。required 缺失或服务故障会使激活失败；未绑定的 optional 仍报告 unavailable，已绑定但故障的 optional 明确失败。显式指定 plugin 时在首次模型调用前报告，模型发起的激活失败沿用工具错误与原子回滚边界。
+
+In v0.2.126, `Agent.connect_mcp_server(...)` only binds the host-provided object and effect declarations. Each run freezes the binding objects, effects and resource snapshot; service tools are listed only when the host selects a related plugin or the model calls `activate_plugin`. Ordinary tasks leave unselected services untouched, and successfully resolved tools are listed once per run. Missing required bindings and service failures reject activation. Unbound optional services remain unavailable; bound optional services that fail reject activation. Explicit plugin selection reports failure before the first model call; model-triggered activation uses the existing tool-error and atomic rollback boundaries.
+
+宿主直接调用 `StdioMcpServer.service_status()` 获取独立字典副本；查询不启动进程、不发送 MCP 请求、不调用模型、不写盘。读取非阻塞：请求占用锁时，返回最近观察并标 `busy=true`，因此不能把它当作实时保证或工具授权。正常成功后仍保留最近故障供核对。
+
+The host calls `StdioMcpServer.service_status()` for a detached dictionary snapshot. It starts no process, sends no MCP request, calls no model and writes no files. Reads are nonblocking: when a request holds the lock, they return the latest observation with `busy=true`, so the snapshot is neither a realtime guarantee nor permission to execute. Successful requests retain the last fault for inspection.
+
+| 字段 / Field | 含义 / Meaning |
+| --- | --- |
+| `phase` | `unstarted` / `running` / `exited` / `stop_unconfirmed`；进程运行不证明初始化或清理成功 / A running process alone proves neither initialization nor cleanup success |
+| `generation` | 当前对象每次成功创建进程时递增，从 0 开始 / Incremented for each process creation in this object, starting at 0 |
+| `admission` | `allowed` / `blocked_unknown` / `unavailable`；调用仍检查权限与当前事实 / Calls still check permissions and current facts |
+| `pending_operation` | `present`；存在时附 `operation_id` 和该失联调用的 `execution_stopped` 证据 / Presence, operation ID and stop evidence for the lost call |
+| `last_fault` | `present`；存在时附最多 128 字符的 `error_type` 与故障发生时的 `generation`，不返回错误正文 / Presence, bounded error type and generation at failure, without error text |
+| `observed_at`, `busy` | 本进程 monotonic 观察时间及锁是否忙，时间不能跨进程比较 / Process-local monotonic observation time and lock occupancy; timestamps are not comparable across processes |
+
+从仓库根目录可运行下面的本地协议示例；fixture 是测试进程，真实应用将命令替换为自己的服务并由宿主负责关闭：
+
+Run this local protocol example from the repository root. The fixture is a test process; applications supply their own service command and retain responsibility for closing it:
+
+```python
+import sys
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from super_agent.adapter.process import StdioMcpServer
+
+fixture = Path("tests/fixtures/mcp_fault_worker.py").resolve()
+with TemporaryDirectory() as directory:
+    Path(directory, "settings.json").write_text("{}", encoding="utf-8")
+    server = StdioMcpServer(
+        [sys.executable, "-I", "-B", "-u", str(fixture), directory],
+        root=directory, timeout_seconds=2,
+    )
+    try:
+        assert server.service_status()["phase"] == "unstarted"
+        server.list_tools()  # Explicitly start and inspect the service.
+        generation = server.service_status()["generation"]
+        assert server.service_status()["admission"] == "allowed"
+        server.close()
+        assert server.service_status()["phase"] == "exited"
+        server.list_tools()  # Explicitly establish a new generation.
+        assert server.service_status()["generation"] == generation + 1
+    finally:
+        server.close()
+```
+
+`mcp_tools(...)` 对自带 stdio 同时捕获工具描述与进程代次，派发前在同一请求锁内核对。进程退出或重建后，旧 Tool 抛出 `FatalToolError`，不会自动启动新进程执行旧 schema；Agent 在下一次运行重新激活方法，直接宿主则重新调用 `mcp_tools(...)` 获取新工具。即使进程在核对后立即退出，也只尝试原进程，不切换到新进程。旧 `list_tools()` / `call_tool(name, arguments)` 签名及第三方两方法 McpServer 协议保持兼容；第三方对象没有本适配器的代次保证。
+
+For the built-in stdio adapter, `mcp_tools(...)` captures tool descriptions and process generation together, then checks the binding under the same request lock before dispatch. Exited or rebuilt processes cause old Tools to raise `FatalToolError`; they never start a new process to execute an old schema. Agents reactivate the method in a new run; direct hosts call `mcp_tools(...)` again for fresh tools. A process that exits immediately after validation is still the only process attempted. Existing `list_tools()` / `call_tool(name, arguments)` signatures and the third-party two-method McpServer protocol remain compatible; third-party objects do not acquire this generation guarantee.
+
+`close()` 和 `list_tools()` 不解除 unknown；服务重新可用后仍需核对外部效果并调用 `resolve_unknown(匹配 ID)`。该操作只解除当前对象的调用阻止，不认可结果、不修改 TaskQueue 的旧 `stop_unknown` 历史。`Agent.close()` 不关闭借用的服务。CLI `check` 仍只读配置和被动资源，不连接或探测服务。
+
+Neither `close()` nor `list_tools()` clears unknown outcomes. Even after the service becomes available, the host must reconcile external effects and call `resolve_unknown(matching_id)`. This only clears the current object's call gate: it supplies no accepted result and does not change old TaskQueue `stop_unknown` history. `Agent.close()` does not close borrowed services. CLI `check` still reads configuration and passive resources without connecting to or probing services.
+
 ## 长会话窗口 / Long-Running Windows
 
 `TokenUsage` 统一供应商准确用量和显式标记的估算用量。启用 `context-window` 插件并声明模型容量后，`TokenBudget` 只在模型调用前请求换窗；未知容量不会猜测，换窗仍无法容纳请求时会明确失败。

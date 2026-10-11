@@ -871,18 +871,24 @@ class AgentLibrary:
             raise TypeError("run MCP tools by server must be an object")
         required = tuple(f"mcp:{item}" for item in plugin.required_mcp_servers)
         optional = tuple(f"mcp:{item}" for item in plugin.optional_mcp_servers)
-        missing = [reference for reference in required if reference not in bindings]
+        resolvers = session.mcp_tool_resolvers
+        missing = [reference for reference in required if reference not in bindings and reference not in resolvers]
         if missing:
             raise RuntimeError(f"required MCP servers are not explicitly connected: {plugin.reference}: {', '.join(missing)}")
         for reference in (*required, *optional):
             tools = bindings.get(reference)
+            if tools is None and reference in resolvers:
+                tools = resolvers[reference]()
             if tools is None:
+                if reference in resolvers:
+                    raise TypeError(f"MCP tool resolver returned no tools: {reference}")
                 unavailable.append((plugin.reference, reference))
                 continue
             if not isinstance(tools, (list, tuple)) or any(
                 not isinstance(tool, Tool) for tool in tools
             ):
                 raise TypeError(f"run MCP tools must contain Tool values: {reference}")
+            session.mcp_tools_by_server[reference] = tuple(tools)
             for tool in tools:
                 session.add_tool(tool)
 

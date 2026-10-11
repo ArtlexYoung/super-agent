@@ -5,7 +5,7 @@ metadata:
   super-agent-categories: "[\"code/optimization\",\"experiment\",\"competition\"]"
   super-agent-includes: "[\"skill:super-agent/code\",\"skill:super-agent/research/exploration\",\"skill:super-agent/research/experiments\"]"
   super-agent-type: "task"
-  super-agent-version: "0.2.125"
+  super-agent-version: "0.2.126"
 ---
 # Measured deep optimization
 

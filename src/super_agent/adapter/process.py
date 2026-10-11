@@ -23,7 +23,7 @@ _READER_JOIN_SECONDS = 5.0
 
 from super_agent.core import __version__, require_text as _text
 from super_agent.core.model import Tool
-from super_agent.core.run import ToolOutcomeUnknown
+from super_agent.core.run import FatalToolError, ToolOutcomeUnknown
 
 
 @dataclass(frozen=True)
@@ -268,6 +268,41 @@ class StdioMcpServer:
         self._faulted = False
         self._sent_any = False
         self._unknown: ToolOutcomeUnknown | None = None
+        self._generation = 0
+        self._initialized = False
+        self._last_fault: tuple[str, int] = ("", 0)
+        self._observation = self._observe()
+
+    def service_status(self) -> dict[str, object]:
+        """非阻塞只读观察；请求忙时返回最近快照，不启动服务或授予权限。"""
+        acquired = self._lock.acquire(blocking=False)
+        try:
+            if acquired:
+                self._observation = self._observe()
+            value = dict(self._observation)
+            value["busy"] = not acquired
+            if self._closing.is_set() and value["admission"] != "blocked_unknown":
+                value["admission"] = "unavailable"
+            value["pending_operation"] = dict(value["pending_operation"])
+            value["last_fault"] = dict(value["last_fault"])
+            return value
+        finally:
+            if acquired:
+                self._lock.release()
+
+    def _observe(self) -> dict[str, object]:
+        process, unknown = self._process, self._unknown
+        running = process is not None and process.poll() is None
+        phase = ("stop_unconfirmed" if self._faulted else "running" if running else
+                 "exited" if self._generation else "unstarted")
+        available = running and self._initialized and not self._faulted and not self._closing.is_set()
+        return {"phase": phase, "generation": self._generation, "observed_at": monotonic(),
+                "admission": "blocked_unknown" if unknown else "allowed" if available else "unavailable",
+                "pending_operation": ({"present": False} if unknown is None else
+                    {"present": True, "operation_id": unknown.operation_id,
+                     "execution_stopped": unknown.execution_stopped}),
+                "last_fault": ({"present": False} if not self._last_fault[0] else
+                    {"present": True, "error_type": self._last_fault[0], "generation": self._last_fault[1]})}
 
     @property
     def unknown_operation_id(self) -> str:
@@ -288,14 +323,22 @@ class StdioMcpServer:
             self._lock.release()
 
     def list_tools(self) -> list[Mapping[str, object]]:
-        value = self._request("tools/list", {})
+        return self._list_tools()[0]
+
+    def _list_tools(self) -> tuple[list[Mapping[str, object]], int]:
+        # 描述和代次必须来自同一次持锁请求，不能先列举再读取可变 generation。
+        value, generation = self._request("tools/list", {})
         tools = value.get("tools")
         if not isinstance(tools, list) or any(not isinstance(item, Mapping) for item in tools):
             raise ValueError("MCP tools/list result must contain a tool array")
-        return tools
+        return tools, generation
 
-    def call_tool(self, name: str, arguments: Mapping[str, object]) -> object:
-        return self._request("tools/call", {"name": name, "arguments": dict(arguments)})
+    def call_tool(self, name: str, arguments: Mapping[str, object], *,
+                  expected_generation: int | None = None) -> object:
+        if expected_generation is not None and (type(expected_generation) is not int or expected_generation < 1):
+            raise ValueError("expected MCP generation must be a positive integer")
+        return self._request("tools/call", {"name": name, "arguments": dict(arguments)},
+                             expected_generation=expected_generation)[0]
 
     def close(self) -> None:
         # 先通知 I/O 退出，不能等一个卡住的请求释放锁后才发停止请求。
@@ -304,28 +347,45 @@ class StdioMcpServer:
             raise TimeoutError("MCP close has no confirmed stop")
         try:
             self._retire_process()
+        except Exception as error:
+            self._last_fault = (type(error).__name__[:128], self._generation)
+            raise
         finally:
             self._closing.clear()
+            self._observation = self._observe()
             self._lock.release()
 
-    def _request(self, method: str, parameters: Mapping[str, object]) -> dict[str, object]:
+    def _request(self, method: str, parameters: Mapping[str, object], *,
+                 expected_generation: int | None = None) -> tuple[dict[str, object], int]:
         deadline = monotonic() + self.timeout_seconds
         if not self._lock.acquire(timeout=self._remaining(deadline, method)):
             raise TimeoutError(f"MCP request timed out before dispatch: {method}")
         try:
+            self._observation = self._observe()
             if method == "tools/call" and self._unknown is not None:
                 raise ToolOutcomeUnknown("MCP tool outcome must be reconciled before another call",
                                          execution_stopped=self._unknown.execution_stopped,
                                          operation_id=self._unknown.operation_id)
-            return self._exchange(method, parameters, deadline)
+            if expected_generation is not None and (expected_generation != self._generation
+                    or not self._initialized or self._faulted or self._process is None
+                    or self._process.poll() is not None):
+                raise FatalToolError("stale MCP tool binding; activate the method in a new run")
+            # 已验证的绑定不能再经过 ensure_process；旧进程可能在检查后自行退出。
+            process = self._process if expected_generation is not None else None
+            return self._exchange(method, parameters, deadline, process), self._generation
+        except Exception as error:
+            self._last_fault = (type(error).__name__[:128], self._generation)
+            raise
         finally:
+            self._observation = self._observe()
             self._lock.release()
 
-    def _exchange(self, method: str, parameters: Mapping[str, object], deadline: float) -> dict[str, object]:
+    def _exchange(self, method: str, parameters: Mapping[str, object], deadline: float,
+                  process: subprocess.Popen[bytes] | None = None) -> dict[str, object]:
         self._sent_any = False
         operation_id = ""
         try:
-            process = self._ensure_process(deadline)
+            process = self._ensure_process(deadline) if process is None else process
             # 初始化也使用请求计数器，正式请求需要取一个新的 ID。
             self._request_id += 1
             request_id = self._request_id
@@ -437,14 +497,19 @@ class StdioMcpServer:
                 return self._process
             self._retire_process()
         self._remaining(deadline, "initialize")
+        self._initialized = False
         self._process = subprocess.Popen(self.command, cwd=self.root, stdin=subprocess.PIPE,
                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                         bufsize=0, start_new_session=True)
+        self._generation += 1
+        self._observation = self._observe()
         for stream in (self._process.stdin, self._process.stdout, self._process.stderr):
             if stream is None:
                 raise RuntimeError("MCP process pipes are unavailable")
             os.set_blocking(stream.fileno(), False)
         self._initialize(self._process, deadline)
+        self._initialized = True
+        self._observation = self._observe()
         return self._process
 
     def _initialize(self, process: subprocess.Popen[bytes], deadline: float) -> None:
@@ -482,6 +547,7 @@ class StdioMcpServer:
             if stream is not None:
                 stream.close()
         self._process = None
+        self._initialized = False
         self._buffer.clear()
         self._stdout_closed = self._stderr_closed = self._faulted = False
 

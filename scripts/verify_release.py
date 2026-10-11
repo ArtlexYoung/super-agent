@@ -1,4 +1,4 @@
-"""Run the local release checks for v0.2.125."""
+"""Run the local release checks for v0.2.126."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-VERSION = "0.2.125"
+VERSION = "0.2.126"
 MAX_SOURCE_FILES = 44
 # 源码非空行预算随功能按需增长：CLI 连续聊天、会话保存恢复、模型诊断、编码验证、Skill 管理。
 # 通用能力需求（capability.py）、内容寻址（content.py）、自包含资源包（package.py）、
@@ -24,7 +24,9 @@ MAX_SOURCE_FILES = 44
 # v0.2.113/114 增加任务提交-验收-交付闭环与显式 Responses 适配（provider.py）。
 # Optional experiments/evidence and bounded exploration kernel/tools; no new Runtime or dependencies.
 # v0.2.125 adds local resource diagnostics and dependency quarantine in the existing Library.
-MAX_SOURCE_LINES = 17_450
+# v0.2.126: 92 required lines in existing files after removing aggregation/management APIs;
+# measured total 17,479, with no new source file, dependency, Runtime or background worker.
+MAX_SOURCE_LINES = 17_480
 SOURCE_ROOTS = {"super_agent", "cli.py"}
 DOMAIN_FILES = {
     "super_agent/adapter": {"cli.py", "database.py", "process.py", "storage.py", "tools.py"},

@@ -253,11 +253,11 @@ def agent_tools(
     library: AgentLibrary | None,
     store: EventStore | None,
     working_directory: WorkingDirectory | None,
-) -> tuple[ToolRegistry, dict[str, tuple[Tool, ...]]]:
+) -> tuple[ToolRegistry, dict[str, Callable[[], tuple[Tool, ...]]]]:
     from super_agent.core.run import ToolRegistry
 
     registry = ToolRegistry(agent._tool_registry.active.values(), agent._tool_registry.available.values())
-    mcp_by_server: dict[str, tuple[Tool, ...]] = {}
+    mcp_by_server: dict[str, Callable[[], tuple[Tool, ...]]] = {}
     if library is not None:
         registry.register_many(library.tools(), exposure="always")
         from super_agent.skill.exploration_tools import EXPLORATION_TOOLS, ExplorationTools
@@ -270,11 +270,17 @@ def agent_tools(
         if agent._mcp_servers:
             from super_agent.adapter.tools import mcp_tools
 
-            for reference, (server, effects) in agent._mcp_servers.items():
-                definition = library.find_mcp_server(reference)
-                mcp_by_server[definition.reference] = mcp_tools(
-                    definition.mcp_id, server, effects, declared_tools=definition.tools
-                )
+            for reference, (server, effects) in tuple(agent._mcp_servers.items()):
+                def resolve(reference=reference, server=server,
+                            effects={key: tuple(value) for key, value in effects.items()}) -> tuple[Tool, ...]:
+                    definition = library.find_mcp_server(reference)
+                    try:
+                        return mcp_tools(definition.mcp_id, server, effects, declared_tools=definition.tools)
+                    except Exception as error:
+                        error.add_note(f"MCP binding: {reference}")
+                        raise
+
+                mcp_by_server[reference] = resolve
     if _plugin_is_enabled(agent, MEMORY_PLUGIN):
         registry.register_many(
             agent_memory(agent, identity, store, working_directory).tools(),
@@ -449,7 +455,7 @@ def stream_agent(agent: Agent, prompt: str, context: AgentContext):
         resource_center=resource_center,
         working_directory=working_directory,
         library_snapshot={} if library is None else library.snapshot().to_dict(),
-        mcp_tools_by_server=mcp_tools,
+        mcp_tool_resolvers=mcp_tools,
         listeners=tuple(listeners),
         runtime_extensions=(*runtime_extensions, *runtime_options.runtime_extensions),
         token_budget=getattr(agent, "token_budget", None),

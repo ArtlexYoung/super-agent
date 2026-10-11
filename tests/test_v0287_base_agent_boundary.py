@@ -36,6 +36,7 @@ class BaseAgentImportBoundaryTests(unittest.TestCase):
             "super_agent.adapter",
             "super_agent.adapter.storage",
             "super_agent.adapter.tools",
+            "super_agent.adapter.process",
             "super_agent.skill.organization",
             "super_agent.skill.organization_runtime",
             "super_agent.skill.organization_tasks",

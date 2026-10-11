@@ -438,6 +438,8 @@ class _RunState:
     ledger: ContextLedger | None = None
     runtime_lifecycle: RuntimeLifecycle | None = None
 
+    mcp_tool_resolvers: Mapping[str, Callable[[], tuple[Tool, ...]]] = field(default_factory=dict)
+
     def __post_init__(self) -> None:
         if not isinstance(self.resource_center, ResourceCenter):
             raise TypeError("run resource center must be a ResourceCenter")
@@ -445,6 +447,7 @@ class _RunState:
         self.mcp_tools_by_server = {
             key: tuple(value) for key, value in self.mcp_tools_by_server.items()
         }
+        self.mcp_tool_resolvers = dict(self.mcp_tool_resolvers)
         if self.ledger is None:
             self.ledger = ContextLedger(
                 self.context_limit,
@@ -586,8 +589,13 @@ class RunInput:
     metadata: Mapping[str, object] = field(default_factory=dict)
     warning_messages: tuple[str, ...] = ()
     allow_listener_failures: bool = False
+    mcp_tool_resolvers: Mapping[str, Callable[[], tuple[Tool, ...]]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        if set(self.mcp_tools_by_server) & set(self.mcp_tool_resolvers):
+            raise ValueError("MCP bindings and resolvers must have distinct references")
+        if any(not callable(resolve) for resolve in self.mcp_tool_resolvers.values()):
+            raise TypeError("MCP tool resolvers must be callable")
         if not isinstance(self.prompt, str) or not self.prompt.strip():
             raise ValueError("prompt cannot be empty")
         if self.resource_center is not None and not isinstance(
@@ -701,6 +709,7 @@ def _create_state(run: RunInput) -> _RunState:
         working_directory=run.working_directory,
         library_snapshot=run.library_snapshot,
         mcp_tools_by_server=run.mcp_tools_by_server,
+        mcp_tool_resolvers=run.mcp_tool_resolvers,
         context_limit=run.limits.max_context_characters,
         runtime_lifecycle=run.runtime_lifecycle,
     )

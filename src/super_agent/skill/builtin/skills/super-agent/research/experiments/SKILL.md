@@ -4,7 +4,7 @@ description: "Compare reproducible experimental candidates against a baseline wi
 metadata:
   super-agent-categories: "[\"research/experiments\",\"reproducibility\"]"
   super-agent-type: "method"
-  super-agent-version: "0.2.125"
+  super-agent-version: "0.2.126"
 ---
 # Experimental method
 
