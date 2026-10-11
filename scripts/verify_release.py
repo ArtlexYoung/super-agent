@@ -1,4 +1,4 @@
-"""Run the local release checks for v0.2.124."""
+"""Run the local release checks for v0.2.125."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-VERSION = "0.2.124"
+VERSION = "0.2.125"
 MAX_SOURCE_FILES = 44
 # 源码非空行预算随功能按需增长：CLI 连续聊天、会话保存恢复、模型诊断、编码验证、Skill 管理。
 # 通用能力需求（capability.py）、内容寻址（content.py）、自包含资源包（package.py）、
@@ -23,7 +23,8 @@ MAX_SOURCE_FILES = 44
 # 按 development-plan P0-00 调整，保留增长预算但不取消版本、依赖与资源一致性检查。
 # v0.2.113/114 增加任务提交-验收-交付闭环与显式 Responses 适配（provider.py）。
 # Optional experiments/evidence and bounded exploration kernel/tools; no new Runtime or dependencies.
-MAX_SOURCE_LINES = 17_300
+# v0.2.125 adds local resource diagnostics and dependency quarantine in the existing Library.
+MAX_SOURCE_LINES = 17_450
 SOURCE_ROOTS = {"super_agent", "cli.py"}
 DOMAIN_FILES = {
     "super_agent/adapter": {"cli.py", "database.py", "process.py", "storage.py", "tools.py"},
@@ -292,6 +293,8 @@ def _check_builtin_plugins(root: Path) -> list[str]:
         snapshot = AgentLibrary((root,)).snapshot()
     except (OSError, TypeError, ValueError) as error:
         return [f"builtin library validation failed: {error}"]
+    for diagnostic in snapshot.diagnostics:
+        errors.append(f"builtin resource is unavailable: {diagnostic.reference}: {diagnostic.message}")
     expected_plugins = {f"super-agent/{name}" for name in REQUIRED_BUILTIN_SKILLS}
     if set(snapshot.plugins) != expected_plugins:
         errors.append(f"builtin plugin set changed: {sorted(snapshot.plugins)}")
@@ -340,7 +343,7 @@ def _check_builtin_plugins(root: Path) -> list[str]:
             ):
                 if forbidden in text:
                     errors.append(f"builtin Skill grants its own permission: {path}")
-        except OSError as error:
+        except (OSError, UnicodeError) as error:
             errors.append(f"cannot read builtin Skill {path}: {error}")
     return errors
 

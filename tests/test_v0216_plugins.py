@@ -446,7 +446,7 @@ class AgentLibraryTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(ValueError, "must not be repeated"):
-                AgentLibrary((root,)).snapshot()
+                AgentLibrary((root,)).find_plugin("example/task")
 
             manifest.write_text(
                 original.replace(
@@ -470,13 +470,13 @@ class AgentLibraryTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(ValueError, "MCP servers overlap"):
-                AgentLibrary((root,)).snapshot()
+                AgentLibrary((root,)).find_plugin("example/task")
 
             manifest.write_text(
                 original + f'base_hash = "{"0" * 64}"\n', encoding="utf-8"
             )
             with self.assertRaisesRegex(ValueError, "unknown plugin manifest"):
-                AgentLibrary((root,)).snapshot()
+                AgentLibrary((root,)).find_plugin("example/task")
 
     def test_plugin_and_skill_removal_respect_references(self):
         with tempfile.TemporaryDirectory() as directory:

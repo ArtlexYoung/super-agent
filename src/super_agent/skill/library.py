@@ -7,8 +7,10 @@ import json
 import os
 import re
 import shutil
+import stat
 import tempfile
 import tomllib
+from collections import deque
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from functools import partial
@@ -127,6 +129,41 @@ class Plugin:
 
 
 @dataclass(frozen=True)
+class ResourceDiagnostic:
+    """快照内不可变的资源故障；身份来自目录，不信任损坏文档中的 ID。"""
+
+    reference: str
+    path: Path
+    code: str
+    message: str
+    sha256: str
+    dependencies: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if len(self.message) > 1_024:
+            object.__setattr__(self, "message", self.message[:1_021] + "...")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "key": self.reference, "path": str(self.path), "code": self.code,
+            "message": self.message, "sha256": self.sha256,
+            "dependencies": list(self.dependencies),
+        }
+
+
+class ResourceUnavailableError(ValueError):
+    """指定引用已局部停用；调用者可以检查完整诊断而不替换方法。"""
+
+    def __init__(self, reference: str, diagnostics: tuple[ResourceDiagnostic, ...]) -> None:
+        self.reference = reference
+        self.diagnostics = diagnostics
+        first = diagnostics[0]
+        super().__init__(
+            f"resource unavailable: {reference}: {first.code}: {first.message} ({first.path})"
+        )
+
+
+@dataclass(frozen=True)
 class LibrarySnapshot:
     """一次运行使用的不可变中央资源快照。"""
 
@@ -134,9 +171,10 @@ class LibrarySnapshot:
     skills: Mapping[str, Skill]
     mcps: Mapping[str, McpDefinition]
     plugins: Mapping[str, Plugin]
+    diagnostics: tuple[ResourceDiagnostic, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "snapshot_id": self.snapshot_id,
             "skills": {
                 key: {"version": value.version, "sha256": value.sha256}
@@ -151,6 +189,9 @@ class LibrarySnapshot:
                 for key, value in self.plugins.items()
             },
         }
+        if self.diagnostics:
+            result["diagnostics"] = [item.to_dict() for item in self.diagnostics]
+        return result
 
 
 class AgentLibrary:
@@ -242,13 +283,25 @@ class AgentLibrary:
         """返回包含全部可发现资源类型的有界索引。"""
         if not 1 <= page_size <= 100:
             raise ValueError("resource index page size must be between 1 and 100")
-        return {
+        result: dict[str, object] = {
             "plugins": self.list_plugins(page=1, page_size=page_size).to_dict(),
             "skills": self.list_skills(page=1, page_size=page_size).to_dict(),
             "mcp_servers": self.list_mcp_servers(
                 page=1, page_size=page_size
             ).to_dict(),
         }
+        if self.snapshot().diagnostics:
+            result["diagnostics"] = self.list_diagnostics(page_size=page_size).to_dict()
+        return result
+
+    def list_diagnostics(self, *, page: int = 1, page_size: int = 20) -> DisclosurePage:
+        """分页列出损坏来源及依赖阻塞，不读取或激活方法正文。"""
+        return _page(list(self.snapshot().diagnostics), page, page_size, lambda item: item.to_dict())
+
+    def _raise_unavailable(self, reference: str) -> None:
+        faults = tuple(item for item in self.snapshot().diagnostics if item.reference == reference)
+        if faults:
+            raise ResourceUnavailableError(reference, faults)
 
     def content_addresses(self) -> dict[str, dict[str, object]]:
         """按内容摘要枚举全部资源并全局去重，报告哪些引用共享同一内容。
@@ -318,6 +371,7 @@ class AgentLibrary:
         try:
             value = self.snapshot().plugins[key.removeprefix("plugin:")]
         except KeyError as error:
+            self._raise_unavailable(key)
             raise KeyError(f"plugin not found: {key}") from error
         if key in self.disabled_plugins:
             raise PermissionError(f"plugin is disabled: {key}")
@@ -328,6 +382,7 @@ class AgentLibrary:
         try:
             value = self.snapshot().skills[key]
         except KeyError as error:
+            self._raise_unavailable(key)
             raise KeyError(f"Skill not found: {key}") from error
         if self._skill_is_disabled(value):
             raise PermissionError(f"Skill is disabled: {key}")
@@ -338,6 +393,7 @@ class AgentLibrary:
         try:
             value = self.snapshot().mcps[key.removeprefix("mcp:")]
         except KeyError as error:
+            self._raise_unavailable(key)
             raise KeyError(f"MCP server not found: {key}") from error
         if key in self.disabled_mcp_servers:
             raise PermissionError(f"MCP server is disabled: {key}")
@@ -432,6 +488,7 @@ class AgentLibrary:
     def tools(self) -> tuple[Tool, ...]:
         """只公开发现、读取和显式激活；不会自动启动 MCP。"""
         return (
+            Tool("list_resource_diagnostics", "List unavailable resources and dependency blockers", partial(self._list_tool, "diagnostic"), _list_schema()),
             Tool("list_plugins", "List a page from the plugin index", partial(self._list_tool, "plugin"), _list_schema()),
             Tool("read_plugin", "Read one bounded page of a plugin", partial(self._read_tool, "plugin"), _read_schema("plugin")),
             Tool("activate_plugin", "Activate one disclosed plugin", partial(self._activate_tool, "plugin"), _activate_schema("plugin")),
@@ -460,7 +517,8 @@ class AgentLibrary:
     ) -> Skill:
         """在中央可写库创建一个独立 Skill。"""
         selected = _resource_id(skill_id, "Skill ID")
-        if selected in self.snapshot().skills:
+        self._raise_unavailable(f"skill:{selected}")
+        if f"skill:{selected}" in self.snapshot().skills:
             raise ValueError(f"Skill already exists: skill:{selected}")
         selected_includes = _references(includes, "skill", "Skill includes")
         if f"skill:{selected}" in selected_includes:
@@ -539,6 +597,8 @@ class AgentLibrary:
             raise PermissionError(f"Skill is not in the writable scope: {skill.reference}")
         if skill.sha256 != expected_sha256:
             raise RuntimeError(f"Skill changed since it was read: {skill.reference}")
+        if self.snapshot().diagnostics:
+            raise RuntimeError("resource removal requires a clean library; repair unavailable resources and refresh first")
         dependents = self.reverse_dependencies(skill.reference)
         descendants = tuple(
             item.reference
@@ -579,6 +639,7 @@ class AgentLibrary:
         if selected.rsplit("/", 1)[-1] != provisional.name:
             raise ValueError("installed Skill name must match the target directory")
         reference = f"skill:{selected}"
+        self._raise_unavailable(reference)
         if reference in self.snapshot().skills:
             current = self.snapshot().skills[reference]
             # package.sha256 由满足规范的包计算，而当前 Skill 的 package_sha256
@@ -612,6 +673,7 @@ class AgentLibrary:
         runtime_extension: str | None = None,
     ) -> Plugin:
         selected = _resource_id(plugin_id, "plugin ID")
+        self._raise_unavailable(f"plugin:{selected}")
         if selected in self.snapshot().plugins:
             raise ValueError(f"plugin already exists: plugin:{selected}")
         selected_entry = self.find_skill(entry_skill).reference
@@ -656,6 +718,8 @@ class AgentLibrary:
             raise PermissionError(f"plugin is not in the writable scope: {plugin.reference}")
         if plugin.sha256 != expected_sha256:
             raise RuntimeError(f"plugin changed since it was read: {plugin.reference}")
+        if self.snapshot().diagnostics:
+            raise RuntimeError("resource removal requires a clean library; repair unavailable resources and refresh first")
         users = tuple(
             item.reference
             for item in self.snapshot().plugins.values()
@@ -678,30 +742,50 @@ class AgentLibrary:
         skills: dict[str, Skill] = {}
         mcps: dict[str, McpDefinition] = {}
         plugins: dict[str, Plugin] = {}
+        diagnostics: list[ResourceDiagnostic] = []
         configured = [(root, False) for root in self.paths]
         if self.writable_root is not None:
             configured.append((self.writable_root, True))
         for root, writable in configured:
-            for path in _discover_skill_files(root):
-                item = _read_skill(path, root, writable=writable)
-                _merge_skill(skills, item, self._record)
-            for path in _discover_mcp_files(root):
-                item = _read_mcp(path, root)
-                _merge_resource(mcps, item.mcp_id, item, "MCP", self._record)
-            for path in _discover_plugin_files(root):
-                item = _read_plugin_manifest(path, root, writable=writable)
-                _merge_resource(plugins, item.plugin_id, item, "plugin", self._record)
-        _validate_plugins(plugins, skills, mcps)
+            for kind, filename, reader, values in (
+                ("skill", SKILL_FILE, partial(_read_skill, writable=writable), skills),
+                ("mcp", MCP_FILE, _read_mcp, mcps),
+                ("plugin", PLUGIN_FILE, partial(_read_plugin_manifest, writable=writable), plugins),
+            ):
+                directory = root / f"{kind}s"
+                for path in _discover_files(directory, filename):
+                    key = _resource_id(path.parent.relative_to(directory).as_posix(), f"{kind} ID")
+                    try:
+                        item = reader(path, root)
+                    except (ValueError, TypeError) as error:
+                        content_hash = _skill_content_hash(path) if kind == "skill" else _directory_hash(path.parent)
+                        diagnostics.append(ResourceDiagnostic(
+                            f"{kind}:{key}", path, "invalid_format", str(error), content_hash,
+                        ))
+                        continue
+                    # 合并、权限与记录错误不属于可隔离的文档格式错误。
+                    if kind == "skill":
+                        _merge_skill(skills, item, self._record)
+                    else:
+                        _merge_resource(values, key, item, "MCP" if kind == "mcp" else kind, self._record)
+        _validate_plugins(plugins, skills, mcps, {item.reference for item in diagnostics})
+        faults = _quarantine_resources(skills, mcps, plugins, diagnostics)
         digest = hashlib.sha256()
         for kind, values in (("skill", skills), ("mcp", mcps), ("plugin", plugins)):
             for key, value in sorted(values.items()):
                 digest.update(f"{kind}\0{key}\0{value.version}\0{value.sha256}\n".encode())
-        return LibrarySnapshot(
+        if faults:
+            digest.update(json.dumps([item.to_dict() for item in faults], sort_keys=True).encode())
+        snapshot = LibrarySnapshot(
             digest.hexdigest(),
             MappingProxyType(dict(sorted(skills.items()))),
             MappingProxyType(dict(sorted(mcps.items()))),
             MappingProxyType(dict(sorted(plugins.items()))),
+            faults,
         )
+        for item in faults:
+            self._record(f"{item.reference.split(':', 1)[0]}.unavailable", item.to_dict())
+        return snapshot
 
     def _activate_plugin(
         self,
@@ -815,8 +899,10 @@ class AgentLibrary:
             value = self.list_plugins(page=page, page_size=size)
         elif kind == "skill":
             value = self.list_skills(page=page, page_size=size, plugin=_optional_text(arguments.get("plugin")), skill_type=_optional_text(arguments.get("type")), category=_optional_text(arguments.get("category")))
-        else:
+        elif kind == "mcp":
             value = self.list_mcp_servers(page=page, page_size=size)
+        else:
+            value = self.list_diagnostics(page=page, page_size=size)
         return value.to_dict()
 
     def _read_tool(self, kind: str, arguments: dict[str, object], context: ToolContext) -> dict[str, object]:
@@ -932,9 +1018,8 @@ def _read_plugin_manifest(path: Path, library_root: Path, *, writable: bool) -> 
         resource_files = ()
     extra_files = tuple(
         item
-        for item in path.parent.rglob("*")
-        if item.is_file()
-        and item.name != PLUGIN_FILE
+        for item in _walk_files(path.parent)
+        if item.name != PLUGIN_FILE
         and not item.is_relative_to(resources_root)
     )
     if extra_files:
@@ -983,19 +1068,29 @@ def _read_plugin_manifest(path: Path, library_root: Path, *, writable: bool) -> 
     )
 
 
-def _discover_skill_files(root: Path) -> tuple[Path, ...]:
-    directory = root / "skills"
-    return tuple(sorted(path for path in directory.rglob(SKILL_FILE) if path.is_file())) if directory.is_dir() else ()
+def _discover_files(directory: Path, filename: str) -> tuple[Path, ...]:
+    try:
+        directory.stat()
+    except FileNotFoundError:
+        return ()
+    return tuple(path for path in _walk_files(directory) if path.name == filename)
 
 
-def _discover_mcp_files(root: Path) -> tuple[Path, ...]:
-    directory = root / "mcps"
-    return tuple(sorted(path for path in directory.rglob(MCP_FILE) if path.is_file())) if directory.is_dir() else ()
+def _raise_scan_error(error: OSError) -> None:
+    raise error
 
 
-def _discover_plugin_files(root: Path) -> tuple[Path, ...]:
-    directory = root / "plugins"
-    return tuple(sorted(path for path in directory.rglob(PLUGIN_FILE) if path.is_file())) if directory.is_dir() else ()
+def _walk_files(root: Path) -> tuple[Path, ...]:
+    """目录不可读取与扫描竞态必须报错，不能像 rglob 那样形成不完整索引。"""
+    if not stat.S_ISDIR(root.stat().st_mode):
+        raise NotADirectoryError(f"resource directory is not a directory: {root}")
+    files: list[Path] = []
+    for directory, _children, names in os.walk(root, onerror=_raise_scan_error):
+        for name in names:
+            path = Path(directory) / name
+            if stat.S_ISREG(path.stat().st_mode):
+                files.append(path)
+    return tuple(sorted(files))
 
 
 def _merge_resource(values: dict[str, object], key: str, item: object, label: str, record: RecordEvent | None) -> None:
@@ -1032,22 +1127,70 @@ def _merge_skill(values: dict[str, Skill], item: Skill, record: RecordEvent | No
     )
 
 
-def _validate_plugins(plugins: Mapping[str, Plugin], skills: Mapping[str, Skill], mcps: Mapping[str, McpDefinition]) -> None:
+def _quarantine_resources(
+    skills: dict[str, Skill], mcps: dict[str, McpDefinition], plugins: dict[str, Plugin],
+    diagnostics: list[ResourceDiagnostic],
+) -> tuple[ResourceDiagnostic, ...]:
+    if not diagnostics:
+        return ()
+    items = {item.reference: item for item in (*skills.values(), *mcps.values(), *plugins.values())}
+    dependencies: dict[str, tuple[str, ...]] = {}
+    dependents: dict[str, list[str]] = {}
+    for key, item in items.items():
+        refs: tuple[str, ...] = ()
+        if isinstance(item, Skill):
+            refs = tuple(_skill_reference(child) for child in item.includes)
+        elif isinstance(item, Plugin):
+            refs = (*item.skill_references, *(f"plugin:{child}" for child in item.included_plugins),
+                    *(f"mcp:{child}" for child in (*item.required_mcp_servers, *item.optional_mcp_servers)))
+        dependencies[key] = refs
+        for child in refs:
+            dependents.setdefault(child, []).append(key)
+    invalid = {item.reference for item in diagnostics}
+    unavailable = set(invalid)
+    pending = deque(sorted(invalid))
+    while pending:
+        for key in dependents.get(pending.popleft(), ()):
+            if key not in unavailable:
+                unavailable.add(key)
+                pending.append(key)
+    for key in sorted(unavailable - invalid):
+        item = items[key]
+        blocked = tuple(sorted(set(dependencies[key]) & unavailable))
+        path = item.path if isinstance(item, Skill) else item.root / PLUGIN_FILE
+        content_hash = item.package_sha256 if isinstance(item, Skill) else item.sha256
+        diagnostics.append(ResourceDiagnostic(
+            key, path, "blocked_dependency", f"unavailable dependencies: {', '.join(blocked)}",
+            content_hash, blocked,
+        ))
+    for key in unavailable:
+        kind, resource_id = key.split(":", 1)
+        values = {"skill": skills, "mcp": mcps, "plugin": plugins}[kind]
+        values.pop(key if kind == "skill" else resource_id, None)
+    return tuple(sorted(diagnostics, key=lambda item: (item.reference, str(item.path))))
+
+
+def _validate_plugins(
+    plugins: Mapping[str, Plugin], skills: Mapping[str, Skill], mcps: Mapping[str, McpDefinition],
+    unavailable: set[str],
+) -> None:
     for plugin in plugins.values():
-        missing_skills = sorted(set((plugin.entry_skill, *plugin.skills)) - set(skills))
+        missing_skills = sorted(set((plugin.entry_skill, *plugin.skills)) - set(skills) - unavailable)
         if missing_skills:
             raise ValueError(f"plugin Skills are missing: {plugin.reference}: {', '.join(missing_skills)}")
-        missing_plugins = sorted(set(plugin.included_plugins) - set(plugins))
+        missing_plugins = sorted(set(plugin.included_plugins) - set(plugins)
+                                 - {key.removeprefix("plugin:") for key in unavailable if key.startswith("plugin:")})
         if missing_plugins:
             raise ValueError(f"included plugins are missing: {plugin.reference}: {', '.join(missing_plugins)}")
         missing_mcp = sorted(
             set((*plugin.required_mcp_servers, *plugin.optional_mcp_servers))
             - set(mcps)
+            - {key.removeprefix("mcp:") for key in unavailable if key.startswith("mcp:")}
         )
         if missing_mcp:
             raise ValueError(f"MCP definitions are missing: {plugin.reference}: {', '.join(missing_mcp)}")
     _validate_cycles(plugins)
-    _validate_skill_includes(skills)
+    _validate_skill_includes(skills, unavailable)
 
 
 def _validate_cycles(plugins: Mapping[str, Plugin]) -> None:
@@ -1057,14 +1200,15 @@ def _validate_cycles(plugins: Mapping[str, Plugin]) -> None:
         if key in done:
             return
         for child in plugins[key].included_plugins:
-            visit(child, (*path, key), done)
+            if child in plugins:
+                visit(child, (*path, key), done)
         done.add(key)
     done: set[str] = set()
     for key in sorted(plugins):
         visit(key, (), done)
 
 
-def _validate_skill_includes(skills: Mapping[str, Skill]) -> None:
+def _validate_skill_includes(skills: Mapping[str, Skill], unavailable: set[str]) -> None:
     def visit(key: str, path: tuple[str, ...], done: set[str]) -> None:
         if key in path:
             raise ValueError(f"Skill include cycle: {' -> '.join((*path, key))}")
@@ -1072,9 +1216,10 @@ def _validate_skill_includes(skills: Mapping[str, Skill]) -> None:
             return
         for child in skills[key].includes:
             selected = _skill_reference(child)
-            if selected not in skills:
+            if selected not in skills and selected not in unavailable:
                 raise ValueError(f"Skill include is missing: {key}: {selected}")
-            visit(selected, (*path, key), done)
+            if selected in skills:
+                visit(selected, (*path, key), done)
         done.add(key)
     done: set[str] = set()
     for key in sorted(skills):
@@ -1239,13 +1384,13 @@ def _text_array(value: object, name: str) -> tuple[str, ...]:
 def _resource_inventory(root: Path) -> tuple[str, ...]:
     """返回插件资源目录中按相对路径排序的文件清单。"""
     return tuple(
-        sorted(item.relative_to(root).as_posix() for item in root.rglob("*") if item.is_file())
+        item.relative_to(root).as_posix() for item in _walk_files(root)
     )
 
 
 def _directory_hash(root: Path) -> str:
     digest = hashlib.sha256()
-    for path in sorted(item for item in root.rglob("*") if item.is_file()):
+    for path in _walk_files(root):
         relative = path.relative_to(root).as_posix()
         digest.update(relative.encode())
         digest.update(b"\0")
@@ -1257,9 +1402,7 @@ def _skill_content_hash(path: Path) -> str:
     """只计算当前 Skill，避免中央目录中的兄弟 Skill 互相污染哈希。"""
     root = path.parent
     digest = hashlib.sha256()
-    for item in sorted(root.rglob("*")):
-        if not item.is_file():
-            continue
+    for item in _walk_files(root):
         relative = item.relative_to(root)
         # 若该文件位于一个嵌套 Skill 目录（其父目录存在 SKILL.md）之下，则跳过，
         # 避免把子 Skill 的资源算进当前 Skill。根目录自身不被视为嵌套层。

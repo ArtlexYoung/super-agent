@@ -49,7 +49,7 @@ class PluginReferenceTests(unittest.TestCase):
             plugin.joinpath("README.md").write_text("not a reference", encoding="utf-8")
 
             with self.assertRaisesRegex(ValueError, "only plugin.toml"):
-                AgentLibrary((root,)).snapshot()
+                AgentLibrary((root,)).find_plugin("local/base")
 
     def test_release_gate_rejects_a_stale_builtin_skill_version(self):
         source = Path(__file__).resolve().parents[1] / "src" / "super_agent" / "skill" / "builtin"

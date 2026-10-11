@@ -11,7 +11,7 @@ PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
 python3.11 -m unittest discover -s tests -p 'test_*.py' -v
 
 PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
-python3.11 scripts/verify_release.py --version 0.2.124 --full
+python3.11 scripts/verify_release.py --version 0.2.125 --full
 ```
 
 发布检查验证版本、Python 最低版本、零默认依赖、源码布局、旧目录删除、构建范围、内置插件去重关系和离线评测资产。
@@ -24,13 +24,21 @@ Log writes never trigger retention cleanup. Run `super-agent data storage prune 
 
 ## 版本 / Version
 
+v0.2.125 增加被动资源的局部诊断与停用：损坏 Skill、MCP 描述或插件清单及其依赖从健康索引中排除，明确选中时返回 ResourceUnavailableError，其他健康方法仍可运行。不可变诊断和内容摘要参与快照身份，修复后显式 refresh 恢复；损坏副本/覆盖层不回退旧方法。Python 分页 API、模型 list_resource_diagnostics 和 CLI check 共用唯一 AgentLibrary，发行门禁拒绝内置资源受阻。保持零默认依赖、唯一 Runtime，无新增后台服务或持久化。
+
+v0.2.125 adds local diagnosis and quarantine for passive resources: malformed Skills, MCP definitions, plugin manifests, and their dependents leave healthy indexes; explicit selection raises ResourceUnavailableError while unrelated methods remain runnable. Immutable diagnostics and content digests contribute to snapshot identity, with recovery after repair and explicit refresh; damaged copies or overlays never fall back to old methods. The Python paging API, model list_resource_diagnostics tool, and CLI check share the single AgentLibrary, and the release gate rejects unavailable builtins. There are no new default dependencies, Runtime, background services, or persistence.
+
+兼容变化见[资源诊断](skills.md#损坏资源--damaged-resources)：可定位格式错误改为局部停用，普通缺失、循环、有效来源身份冲突、权限/扫描及记录失败仍直接报错。索引有故障时附诊断，CLI check 返回非零；移除资源要求完整健康引用索引。方法格式诊断不证明研究/算法结论正确，也不提供任意 Python 执行代码的强隔离。
+
+See [resource diagnostics](skills.md#损坏资源--damaged-resources) for compatibility changes: identifiable format errors become local quarantine, while ordinary missing references, cycles, conflicting valid identities, permission/scan errors, and recording failures still fail directly. Faulty indexes include diagnostics and CLI check returns nonzero; removal requires a complete healthy reference index. Format diagnosis proves neither research/algorithm correctness nor strong isolation for arbitrary Python execution.
+
 v0.2.124 收紧执行故障边界：显式工具超时及时返回并以 ToolOutcomeUnknown 结束运行；TaskQueue 保留 stop_unknown，取消、恢复和退回不会触发未知操作重放。stdio MCP 使用统一请求截止时间、非阻塞有界管道、stderr 排空和进程组回收；失联 tools/call 需宿主核对效果并按操作 ID 显式解除。默认可信工具仍同步调用，无新增默认依赖、持久化或后台服务。
 
 v0.2.124 tightens execution fault boundaries: explicit tool timeouts return promptly and end the run with ToolOutcomeUnknown. TaskQueue preserves stop_unknown across cancellation, restore, and return-for-changes, preventing replay of unknown operations. Stdio MCP uses one request deadline, bounded nonblocking pipes, stderr draining, and process-group cleanup; lost tools/call requests require host reconciliation and explicit resolution by operation ID. Trusted tools remain synchronous by default, with no new default dependencies, persistence, or background service.
 
-兼容变化与限制见[执行故障契约](runtime.md#执行故障边界--execution-fault-boundaries)：普通 Python 线程不提供强制停止或原生崩溃隔离，进程停止不撤销已发生的外部效果；损坏 Skill 资源的局部诊断属于后续批次。
+兼容变化与限制见[执行故障契约](runtime.md#执行故障边界--execution-fault-boundaries)：普通 Python 线程不提供强制停止或原生崩溃隔离，进程停止不撤销已发生的外部效果；被动资源局部诊断现已在 v0.2.125 实现。
 
-See the [execution contract](runtime.md#执行故障边界--execution-fault-boundaries) for compatibility changes and limits: Python threads do not provide forced stop or native-crash isolation, process termination does not undo external effects, and local diagnosis of damaged Skill resources remains a later batch.
+See the [execution contract](runtime.md#执行故障边界--execution-fault-boundaries) for compatibility changes and limits: Python threads do not provide forced stop or native-crash isolation, process termination does not undo external effects, and local diagnosis of damaged passive resources is now available in v0.2.125.
 
 v0.2.123 增加通用研究探索图：连接目标、方向、工作、任务与正/负结果，支持多来源谱系、前沿、预算、Mermaid 导出及显式检查点恢复。研究、算法、离线量化与深度优化复用同一探索 Skill；实验比较和主张/证据版本关联复用宿主 TaskCheck，证据变更或过期使旧验收失效。保持唯一 Runtime、零默认依赖，不提供攻击、渗透或实盘交易功能。
 

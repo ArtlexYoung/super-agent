@@ -5,7 +5,7 @@ metadata:
   super-agent-categories: "[\"research/quantitative\",\"time-series\",\"backtesting\"]"
   super-agent-type: "method"
   super-agent-includes: "[\"skill:super-agent/research/exploration\",\"skill:super-agent/research/experiments\"]"
-  super-agent-version: "0.2.124"
+  super-agent-version: "0.2.125"
 ---
 # Quantitative research
 

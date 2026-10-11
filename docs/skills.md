@@ -97,6 +97,40 @@ A plugin directory contains only `plugin.toml`; Skill bodies and MCP definitions
 
 Run `super-agent check --config common.toml --output json` while developing to validate the real library. At release time, `python3.11 scripts/verify_release.py --version <version>` also checks the builtin plugin set, version alignment, and physical resource uniqueness.
 
+## 损坏资源 / Damaged Resources
+
+发现阶段可定位到规范目录的格式错误（Skill frontmatter、UTF-8、skill.toml、plugin.toml、mcp.toml 或字段类型）会形成 `invalid_format` 诊断。对应引用不进入健康索引；依赖它的 Skill 和插件按传递关系停用，记录 `blocked_dependency` 及直接不可用依赖。其他健康方法仍可披露和运行。可选 MCP 的连接仍是可选的，但声明的描述资源必须有效，损坏描述同样阻塞引用插件。
+
+Discovery isolates format errors with a canonical directory identity: Skill frontmatter, UTF-8, skill.toml, plugin.toml, mcp.toml, or field types. They produce `invalid_format` diagnostics and leave the healthy indexes. Dependent Skills and plugins are disabled transitively with `blocked_dependency` and direct unavailable dependencies; unrelated healthy methods remain usable. An optional MCP connection remains optional, but its declared definition must be valid.
+
+```python
+from super_agent.skill.library import AgentLibrary, ResourceUnavailableError
+
+library = AgentLibrary(("library",))
+report = library.list_diagnostics(page=1, page_size=20).to_dict()
+print(report)  # key / path / code / message / sha256 / dependencies
+try:
+    method = library.find_skill("skill:local/research")
+except ResourceUnavailableError as error:
+    print(error.reference, [item.to_dict() for item in error.diagnostics])
+
+# 在原位置修复文件之后，显式重建下一份快照。
+library.refresh()
+print(library.list_diagnostics().to_dict())
+```
+
+模型通过 `list_resource_diagnostics` 分页查询同一份诊断；启动索引只在出现问题时附加诊断首页。`super-agent check --config common.toml --output json --page 1 --page-size 20` 返回 `resources_ready`、`resource_diagnostics` 和健康资源数量；模型未配置或任何资源受阻时退出码为 1，身份冲突、权限等全局错误仍为 2。发行门禁拒绝任何内置资源诊断，不把局部隔离当作发行通过。
+
+Models page the same diagnostics through `list_resource_diagnostics`; startup indexes add a diagnostics page only when problems exist. `super-agent check --config common.toml --output json --page 1 --page-size 20` reports `resources_ready`, `resource_diagnostics`, and healthy resource counts. Missing model configuration or unavailable resources returns exit code 1; global errors such as identity conflicts or permission failures still return 2. The release gate rejects every builtin diagnostic.
+
+诊断与资源摘要一起固定在 `LibrarySnapshot` 并参与快照身份；消息最多 1,024 字符，不复制方法正文。修复文件不会改变已冻结快照，显式 `refresh()` 后重试。同一引用的任一来源损坏都会停用该引用，含共享副本和用户覆盖层，不自动回退旧内容。明确选中受阻方法会抛 `ResourceUnavailableError`，不调用模型或替换指定方法。
+
+Diagnostics and content digests are frozen in `LibrarySnapshot` and contribute to its identity. Messages are limited to 1,024 characters and do not copy method bodies. Repairs leave frozen snapshots unchanged; retry after explicit `refresh()`. A damaged source disables the entire reference, including shared copies and user overlays, with no automatic fallback. Explicitly selecting an unavailable method raises `ResourceUnavailableError` before any model call.
+
+规范目录身份不明确、不同有效来源的身份冲突、过期覆盖基线、普通缺失引用、引用循环、文件系统/扫描错误和关键记录失败仍直接报错，不纳入局部格式隔离。损坏资源可能隐藏尚未解析的引用，因此移除资源要求完整健康索引，先修复并刷新再删除；健康资源的创建和更新仍沿用原写入权限与身份检查。此边界只诊断方法格式，不证明方法正确或提供任意 Python 代码的崩溃隔离。
+
+Ambiguous directory identities, conflicting valid sources, stale overlay baselines, ordinary missing references, cycles, filesystem/scan errors, and record failures still fail directly. Damaged resources may hide unparsed references, so removal requires a complete healthy index after repair and refresh. Creating and updating healthy resources retain existing write permissions and identity checks. This boundary diagnoses method formats; it proves neither method correctness nor crash isolation for arbitrary Python code.
+
 ## 去重与冲突 / Deduplication and Conflicts
 
 1. 同类型、ID、版本和内容哈希相同：合并为一个逻辑对象并记录全部来源。

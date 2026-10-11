@@ -84,7 +84,7 @@ class GenericPluginManifestTests(unittest.TestCase):
                 manifest, encoding="utf-8"
             )
             with self.assertRaisesRegex(ValueError, "resources must match"):
-                AgentLibrary((root,)).snapshot()
+                AgentLibrary((root,)).find_plugin("super-agent/compose")
 
     def test_plugin_manifest_is_not_a_runtime(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -107,7 +107,7 @@ class GenericPluginManifestTests(unittest.TestCase):
                 manifest, encoding="utf-8"
             )
             with self.assertRaisesRegex(ValueError, "unknown plugin manifest"):
-                AgentLibrary((root,)).snapshot()
+                AgentLibrary((root,)).find_plugin("super-agent/compose")
 
 
 if __name__ == "__main__":

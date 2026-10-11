@@ -151,12 +151,15 @@ def _check_command(arguments: list[str]) -> int:
     parser.add_argument("--config")
     parser.add_argument("--cli-config")
     parser.add_argument("--output", choices=("text", "json"), default=None)
+    parser.add_argument("--page", type=int, default=1)
+    parser.add_argument("--page-size", type=int, default=20)
     parsed = parser.parse_args(arguments)
     cli = _load_cli(parsed.cli_config)
     config = _load_general(parsed.config or cli.general_config)
     if config.models:
         config.create_model_profiles()
     library = _library_from_config(config)
+    resource_diagnostics = library.list_diagnostics(page=parsed.page, page_size=parsed.page_size)
     model_ready = _models_ready(config)
     result = {
         "config": "ok",
@@ -166,9 +169,11 @@ def _check_command(arguments: list[str]) -> int:
         "model_count": len(config.models),
         "model_ready": model_ready,
         "model_diagnostics": _model_diagnostics(config),
+        "resources_ready": resource_diagnostics.total == 0,
+        "resource_diagnostics": resource_diagnostics.to_dict(),
     }
     _print_value(result, parsed.output or cli.output)
-    return 0 if model_ready else 1
+    return 0 if model_ready and resource_diagnostics.total == 0 else 1
 
 
 def _model_diagnostics(config: Config) -> list[dict[str, object]]:

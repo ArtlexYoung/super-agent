@@ -20,13 +20,17 @@ Adapter  -> 连接 CLI、存储、进程和外部协议 / connects interfaces an
 
 A `Plugin` is a passive reference list, not an executable extension. Skills and MCP definitions cannot register Python code, connections, secrets, permissions, or evolution authority; trusted tools remain explicit through `Agent.add_tool`, `Agent.add_tools_for_skills`, or `Agent.connect_mcp_server`.
 
-轻量内核保留唯一 Runtime、权限决策、预算、事件与任务事实；研究、算法和离线量化方法仍按需装配。执行故障隔离在实际工具/服务边界：普通异常局部返回，结果未知结束对应运行并禁止重放，显式 stdio MCP 进程承担可终止的服务边界。Skill 文本和引用清单没有“可崩溃的执行进程”；损坏资源的局部诊断仍是后续工作。[执行故障契约](runtime.md#执行故障边界--execution-fault-boundaries)区分返回控制、进程停止和副作用核对。
+轻量内核保留唯一 Runtime、权限决策、预算、事件与任务事实；研究、算法和离线量化方法仍按需装配。执行故障隔离在实际工具/服务边界：普通异常局部返回，结果未知结束对应运行并禁止重放，显式 stdio MCP 进程承担可终止的服务边界。被动资源的格式损坏由唯一 Library 诊断，停用对应引用及其依赖，健康方法仍可使用。[资源诊断](skills.md#损坏资源--damaged-resources)和[执行故障契约](runtime.md#执行故障边界--execution-fault-boundaries)分别说明方法装配、返回控制、进程停止和副作用核对。
 
-The lightweight kernel keeps one Runtime, permission decisions, budgets, events, and task facts; research, algorithm, and offline quantitative methods are composed on demand. Fault boundaries surround executable tools and services: ordinary exceptions remain local, unknown outcomes end the affected run and block replay, and explicit stdio MCP processes provide terminable service boundaries. Skill text and reference manifests have no executable process to crash; local diagnosis of damaged resources remains future work. The [execution contract](runtime.md#执行故障边界--execution-fault-boundaries) distinguishes returning control, stopping a process, and reconciling effects.
+The lightweight kernel keeps one Runtime, permission decisions, budgets, events, and task facts; research, algorithm, and offline quantitative methods are composed on demand. Fault boundaries surround executable tools and services: ordinary exceptions remain local, unknown outcomes end the affected run and block replay, and explicit stdio MCP processes provide terminable service boundaries. The single Library diagnoses malformed passive resources and disables their references and dependents while healthy methods remain usable. [Resource diagnostics](skills.md#损坏资源--damaged-resources) and the [execution contract](runtime.md#执行故障边界--execution-fault-boundaries) cover method assembly, returning control, stopping processes, and reconciling effects.
 
 ```mermaid
 flowchart LR
-    Methods["按需 Skill / 引用插件"] --> Runtime["唯一 Runtime\n权限 · 预算 · 事件"]
+    Library["唯一 Library\n快照 · 诊断"] --> Methods["健康 Skill / 引用插件"]
+    Library --> Quarantine["损坏引用与依赖局部停用"]
+    Quarantine --> Repair["修复 → 显式 refresh"]
+    Repair --> Library
+    Methods --> Runtime["唯一 Runtime\n权限 · 预算 · 事件"]
     Runtime --> Trusted["可信同进程工具"]
     Runtime --> IPC["有界 stdio MCP 请求"]
     IPC --> Worker["独立服务进程"]

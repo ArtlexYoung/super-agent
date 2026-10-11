@@ -1,6 +1,6 @@
 schema = 1
 id = "super-agent/research"
-version = "0.2.124"
+version = "0.2.125"
 description = "Evidence-led research, exploration graphs, source review and citation"
 entry_skill = "skill:super-agent/research"
 skills = ["skill:super-agent/research/citations"]
