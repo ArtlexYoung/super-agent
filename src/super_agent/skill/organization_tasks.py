@@ -13,7 +13,7 @@ from uuid import uuid4
 from super_agent.core import require_text as _text
 from super_agent.core.event import RunIdentity, RunResult, utc_now
 from super_agent.core.records import compact_child_result
-from super_agent.core.run import RuntimeLifecycle
+from super_agent.core.run import RuntimeLifecycle, ToolOutcomeUnknown
 from super_agent.skill.organization import (
     TeamNode,
     TeamMember,
@@ -153,6 +153,8 @@ class TaskQueue:
                                else str(snapshot["cancel_reason"])),
                 stop_unknown_reason=(None if snapshot.get("stop_unknown_reason") is None
                                      else str(snapshot["stop_unknown_reason"])),
+                error_type=(None if snapshot.get("error_type") is None else str(snapshot["error_type"])),
+                error_message=(None if snapshot.get("error_message") is None else str(snapshot["error_message"])),
             )
             if task.delivery is not None:
                 # 已交付是完成的业务结果，不是新建任务。
@@ -160,7 +162,8 @@ class TaskQueue:
             elif snapshot.get("status") == "cancelled" and snapshot.get("stage") == "stopped":
                 # 只有已持久化且确认停止的任务才能恢复为 cancelled。
                 task = replace(task, status="cancelled", stage="stopped")
-            elif task.cancel_requested_at is not None:
+            elif (task.cancel_requested_at is not None or snapshot.get("stage") == "stop_unknown"
+                  or task.stop_unknown_reason is not None):
                 # 其余取消请求都没有停止证据，恢复后必须阻止再次执行。
                 task = replace(
                     task,
@@ -168,7 +171,7 @@ class TaskQueue:
                     stage="stop_unknown",
                     stop_unknown_reason=(
                         task.stop_unknown_reason
-                        or "cancellation was recorded without confirmed stop evidence"
+                        or "execution has no confirmed outcome or stop evidence"
                     ),
                 )
             if task.status != "created":
@@ -324,6 +327,11 @@ class TaskQueue:
         except Exception as error:
             with self._condition:
                 current = self._require_task(task_id)
+                if isinstance(error, ToolOutcomeUnknown):
+                    self._change(current, status="failed", stage="stop_unknown", result=None,
+                                 stop_unknown_reason=str(error),
+                                 error_type=type(error).__name__, error_message=str(error))
+                    raise
                 if current.cancel_requested_at is not None:
                     # 执行体对停止请求的报错就是停止证据；错误本身仍作为证据一并保留。
                     return self._publish_stopped_locked(current, type(error).__name__,
@@ -440,6 +448,8 @@ class TaskQueue:
             task = self._owned_task(task_id, source_group_id)
             if task.delivery:
                 raise ValueError("delivered task cannot be restarted")
+            if task.stage == "stop_unknown":
+                raise ValueError("unknown execution must be reconciled before a new task can be started")
             if not task.submissions and task.attempts == 0:
                 raise ValueError("return requires an executed attempt or a submission")
             return self._change(task, status="created", stage="pending", result=None,
@@ -885,6 +895,11 @@ class TaskQueue:
         with self._condition:
             temporary = self._workers.mark_failure(worker, error)
             task = self._require_task(task_id)
+            if isinstance(error, ToolOutcomeUnknown):
+                self._change(task, status="failed", stage="stop_unknown", result=None,
+                             stop_unknown_reason=str(error),
+                             error_type=type(error).__name__, error_message=str(error))
+                return
             if task.cancel_requested_at is not None:
                 # 停止请求导致的退出不是失败，也不触发重试或换模型。
                 self._change(task, status="cancelled", stage="stopped",
@@ -1006,6 +1021,9 @@ class TaskQueue:
             target = changes.get("status", task.status)
             if not isinstance(target, str):
                 raise TypeError("Agent task status must be text")
+            if task.stage == "stop_unknown" or task.stop_unknown_reason is not None:
+                if target != "failed" or changes.get("stage", task.stage) != "stop_unknown":
+                    raise ValueError("unknown execution must be reconciled before a new task can be started")
             if not allow_restore_transition and (previous != target or event_type is None):
                 _validate_task_transition(previous, target)
             updated = replace(

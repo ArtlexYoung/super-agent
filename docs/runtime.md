@@ -45,6 +45,43 @@ At run start, `AgentLibrary` freezes Skill, MCP, and plugin-reference versions a
 
 Adaptive recording first plans a mode from task position, then checks the actual child result's character and event counts. It compresses only after `max_full_result_characters` or `max_full_result_events` is exceeded, and records the reason; explicit `full` and `summary` modes remain authoritative.
 
+## 执行故障边界 / Execution Fault Boundaries
+
+默认可信 Python 工具仍在当前线程同步执行，不创建 worker。显式设置 `AgentContext(tool_timeout_seconds=...)` 后，工具由 daemon 线程执行；截止时间后 Runtime 返回控制，不等待线程结束。普通工具异常仍作为 `tool.failed` 交给模型；未确认的超时或运行中取消则抛出 `ToolOutcomeUnknown`（`FatalToolError`），记录 `outcome=unknown` 和 `execution_stopped` 并结束本次运行，不继续模型轮次。v0.2.124 将超时从可重试的普通工具错误收紧为这一失败契约。
+
+Trusted Python tools still run synchronously in the calling thread by default, with no worker. Setting `AgentContext(tool_timeout_seconds=...)` explicitly enables a daemon worker; Runtime returns control at the deadline without waiting for that thread. Ordinary tool exceptions remain model-visible `tool.failed` results. Unconfirmed timeouts or cancellation during execution raise `ToolOutcomeUnknown` (a `FatalToolError`), record `outcome=unknown` and `execution_stopped`, and end the run before another model turn. v0.2.124 tightens the timeout contract from an ordinary retryable tool error to this failure.
+
+同一 handler 在超时 worker 退出前不能再次执行；全进程最多有 64 个未退出的超时 worker，达到上限时新工具不启动。迟到结果不交付，过期工具上下文拒绝新事件。Python 线程不能强制终止，仍可能修改已持有的可变对象或产生外部效果；同进程工具也不隔离原生崩溃、`os._exit` 或持有 GIL 的代码。需要硬停止的服务通过可信代码显式使用独立 stdio MCP 进程。
+
+The same handler cannot run again until an abandoned worker exits. At most 64 timed workers may remain active in the process; capacity exhaustion rejects new timed calls before dispatch. Late results are not delivered, and expired tool contexts reject new events. Python threads cannot be forcibly terminated and may still mutate objects or produce external effects. In-process tools do not isolate native crashes, `os._exit`, or code that holds the GIL. Services requiring hard stop use an independent stdio MCP process explicitly configured by trusted host code.
+
+`StdioMcpServer` 的锁等待、初始化、写入、通知和响应读取共用一次 monotonic 截止时间。管道非阻塞，`max_message_bytes`（默认 1,000,000）限制请求和接收缓冲；stderr 排空但不保留。半条 JSON、连续通知、阻塞 stdin 或进程退出都会结束等待。故障回收只作用于本实例启动的进程组：TERM 等待 0.2 秒，再 KILL 等待 0.8 秒，超时后可能增加最多 1 秒的本地回收等待；这不是操作系统实时保证。`close()` 会通知正在等待的请求退出，锁等待上限 2 秒。回收失败保留故障对象并如实报告，后续请求不会复用旧缓冲或自动重放。
+
+`StdioMcpServer` shares one monotonic deadline across lock acquisition, initialization, writes, notifications, and response reads. Nonblocking pipes and `max_message_bytes` (1,000,000 by default) bound requests and receive buffers; stderr is drained without retention. Partial JSON, endless notifications, blocked stdin, and worker exits all end the wait. Cleanup affects only this instance's process group: TERM waits 0.2 seconds, then KILL waits 0.8 seconds, adding at most one second of local cleanup waits after a timeout; this is not an operating-system realtime guarantee. `close()` interrupts the waiting request and bounds lock acquisition to two seconds. Failed cleanup retains fault state; later requests never reuse stale buffers or replay automatically.
+
+`tools/call` 可能已经发出而未收到有效响应时，MCP 保留 `unknown_operation_id`，阻止所有后续工具调用；仍可通过 `list_tools()` 重启并检查服务。宿主核对外部效果后，使用对应 ID 调用 `resolve_unknown(id)` 才解除阻止。确认进程停止不等于撤销副作用，也不等于得到工具结果。stdio 的未知调用记录只存在于当前对象；需要跨宿主进程恢复时，沿用已有显式任务/操作持久化记录，不依赖重新创建 MCP 对象。
+
+When a `tools/call` may have been sent without a valid response, MCP retains `unknown_operation_id` and blocks subsequent calls. `list_tools()` can still restart and inspect the service. The host reconciles external effects and then calls `resolve_unknown(id)` with the matching ID. Confirming process termination neither rolls back effects nor supplies a result. This stdio latch lives only in the current object; recovery across host processes uses existing explicit task/operation persistence instead of relying on a new MCP object.
+
+TaskQueue 将这类失败保留为 `failed / stop_unknown`，优先于取消确认和临时错误回退处理。恢复与退回都不能把未知尝试变成可运行任务；核对外部效果后，由宿主显式创建新任务。权限拒绝、关键记录读写失败与产物验收失败的既有语义保持。
+
+TaskQueue retains these failures as `failed / stop_unknown`, before cancellation confirmation or transient-error fallback. Restore and return-for-changes cannot turn an unknown attempt into runnable work. After reconciliation the host explicitly creates a new task. Existing permission-denial, critical-record, and artifact-acceptance failure semantics remain intact.
+
+```python
+from super_agent.adapter.process import StdioMcpServer
+from super_agent.core.run import ToolOutcomeUnknown
+
+server = StdioMcpServer(["python3", "research_service.py"], timeout_seconds=10)
+try:
+    result = server.call_tool("run_experiment", {"dataset": "sample.csv"})
+except ToolOutcomeUnknown as error:
+    # 先核对实验、文件或其他外部效果，不能自动重试。
+    operation_id = error.operation_id
+    # 核对完成并确认旧进程已停后：server.resolve_unknown(operation_id)
+finally:
+    server.close()
+```
+
 ## 长会话窗口 / Long-Running Windows
 
 `TokenUsage` 统一供应商准确用量和显式标记的估算用量。启用 `context-window` 插件并声明模型容量后，`TokenBudget` 只在模型调用前请求换窗；未知容量不会猜测，换窗仍无法容纳请求时会明确失败。

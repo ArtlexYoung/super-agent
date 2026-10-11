@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from concurrent.futures import Future, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass, field, replace
-from threading import RLock
+from math import isfinite
+from threading import Event, RLock, Thread
+from time import monotonic
 from typing import Callable, Generator, Iterable, Mapping, Protocol
 
 from super_agent.core.event import (
@@ -45,6 +47,22 @@ CancelCheck = Callable[[], bool]
 
 class FatalToolError(RuntimeError):
     """表示不应返回模型继续尝试的工具失败。"""
+
+
+class ToolOutcomeUnknown(FatalToolError):
+    """执行结果未确认，不能把返回控制或终止进程当作副作用已撤销。"""
+
+    def __init__(self, message: str, *, execution_stopped: bool = False,
+                 operation_id: str = "") -> None:
+        super().__init__(message)
+        self.execution_stopped = execution_stopped
+        self.operation_id = operation_id
+
+
+# 仅显式超时路径创建线程；隔离迟到 handler 并限制未退出的 worker 数量。
+_TOOL_WORKER_LIMIT = 64
+_tool_workers: dict[Future[object], tuple[object, bool]] = {}
+_tool_worker_lock = RLock()
 
 
 class RunInterrupted(RuntimeError):
@@ -202,8 +220,10 @@ class ToolExecutionCenter:
         timeout_seconds: float | None = None,
         is_cancelled: CancelCheck | None = None,
     ) -> None:
-        if timeout_seconds is not None and timeout_seconds <= 0:
-            raise ValueError("tool timeout must be positive or None")
+        if timeout_seconds is not None and (isinstance(timeout_seconds, bool)
+                or not isinstance(timeout_seconds, (int, float))
+                or not isfinite(timeout_seconds) or timeout_seconds <= 0):
+            raise ValueError("tool timeout must be finite and positive or None")
         self.decide = decide
         self.timeout_seconds = timeout_seconds
         self.is_cancelled = is_cancelled
@@ -233,15 +253,75 @@ class ToolExecutionCenter:
 
     def execute_checked(self, tool: Tool, arguments: dict[str, object], context: ToolContext) -> object:
         """执行已完成决策的工具；只供运行循环调用，避免重复询问。"""
+        with _tool_worker_lock:
+            if any(handler is tool.handler and abandoned for handler, abandoned in _tool_workers.values()):
+                raise ToolOutcomeUnknown(f"previous tool execution has not stopped: {tool.name}")
         if self.timeout_seconds is None:
             return tool.handler(arguments, context)
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(tool.handler, arguments, context)
+        return self._execute_timed(tool, arguments, context)
+
+    def _execute_timed(self, tool: Tool, arguments: dict[str, object], context: ToolContext) -> object:
+        deadline = monotonic() + self.timeout_seconds
+        future: Future[object] = Future()
+        expired = Event()
+
+        def emit(event_type: str, data: Mapping[str, object]) -> RunEvent:
+            if expired.is_set():
+                raise FatalToolError("tool context expired after unconfirmed execution")
+            return context.emit(event_type, data)
+
+        worker_context = replace(context, emit=emit) if isinstance(context, ToolContext) else context
+
+        def execute() -> None:
             try:
-                return future.result(timeout=self.timeout_seconds)
-            except FutureTimeoutError as error:
-                future.cancel()
-                raise TimeoutError(f"tool timed out: {tool.name}") from error
+                future.set_result(tool.handler(arguments, worker_context))
+            except BaseException as error:
+                # SystemExit 等只退出这个显式 worker，不能通过 Future 退出宿主。
+                failure = error if isinstance(error, Exception) else FatalToolError(
+                    f"tool worker aborted: {tool.name} ({type(error).__name__})")
+                future.set_exception(failure)
+            finally:
+                with _tool_worker_lock:
+                    _tool_workers.pop(future, None)
+
+        with _tool_worker_lock:
+            if len(_tool_workers) >= _TOOL_WORKER_LIMIT:
+                raise FatalToolError("timed tool worker limit reached; no tool was started")
+            if any(handler is tool.handler and abandoned for handler, abandoned in _tool_workers.values()):
+                raise ToolOutcomeUnknown(f"previous tool execution has not stopped: {tool.name}")
+            _tool_workers[future] = (tool.handler, False)
+        try:
+            Thread(target=execute, name=f"tool:{tool.name}", daemon=True).start()
+        except Exception:
+            with _tool_worker_lock:
+                _tool_workers.pop(future, None)
+            raise
+        control_error: Exception | None = None
+        while True:
+            try:
+                cancelled = self.is_cancelled is not None and self.is_cancelled()
+            except Exception as error:
+                control_error = error
+                reason = f"tool control failed with unknown outcome: {tool.name}"
+                break
+            if cancelled:
+                reason = f"tool cancellation has no confirmed result: {tool.name}"
+                break
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                reason = f"tool timed out with unknown outcome: {tool.name}"
+                break
+            try:
+                return future.result(timeout=min(remaining, 0.05) if self.is_cancelled else remaining)
+            except FutureTimeoutError:
+                # handler 自己抛 TimeoutError 时，保留其确定失败语义。
+                if future.done():
+                    return future.result()
+        expired.set()
+        with _tool_worker_lock:
+            if future in _tool_workers:
+                _tool_workers[future] = (tool.handler, True)
+        raise ToolOutcomeUnknown(reason, execution_stopped=future.done()) from control_error
 
 
 class EventBus:
@@ -1034,6 +1114,15 @@ class _RunEngine:
                         "result": recorded_output,
                     },
                 )
+            except ToolOutcomeUnknown as error:
+                yield from self._take_captured_events()
+                yield self.emit("tool.failed", {
+                    "call_id": call.call_id, "name": call.name,
+                    "error": str(error), "error_type": type(error).__name__,
+                    "outcome": "unknown", "execution_stopped": error.execution_stopped,
+                    "operation_id": error.operation_id,
+                })
+                raise
             except FatalToolError:
                 raise
             except Exception as error:

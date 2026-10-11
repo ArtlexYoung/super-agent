@@ -4,7 +4,7 @@ description: "Explore uncertain research or optimization goals through a bounded
 metadata:
   super-agent-categories: "[\"research/exploration\",\"planning\",\"optimization\"]"
   super-agent-type: "method"
-  super-agent-version: "0.2.123"
+  super-agent-version: "0.2.124"
   super-agent-requires: "[\"exploration_update\",\"exploration_read\"]"
 ---
 # Exploration method

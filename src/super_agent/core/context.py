@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from math import isfinite
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -93,8 +94,10 @@ class RunOptions:
             raise TypeError("fork_window must be a boolean")
         if self.fork_window and self.restore_window_reference is None:
             raise ValueError("fork_window requires restore_window_reference")
-        if self.tool_timeout_seconds is not None and self.tool_timeout_seconds <= 0:
-            raise ValueError("tool timeout must be positive or None")
+        if self.tool_timeout_seconds is not None and (isinstance(self.tool_timeout_seconds, bool)
+                or not isinstance(self.tool_timeout_seconds, (int, float))
+                or not isfinite(self.tool_timeout_seconds) or self.tool_timeout_seconds <= 0):
+            raise ValueError("tool timeout must be finite and positive or None")
         if any(not callable(listener) for listener in self.listeners):
             raise TypeError("run listeners must be callable")
         if any(

@@ -20,6 +20,22 @@ Adapter  -> 连接 CLI、存储、进程和外部协议 / connects interfaces an
 
 A `Plugin` is a passive reference list, not an executable extension. Skills and MCP definitions cannot register Python code, connections, secrets, permissions, or evolution authority; trusted tools remain explicit through `Agent.add_tool`, `Agent.add_tools_for_skills`, or `Agent.connect_mcp_server`.
 
+轻量内核保留唯一 Runtime、权限决策、预算、事件与任务事实；研究、算法和离线量化方法仍按需装配。执行故障隔离在实际工具/服务边界：普通异常局部返回，结果未知结束对应运行并禁止重放，显式 stdio MCP 进程承担可终止的服务边界。Skill 文本和引用清单没有“可崩溃的执行进程”；损坏资源的局部诊断仍是后续工作。[执行故障契约](runtime.md#执行故障边界--execution-fault-boundaries)区分返回控制、进程停止和副作用核对。
+
+The lightweight kernel keeps one Runtime, permission decisions, budgets, events, and task facts; research, algorithm, and offline quantitative methods are composed on demand. Fault boundaries surround executable tools and services: ordinary exceptions remain local, unknown outcomes end the affected run and block replay, and explicit stdio MCP processes provide terminable service boundaries. Skill text and reference manifests have no executable process to crash; local diagnosis of damaged resources remains future work. The [execution contract](runtime.md#执行故障边界--execution-fault-boundaries) distinguishes returning control, stopping a process, and reconciling effects.
+
+```mermaid
+flowchart LR
+    Methods["按需 Skill / 引用插件"] --> Runtime["唯一 Runtime\n权限 · 预算 · 事件"]
+    Runtime --> Trusted["可信同进程工具"]
+    Runtime --> IPC["有界 stdio MCP 请求"]
+    IPC --> Worker["独立服务进程"]
+    Trusted --> Unknown["未确认结果 → stop_unknown"]
+    Worker --> Unknown
+    Unknown --> Reconcile["宿主核对效果\n禁止自动重放"]
+    Runtime --> Healthy["健康任务继续执行"]
+```
+
 `Agent` 使用 `add_library_path`、`enable_plugin`、`enable_skill`、`add_subagent` 和 `add_model` 组合行为。`Adapter` 不进入核心运行循环；没有 CLI、数据库或进程工具时，核心仍可独立运行。
 
 `Agent` composes behavior with `add_library_path`, `enable_plugin`, `enable_skill`, `add_subagent`, and `add_model`. Adapters stay outside the core loop, which remains usable without a CLI, database, or process tools.

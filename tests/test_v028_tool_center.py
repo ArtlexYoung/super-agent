@@ -3,7 +3,7 @@ import unittest
 
 from super_agent.core.model import ModelEvent, Tool
 from super_agent.core.provider import MockModel
-from super_agent.core.run import Action, FatalToolError, RunInput, ToolExecutionCenter, collect_run, stream_run
+from super_agent.core.run import Action, FatalToolError, RunInput, ToolExecutionCenter, ToolOutcomeUnknown, collect_run, stream_run
 
 
 class ToolExecutionCenterTests(unittest.TestCase):
@@ -56,21 +56,22 @@ class ToolExecutionCenterTests(unittest.TestCase):
         self.assertEqual([], calls)
         self.assertTrue(any(item.event_type == "tool.failed" for item in result.events))
 
-    def test_tool_timeout_is_reported_as_a_tool_failure(self):
+    def test_tool_timeout_ends_the_run_with_an_unknown_outcome(self):
         model = MockModel(
             responses=(
                 (ModelEvent.call("call-1", "slow", {}), ModelEvent.done()),
                 "recovered",
             )
         )
-        tool = Tool("slow", "Slow tool", lambda _args, _context: time.sleep(0.05))
-        result = collect_run(
-            stream_run(
-                RunInput("slow", model, tools=(tool,), tool_timeout_seconds=0.001)
-            )
-        )
-        self.assertEqual("recovered", result.text)
-        self.assertEqual("TimeoutError", next(item for item in result.events if item.event_type == "tool.failed").data["error_type"])
+        tool = Tool("slow", "Slow tool", lambda _args, _context: time.sleep(0.05) or "late")
+        events = []
+        with self.assertRaises(ToolOutcomeUnknown):
+            collect_run(stream_run(RunInput("slow", model, tools=(tool,),
+                                           tool_timeout_seconds=0.001, listeners=(events.append,))))
+        self.assertEqual(1, len(model.requests))
+        failure = next(item for item in events if item.event_type == "tool.failed")
+        self.assertEqual("ToolOutcomeUnknown", failure.data["error_type"])
+        self.assertEqual("unknown", failure.data["outcome"])
 
 
 if __name__ == "__main__":
